@@ -36,7 +36,17 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.18.1"
+        }
+    }
+
+    ndkVersion = "25.1.8937393"
 }
 
 dependencies {
