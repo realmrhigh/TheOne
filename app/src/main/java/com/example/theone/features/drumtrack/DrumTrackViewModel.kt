@@ -71,7 +71,7 @@ class DrumTrackViewModel(
             // --- THIS IS THE CORRECTED BLOCK ---
             // It maps the PlaybackMode from the drum track's model to the one
             // expected by the audio engine, and it is now "exhaustive".
-            val samplerPlaybackMode = when (padSetting.playbackMode) {
+            val mappedSamplerPlaybackMode = when (padSetting.playbackMode) {
                 PlaybackMode.ONE_SHOT -> PlaybackMode.ONE_SHOT
                 PlaybackMode.NOTE_ON_OFF -> PlaybackMode.NOTE_ON_OFF
             }
