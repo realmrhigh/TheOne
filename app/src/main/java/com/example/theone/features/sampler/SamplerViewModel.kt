@@ -1,5 +1,8 @@
 package com.example.theone.features.sampler
 
+import com.example.theone.audio.AudioEngineControl
+import com.example.theone.domain.ProjectManager
+import com.example.theone.model.SampleMetadata
 import android.util.Log // For logging pad assignment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,36 +12,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 // Placeholder for AudioEngineControl interface (C1)
-interface AudioEngineControl {
-    suspend fun startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean
-    suspend fun stopAudioRecording(): SamplerViewModel.SampleMetadata? // Using local SampleMetadata
-    fun getRecordingLevelPeak(): Float
-    fun isRecordingActive(): Boolean
-    suspend fun playSample(sampleId: String, /* other params for playback */): Boolean // Added for playback
-}
-
 // Placeholder for ProjectManager interface (C3)
-interface ProjectManager {
-    suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SamplerViewModel.SampleMetadata? // Using local SampleMetadata
-}
-
 // Local Placeholder for SampleMetadata.
 // Ideally, this would be in a shared 'core.model' module as per README.
 // Ensure this definition is present if not already.
-data class SampleMetadata(
-    val id: String,
-    val name: String,
-    val filePathUri: String, // This would be the URI to the actual audio file
-    val durationMs: Long = 0,
-    val sampleRate: Int = 44100,
-    val channels: Int = 1,
-    val detectedBpm: Float? = null,
-    val detectedKey: String? = null,
-    var userBpm: Float? = null,
-    var userKey: String? = null,
-    var rootNote: Int = 60 // MIDI C3
-)
-
 
 enum class RecordingState {
     IDLE,

@@ -28,6 +28,21 @@ import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.content.Context // Ensure this is present
 
+import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.*
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.theone.features.sampleeditor.SampleEditScreen
+import com.example.theone.features.sampleeditor.SampleEditViewModelFactory
+import com.example.theone.model.SampleMetadata
+import com.example.theone.domain.ProjectManager
+import java.util.UUID
+// Mock implementations for demonstration - replace with actual instances
+import com.example.theone.features.sampleeditor.MockAudioEngineControl
+import com.example.theone.features.sampleeditor.MockProjectManager
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var audioEngine: AudioEngine
@@ -215,13 +230,52 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            TheOneTheme {
+            // --- Temporary integration for SampleEditScreen ---
+            var showSampleEditor by remember { mutableStateOf(false) }
+            var sampleToEdit by remember { mutableStateOf<SampleMetadata?>(null) }
+
+            // Mock instances - replace with actual singletons or DI
+            val mockAudioEngine = remember { MockAudioEngineControl() } // C1
+            val mockProjectManager = remember { MockProjectManager() } // C3
+
+            if (showSampleEditor && sampleToEdit != null) {
+                val factory = SampleEditViewModelFactory(mockAudioEngine, mockProjectManager, sampleToEdit!!)
+                val sampleEditViewModel: SampleEditViewModel = viewModel(factory = factory)
+                SampleEditScreen(viewModel = sampleEditViewModel)
+            } else {
+
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        // Original content of Surface should be here or wrapped in this else
+                        // For example, if original was Greeting("Android", ...), it will be below.
+                        // The following is ADDED:
+                        Text("Main Activity Content (Original content below this button if any)")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = {
+                            // Create a mock sample to edit
+                            sampleToEdit = SampleMetadata(
+                                id = UUID.randomUUID().toString(),
+                                name = "Test Sample",
+                                filePathUri = "/path/to/dummy.wav",
+                                durationMs = 2000L,
+                                sampleRate = 44100,
+                                channels = 1,
+                                trimStartMs = 0L,
+                                trimEndMs = 2000L
+                            )
+                            showSampleEditor = true
+                        }) {
+                            Text("Edit Mock Sample")
+                        }
+                        // --- End of temporary integration ---
+                        // Original content from setContent should follow here:
+TheOneTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Greeting("Android", modifier = Modifier.padding(16.dp))
                 }
+            }
             }
         }
     }
