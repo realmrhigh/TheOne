@@ -1,12 +1,10 @@
 package com.example.theone.features.drumtrack.model
 
+import com.example.theone.model.PlaybackMode // Added import for shared model
+
 // --- Enums and Basic Types ---
 
-enum class PlaybackMode {
-    ONE_SHOT,       // Plays the sample once from start to end
-    NOTE_ON_OFF,    // Plays while held, stops on release (more for pitched instruments)
-    // Other modes like LOOP could be added later
-}
+// PlaybackMode is now defined in com.example.theone.model.SharedModels
 
 // --- Sample Related Data ---
 // Placeholder - This should ideally come from a shared 'core.model' module.

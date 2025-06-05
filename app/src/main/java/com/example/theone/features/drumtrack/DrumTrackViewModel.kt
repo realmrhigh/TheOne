@@ -7,13 +7,16 @@ import com.example.theone.features.drumtrack.model.PadSettings
 // Ensure SampleMetadata is the one from drumtrack.model if it's different from the common one.
 // However, ProjectManager will likely return ::model::SampleMetadata. For now, keep as is.
 import com.example.theone.features.drumtrack.model.SampleMetadata
+// import com.example.theone.features.drumtrack.model.PlaybackMode // Removed
 import com.example.theone.features.drumtrack.model.createDefaultDrumTrack
 // Use the main interfaces
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 // Specific types for playPadSample parameters
-import com.example.theone.features.sampler.PlaybackMode as SamplerPlaybackMode
-import com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings as SamplerEnvelopeSettings
+// import com.example.theone.features.sampler.PlaybackMode as SamplerPlaybackMode // Removed
+// import com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings as SamplerEnvelopeSettings // Removed
+import com.example.theone.model.PlaybackMode // Added
+import com.example.theone.model.EnvelopeSettings // Added
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,13 +74,15 @@ class DrumTrackViewModel(
             // Ideally, there would be one shared PlaybackMode enum.
             // The variable samplerPlaybackMode is declared twice. Remove one.
             val mappedSamplerPlaybackMode = when (padSetting.playbackMode) {
-                com.example.theone.features.drumtrack.model.PlaybackMode.ONE_SHOT -> SamplerPlaybackMode.ONE_SHOT
-                com.example.theone.features.drumtrack.model.PlaybackMode.NOTE_ON_OFF -> SamplerPlaybackMode.NOTE_ON_OFF
-                // Add other cases if/when more modes are added to both enums
+                // padSetting.playbackMode should now be com.example.theone.model.PlaybackMode due to changes in DrumTrackModels.kt
+                PlaybackMode.ONE_SHOT -> PlaybackMode.ONE_SHOT
+                PlaybackMode.NOTE_ON_OFF -> PlaybackMode.NOTE_ON_OFF
+                // Add an 'else' branch to make it exhaustive
+                else -> PlaybackMode.ONE_SHOT // Ensure this default is appropriate
             }
 
             // Using SamplerViewModel.EnvelopeSettings as expected by the AudioEngineControl interface for playPadSample
-            val defaultAmpEnv = SamplerEnvelopeSettings(
+            val defaultAmpEnv = EnvelopeSettings( // Use the new shared EnvelopeSettings
                 attackMs = 5f,
                 decayMs = 0f, // For one-shot, decay might be irrelevant if sample plays fully
                 sustainLevel = 1f,
@@ -93,12 +98,12 @@ class DrumTrackViewModel(
                 sampleId = padSetting.sampleId!!,
                 sliceId = null, // No slices in M1.2
                 velocity = 1.0f, // Default velocity for M1.2
-                playbackMode = mappedSamplerPlaybackMode, // Use the mapped variable
+                playbackMode = mappedSamplerPlaybackMode, // Use the mapped variable (now com.example.theone.model.PlaybackMode)
                 coarseTune = padSetting.tuningCoarse, // from drumtrack.model.PadSettings
                 fineTune = padSetting.tuningFine,   // from drumtrack.model.PadSettings
                 pan = padSetting.pan,               // from drumtrack.model.PadSettings
                 volume = padSetting.volume,           // from drumtrack.model.PadSettings
-                ampEnv = defaultAmpEnv, // This is SamplerEnvelopeSettings
+                ampEnv = defaultAmpEnv, // This is now the shared EnvelopeSettings
                 filterEnv = null, // No filter envelope in M1.2
                 pitchEnv = null,  // No pitch envelope in M1.2
                 lfos = emptyList() // No LFOs in M1.2

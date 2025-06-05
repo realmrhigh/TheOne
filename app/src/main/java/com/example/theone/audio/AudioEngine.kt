@@ -134,6 +134,29 @@ class AudioEngine : AudioEngineControl {
         return native_playPadSample(sampleId, noteInstanceId, volume, pan)
     }
 
+    override suspend fun playPadSample(
+      noteInstanceId: String,
+      trackId: String,
+      padId: String,
+      sampleId: String,
+      sliceId: String?,
+      velocity: Float,
+      playbackMode: com.example.theone.model.PlaybackMode,
+      coarseTune: Int,
+      fineTune: Int,
+      pan: Float,
+      volume: Float,
+      ampEnv: com.example.theone.model.EnvelopeSettings,
+      filterEnv: com.example.theone.model.EnvelopeSettings?,
+      pitchEnv: com.example.theone.model.EnvelopeSettings?,
+      lfos: List<Any>
+  ): Boolean {
+      // This is a placeholder to make the code compile.
+      // The actual call to a native function will be implemented later.
+      Log.d("AudioEngine", "playPadSample called for sample: $sampleId on pad: $padId")
+      return true
+  }
+
     override suspend fun setMetronomeState(
         isEnabled: Boolean,
         bpm: Float,

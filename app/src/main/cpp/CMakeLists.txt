@@ -36,6 +36,6 @@ target_link_libraries( # Specifies the target library.
 
         # Links to Oboe. This should now work because
         # FetchContent_MakeAvailable makes Oboe's targets available.
-        PRIVATE oboe ) #
+        PUBLIC oboe ) #
 
 
