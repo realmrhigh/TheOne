@@ -26,9 +26,6 @@ class AudioEngine : AudioEngineControl {
     private external fun native_unloadSample(sampleId: String): Unit
 
     // JNI declaration for sample playback
-
-    // JNI declaration for sliced/looped sample playback
-    private external fun native_playSampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, startFrame: Long, endFrame: Long, loopStartFrame: Long, loopEndFrame: Long, isLooping: Boolean): Boolean
     private external fun native_playPadSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean
 
     // JNI declarations for metronome
@@ -135,52 +132,6 @@ class AudioEngine : AudioEngineControl {
         }
         Log.d("AudioEngine", "playSample called: sampleID='$sampleId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
         return native_playPadSample(sampleId, noteInstanceId, volume, pan)
-    }
-
-    suspend fun playSampleSlice(
-        sampleId: String,
-        noteInstanceId: String,
-        volume: Float,
-        pan: Float,
-        sampleRate: Int,
-        trimStartMs: Long,
-        trimEndMs: Long,
-        loopStartMs: Long?,
-        loopEndMs: Long?,
-        isLooping: Boolean
-    ): Boolean {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot play sample slice.")
-            return false
-        }
-        if (sampleRate <= 0) {
-            Log.e("AudioEngine", "Invalid sampleRate: $sampleRate. Cannot calculate frames.")
-            return false
-        }
-
-        val msToFrames = { ms: Long -> (ms * sampleRate) / 1000L }
-
-        val startFrame = msToFrames(trimStartMs)
-        val endFrame = msToFrames(trimEndMs)
-
-        var nativeLoopStartFrame: Long = -1L // -1 indicates no loop point
-        var nativeLoopEndFrame: Long = -1L   // -1 indicates no loop point
-        val nativeIsLooping = isLooping && loopStartMs != null && loopEndMs != null && loopStartMs < loopEndMs
-
-        if (nativeIsLooping && loopStartMs != null && loopEndMs != null) { // Redundant null check due to nativeIsLooping but good for clarity
-            nativeLoopStartFrame = msToFrames(loopStartMs)
-            nativeLoopEndFrame = msToFrames(loopEndMs)
-            // Ensure loop points are within the playback segment and logical
-            if (nativeLoopStartFrame < startFrame || nativeLoopEndFrame > endFrame || nativeLoopStartFrame >= nativeLoopEndFrame) {
-                Log.w("AudioEngine", "Invalid loop points ($nativeLoopStartFrame, $nativeLoopEndFrame) for slice ($startFrame, $endFrame). Disabling loop for this playback.")
-                // Effectively disable looping if points are bad for this specific call, though isLooping flag might still be true
-                // The native side should also validate this rigorously.
-                 return native_playPadSample(sampleId, noteInstanceId, volume, pan) // Fallback to full play or play without loop
-            }
-        }
-
-        Log.d("AudioEngine", "playSampleSlice called: sampleID=$sampleId, instanceID=$noteInstanceId, vol=$volume, pan=$pan, frames: $startFrame-$endFrame, loopFrames: $nativeLoopStartFrame-$nativeLoopEndFrame, isLooping=$nativeIsLooping")
-        return native_playSampleSlice(sampleId, noteInstanceId, volume, pan, startFrame, endFrame, nativeLoopStartFrame, nativeLoopEndFrame, nativeIsLooping)
     }
 
     override suspend fun setMetronomeState(

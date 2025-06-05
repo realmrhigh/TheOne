@@ -3,43 +3,47 @@
 
 #include <string>
 #include <vector>
-#include <atomic>   // Still needed for MetronomeState
-#include <cstdint>
-#include <cmath>
+#include <atomic>   // For std::atomic<bool>
+#include <cstdint>  // For uint64_t etc.
 
+// Ensure cmath is included for M_PI, cosf, sinf
 #ifndef M_PI
 #define M_PI (3.14159265358979323846f)
 #endif
+#include <cmath>
+
 
 namespace theone {
 namespace audio {
 
 struct SampleFormat {
-    uint16_t channels;
-    uint32_t sampleRate;
-    uint16_t bitDepth;
+    uint16_t channels;       // Number of channels (e.g., 1 for mono, 2 for stereo)
+    uint32_t sampleRate;     // Sample rate (e.g., 44100, 48000 Hz)
+    uint16_t bitDepth;       // Bits per sample (e.g., 16 for int16_t, 32 for float)
+                             // Note: Internally, we might convert to float for processing
 };
 
 struct LoadedSample {
-    std::string id;
+    std::string id;          // Unique sample ID
     SampleFormat format;
-    std::vector<float> audioData;
-    size_t frameCount;
+    std::vector<float> audioData; // Store audio data as floats, normalized to -1.0 to 1.0
+    size_t frameCount;       // Number of frames (samples per channel)
 
     LoadedSample() : frameCount(0) {}
 
+    // Helper to get total samples (frames * channels)
     size_t getTotalSamples() const {
         return frameCount * format.channels;
     }
 };
 
 struct PlayingSound {
-    const LoadedSample* loadedSamplePtr;
-    size_t currentFrame;
-    float gainLeft;
-    float gainRight;
-    bool isActive;  // MODIFIED: Changed from std::atomic<bool>
-    std::string noteInstanceId;
+    const LoadedSample* loadedSamplePtr; // Pointer to the sample data in gSampleMap
+    size_t currentFrame;                 // Current frame to read from the sample
+    float gainLeft;                      // Gain for the left channel (0.0 to 1.0)
+    float gainRight;                     // Gain for the right channel (0.0 to 1.0)
+    std::atomic<bool> isActive;          // Is this sound currently active and playing?
+    std::string noteInstanceId;          // Unique ID for this playing instance
 
     PlayingSound() : loadedSamplePtr(nullptr), currentFrame(0), gainLeft(1.0f), gainRight(1.0f), isActive(false) {}
 
@@ -48,24 +52,27 @@ struct PlayingSound {
           currentFrame(0),
           isActive(true),
           noteInstanceId(std::move(id)) {
-        float panRad = (pan * 0.5f + 0.5f) * (static_cast<float>(M_PI) / 2.0f);
+        float panRad = (pan * 0.5f + 0.5f) * (M_PI / 2.0f);
         gainLeft = volume * cosf(panRad);
         gainRight = volume * sinf(panRad);
     }
 };
 
+// New struct for Metronome State
 struct MetronomeState {
     std::atomic<bool> enabled;
     std::atomic<float> bpm;
     std::atomic<int> timeSignatureNum;
     std::atomic<int> timeSignatureDen;
     std::atomic<float> volume;
-    const LoadedSample* primaryBeatSample;
-    const LoadedSample* secondaryBeatSample;
+
+    const LoadedSample* primaryBeatSample;   // Pointer to pre-loaded sample
+    const LoadedSample* secondaryBeatSample; // Pointer to pre-loaded sample
+
     uint64_t framesPerBeat;
-    uint64_t samplesUntilNextBeat;
-    int currentBeatInBar;
-    uint32_t audioStreamSampleRate;
+    uint64_t samplesUntilNextBeat; // Frames remaining until the next beat event
+    int currentBeatInBar;       // Which beat are we on in the current bar (e.g., 1 to 4 for 4/4)
+    uint32_t audioStreamSampleRate; // Cache the stream's sample rate for calculations
 
     MetronomeState() :
         enabled(false), bpm(120.0f), timeSignatureNum(4), timeSignatureDen(4),

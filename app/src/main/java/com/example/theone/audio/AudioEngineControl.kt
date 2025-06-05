@@ -6,7 +6,7 @@ package com.example.theone.audio
 // data class EnvelopeSettings(...)
 // data class LFOSettings(...)
 // enum class PlaybackMode { ONE_SHOT, NOTE_ON_OFF }
-
+import android.content.Context
 
 interface AudioEngineControl {
     // Initialization & Config
@@ -27,20 +27,6 @@ interface AudioEngineControl {
     // New simplified playback method
     suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean
 
-    // Method for playing a slice of a sample, with optional looping
-    suspend fun playSampleSlice(
-        sampleId: String,
-        noteInstanceId: String,
-        volume: Float,
-        pan: Float,
-        sampleRate: Int,      // Needed for ms to frame conversion if not done by caller
-        trimStartMs: Long,
-        trimEndMs: Long,
-        loopStartMs: Long?,
-        loopEndMs: Long?,
-        isLooping: Boolean
-    ): Boolean
-
     // Metronome control methods
     suspend fun setMetronomeState(
         isEnabled: Boolean,
@@ -49,9 +35,9 @@ interface AudioEngineControl {
         timeSignatureDen: Int,
         primarySoundSampleId: String,
         secondarySoundSampleId: String? // Nullable if no secondary sound
-    ): Unit // JNI function is void
+    )
 
-    suspend fun setMetronomeVolume(volume: Float): Unit // JNI function is void
+    suspend fun setMetronomeVolume(volume: Float)
 
     // Recording methods
     suspend fun startAudioRecording(
