@@ -6,14 +6,14 @@ import com.example.theone.features.drumtrack.model.DrumTrack
 import com.example.theone.features.drumtrack.model.PadSettings
 // Ensure SampleMetadata is the one from drumtrack.model if it's different from the common one.
 // However, ProjectManager will likely return ::model::SampleMetadata. For now, keep as is.
-import com.example.theone.features.drumtrack.model.SampleMetadata
+import com.example.theone.model.SampleMetadata
 import com.example.theone.features.drumtrack.model.createDefaultDrumTrack
 // Use the main interfaces
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 // Specific types for playPadSample parameters
-import com.example.theone.features.sampler.PlaybackMode as SamplerPlaybackMode
-import com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings as SamplerEnvelopeSettings
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.EnvelopeSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,13 +71,13 @@ class DrumTrackViewModel(
             // Ideally, there would be one shared PlaybackMode enum.
             // The variable samplerPlaybackMode is declared twice. Remove one.
             val mappedSamplerPlaybackMode = when (padSetting.playbackMode) {
-                com.example.theone.features.drumtrack.model.PlaybackMode.ONE_SHOT -> SamplerPlaybackMode.ONE_SHOT
-                com.example.theone.features.drumtrack.model.PlaybackMode.NOTE_ON_OFF -> SamplerPlaybackMode.NOTE_ON_OFF
+                com.example.theone.features.drumtrack.model.PlaybackMode.ONE_SHOT -> PlaybackMode.ONE_SHOT
+                com.example.theone.features.drumtrack.model.PlaybackMode.NOTE_ON_OFF -> PlaybackMode.NOTE_ON_OFF
                 // Add other cases if/when more modes are added to both enums
             }
 
             // Using SamplerViewModel.EnvelopeSettings as expected by the AudioEngineControl interface for playPadSample
-            val defaultAmpEnv = SamplerEnvelopeSettings(
+            val defaultAmpEnv = EnvelopeSettings(
                 attackMs = 5f,
                 decayMs = 0f, // For one-shot, decay might be irrelevant if sample plays fully
                 sustainLevel = 1f,

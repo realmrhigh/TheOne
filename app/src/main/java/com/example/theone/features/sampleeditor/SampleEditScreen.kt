@@ -31,11 +31,11 @@ class MockAudioEngineControl : com.example.theone.audio.AudioEngineControl {
     override suspend fun playPadSample(
         noteInstanceId: String, trackId: String, padId: String, sampleId: String,
         sliceId: String?, velocity: Float,
-        playbackMode: com.example.theone.features.sampler.PlaybackMode, // Matches interface
+        playbackMode: com.example.theone.model.PlaybackMode, // Matches interface
         coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        ampEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings, // Matches interface
-        filterEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings?, // Matches interface
-        pitchEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings?, // Matches interface
+        ampEnv: com.example.theone.model.EnvelopeSettings, // Matches interface
+        filterEnv: com.example.theone.model.EnvelopeSettings?, // Matches interface
+        pitchEnv: com.example.theone.model.EnvelopeSettings?, // Matches interface
         lfos: List<Any> // Matches interface
     ): Boolean = true
 

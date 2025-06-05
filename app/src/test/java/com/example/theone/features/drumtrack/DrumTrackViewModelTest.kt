@@ -1,10 +1,10 @@
 package com.example.theone.features.drumtrack
 
 import com.example.theone.features.drumtrack.model.PadSettings
-import com.example.theone.features.drumtrack.model.SampleMetadata
-import com.example.theone.features.sampler.AudioEngineControl // Using the one from sampler package
-import com.example.theone.features.sampler.ProjectManager     // Using the one from sampler package
-import com.example.theone.features.sampler.SamplerViewModel // For SamplerViewModel.EnvelopeSettings
+import com.example.theone.model.SampleMetadata
+import com.example.theone.audio.AudioEngineControl // Using the one from sampler package
+import com.example.theone.domain.ProjectManager     // Using the one from sampler package
+import com.example.theone.model.EnvelopeSettings // For SamplerViewModel.EnvelopeSettings
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -123,12 +123,12 @@ class DrumTrackViewModelTest {
                 sampleId = testSample1.id,
                 sliceId = null,
                 velocity = 1.0f,
-                playbackMode = com.example.theone.features.sampler.PlaybackMode.ONE_SHOT, // Expected mapped value
+                playbackMode = com.example.theone.model.PlaybackMode.ONE_SHOT, // Expected mapped value
                 coarseTune = assignedPadSettings.tuningCoarse,
                 fineTune = assignedPadSettings.tuningFine,
                 pan = assignedPadSettings.pan,
                 volume = assignedPadSettings.volume,
-                ampEnv = any<SamplerViewModel.EnvelopeSettings>(), // Check type, specific values if necessary
+                ampEnv = any<EnvelopeSettings>(), // Check type, specific values if necessary
                 filterEnv = null,
                 pitchEnv = null,
                 lfos = emptyList()

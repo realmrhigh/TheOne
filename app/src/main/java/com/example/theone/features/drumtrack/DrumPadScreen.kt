@@ -26,8 +26,8 @@ import com.example.theone.features.drumtrack.model.SampleMetadata
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 // SamplerPlaybackMode and SamplerEnvelopeSettings are specific types expected by the playPadSample method in AudioEngineControl
-import com.example.theone.features.sampler.PlaybackMode as SamplerPlaybackMode
-import com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings as SamplerEnvelopeSettings
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.EnvelopeSettings
 import com.example.theone.model.SampleMetadata // Common model for stopAudioRecording
 import android.content.Context // For startAudioRecording in PreviewAudioEngineControl
 // data class LFOSettingsPreviewStub(val id: String = "dummyLfo") // Not using this for List<Any>
@@ -225,11 +225,11 @@ private class PreviewAudioEngineControl(private val context: Context) : AudioEng
     override suspend fun playPadSample(
         noteInstanceId: String, trackId: String, padId: String, sampleId: String,
         sliceId: String?, velocity: Float,
-        playbackMode: SamplerPlaybackMode, // This is com.example.theone.features.sampler.PlaybackMode
+        playbackMode: PlaybackMode, // This is com.example.theone.features.sampler.PlaybackMode
         coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        ampEnv: SamplerEnvelopeSettings, // This is com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
-        filterEnv: SamplerEnvelopeSettings?,
-        pitchEnv: SamplerEnvelopeSettings?,
+        ampEnv: EnvelopeSettings, // This is com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
+        filterEnv: EnvelopeSettings?,
+        pitchEnv: EnvelopeSettings?,
         lfos: List<Any> // Interface expects List<Any>
     ): Boolean {
         println("Preview: Play $sampleId on $padId ($playbackMode), amp attack: ${ampEnv.attackMs}")

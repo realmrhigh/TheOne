@@ -299,11 +299,11 @@ fun DefaultSamplerScreenPreview() {
         override suspend fun playPadSample(
             noteInstanceId: String, trackId: String, padId: String, sampleId: String,
             sliceId: String?, velocity: Float,
-            playbackMode: PlaybackMode, // This is com.example.theone.features.sampler.PlaybackMode
+            playbackMode: com.example.theone.model.PlaybackMode, // This is com.example.theone.features.sampler.PlaybackMode
             coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-            ampEnv: SamplerViewModel.EnvelopeSettings, // This is com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
-            filterEnv: SamplerViewModel.EnvelopeSettings?,
-            pitchEnv: SamplerViewModel.EnvelopeSettings?,
+            ampEnv: com.example.theone.model.EnvelopeSettings, // This is com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
+            filterEnv: com.example.theone.model.EnvelopeSettings?,
+            pitchEnv: com.example.theone.model.EnvelopeSettings?,
             lfos: List<Any>
         ): Boolean {
             println("Preview: Play $sampleId on $padId ($playbackMode), amp attack: ${ampEnv.attackMs}")

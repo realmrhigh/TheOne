@@ -7,8 +7,8 @@ package com.example.theone.audio
 // data class LFOSettings(...)
 // enum class PlaybackMode { ONE_SHOT, NOTE_ON_OFF }
 import android.content.Context
-import com.example.theone.features.sampler.PlaybackMode
-import com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.EnvelopeSettings
 // Potentially add import for a specific LFO settings type if defined later
 
 interface AudioEngineControl {

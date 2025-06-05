@@ -1,29 +1,12 @@
 package com.example.theone.features.drumtrack.model
 
-// --- Enums and Basic Types ---
+import com.example.theone.model.PlaybackMode
 
-enum class PlaybackMode {
-    ONE_SHOT,       // Plays the sample once from start to end
-    NOTE_ON_OFF,    // Plays while held, stops on release (more for pitched instruments)
-    // Other modes like LOOP could be added later
-}
+// --- Enums and Basic Types ---
 
 // --- Sample Related Data ---
 // Placeholder - This should ideally come from a shared 'core.model' module.
 // Copied from SamplerViewModel.kt for now.
-data class SampleMetadata(
-    val id: String, // Unique ID for the sample
-    val name: String, // User-defined name
-    val filePathUri: String, // URI to the actual audio file
-    val durationMs: Long = 0,
-    val sampleRate: Int = 44100,
-    val channels: Int = 1,
-    val detectedBpm: Float? = null,
-    val detectedKey: String? = null,
-    var userBpm: Float? = null,
-    var userKey: String? = null,
-    var rootNote: Int = 60 // MIDI C3, default root note
-)
 
 // --- Pad and Track Specific Data ---
 
