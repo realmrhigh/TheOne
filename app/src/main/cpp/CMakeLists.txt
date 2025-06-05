@@ -28,8 +28,9 @@ find_library( # Defines the name of the NDK library that
         log ) #
 
 target_link_libraries( # Specifies the target library.
-        theone
         PUBLIC
+        theone
+
 
         # Links the target library to the log library
         # included in the NDK.
