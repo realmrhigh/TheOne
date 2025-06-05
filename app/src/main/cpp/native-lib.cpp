@@ -28,7 +28,7 @@ public:
     oboe::DataCallbackResult onAudioReady(
         oboe::AudioStream *oboeStream,
         void *audioData,
-        int32_t numFrames) {
+        int32_t numFrames) override {
 
         float *outputBuffer = static_cast<float*>(audioData);
         memset(outputBuffer, 0, sizeof(float) * numFrames * oboeStream->getChannelCount());

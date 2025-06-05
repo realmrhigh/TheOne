@@ -172,7 +172,7 @@ class SampleEditViewModel(
                 noteInstanceId = noteInstanceId,
                 volume = 1.0f, // Full volume for audition
                 pan = 0.0f,    // Centered pan for audition
-                sampleRate = sampleToPlay.sampleRate,
+                // sampleRate = sampleToPlay.sampleRate, // Removed: playSampleSlice in AudioEngineControl does not take sampleRate
                 trimStartMs = sampleToPlay.trimStartMs,
                 trimEndMs = sampleToPlay.trimEndMs,
                 loopStartMs = sampleToPlay.loopStartMs,

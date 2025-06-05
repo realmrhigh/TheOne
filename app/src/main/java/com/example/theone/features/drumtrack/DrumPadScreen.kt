@@ -22,16 +22,15 @@ import com.example.theone.features.drumtrack.model.SampleMetadata
 // Assuming DrumTrackViewModel and related models are in this package or accessible
 
 // These are needed for the Preview stubs.
-// Ideally, these would come from a common module if they were fully defined.
-// For now, using the sampler package versions as placeholders.
-import com.example.theone.features.sampler.AudioEngineControl
-import com.example.theone.features.sampler.ProjectManager
+// Use the main interfaces from 'audio' and 'domain' packages
+import com.example.theone.audio.AudioEngineControl
+import com.example.theone.domain.ProjectManager
+// SamplerPlaybackMode and SamplerEnvelopeSettings are specific types expected by the playPadSample method in AudioEngineControl
 import com.example.theone.features.sampler.PlaybackMode as SamplerPlaybackMode
-import com.example.theone.features.sampler.SamplerViewModel // For SamplerViewModel.SampleMetadata & .LFOSettings in preview stubs
-
-// Local placeholder for LFOSettings if not defined, for PreviewAudioEngineControl
-// This should ideally come from a shared module or be properly defined in SamplerViewModel if that's its origin
-data class LFOSettingsPreviewStub(val id: String = "dummyLfo")
+import com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings as SamplerEnvelopeSettings
+import com.example.theone.model.SampleMetadata // Common model for stopAudioRecording
+import android.content.Context // For startAudioRecording in PreviewAudioEngineControl
+// data class LFOSettingsPreviewStub(val id: String = "dummyLfo") // Not using this for List<Any>
 
 
 @Composable
@@ -201,47 +200,63 @@ fun AssignSampleDialog(
 
 
 // --- Preview ---
-// Dummy AudioEngineControl for preview
-private class PreviewAudioEngineControl : AudioEngineControl {
-    override suspend fun startAudioRecording(filePathUri: String, inputDeviceId: String?) = true
-    // Changed to use SamplerViewModel.SampleMetadata as per its definition in SamplerViewModel
-    override suspend fun stopAudioRecording(): SamplerViewModel.SampleMetadata? = null
-    override fun getRecordingLevelPeak() = 0f
-    override fun isRecordingActive() = false
-    // Changed playSample to match a potential signature used by SamplerViewModel (if any was defined)
-    // For DrumPadScreen preview, this specific signature might not be critical unless called directly.
-    override suspend fun playSample(sampleId: String, /* other params for playback */): Boolean {
-        println("Preview: Play Sample $sampleId")
-        return true
-    }
+// Dummy AudioEngineControl for preview implementing the main ::audio::AudioEngineControl
+private class PreviewAudioEngineControl(private val context: Context) : AudioEngineControl {
+    override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean { println("Preview: init"); return true }
+    override suspend fun shutdown() { println("Preview: shutdown") }
+    override fun isInitialized(): Boolean = true
+    override fun getReportedLatencyMillis(): Float = 10f
 
-    // Implement the complex playPadSample with default behavior for preview
-    // Using SamplerViewModel.EnvelopeSettings and SamplerPlaybackMode
+    override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean { println("Preview: load $sampleId"); return true }
+    // This overload is not in AudioEngineControl, but often useful for implementations.
+    // For a strict preview of the interface, this would be removed or not have override.
+    // However, if AudioEngine (concrete) has it, and VM uses it via cast, it can be here without override.
+    /*override*/ suspend fun loadSampleToMemory(context: Context, sampleId: String, filePathUri: String): Boolean { println("Preview: load $sampleId with context"); return true }
+    override suspend fun unloadSample(sampleId: String) { println("Preview: unload $sampleId") }
+    override fun isSampleLoaded(sampleId: String): Boolean = true
+
+    override suspend fun startAudioRecording(context: Context, filePathUri: String, sampleRate: Int, channels: Int, inputDeviceId: String?): Boolean { println("Preview: start rec $filePathUri"); return true }
+    override suspend fun stopAudioRecording(): com.example.theone.model.SampleMetadata? { println("Preview: stop rec"); return null } // Use the common model type
+    override fun isRecordingActive(): Boolean = false
+    override fun getRecordingLevelPeak(): Float = 0.0f
+
+    override suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean { println("Preview: play $sampleId"); return true }
+
     override suspend fun playPadSample(
         noteInstanceId: String, trackId: String, padId: String, sampleId: String,
-        sliceId: String?, velocity: Float, playbackMode: SamplerPlaybackMode,
+        sliceId: String?, velocity: Float,
+        playbackMode: SamplerPlaybackMode, // This is com.example.theone.features.sampler.PlaybackMode
         coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        ampEnv: com.example.theone.features.drumtrack.EnvelopeSettings, // Corrected to use the local one from DrumTrackVM
-        filterEnv: com.example.theone.features.drumtrack.EnvelopeSettings?,
-        pitchEnv: com.example.theone.features.drumtrack.EnvelopeSettings?,
-        lfos: List<LFOSettingsPreviewStub> // Using local LFOSettingsPreviewStub
+        ampEnv: SamplerEnvelopeSettings, // This is com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
+        filterEnv: SamplerEnvelopeSettings?,
+        pitchEnv: SamplerEnvelopeSettings?,
+        lfos: List<Any> // Interface expects List<Any>
     ): Boolean {
-        println("Preview: Play $sampleId on $padId using $playbackMode")
+        println("Preview: Play $sampleId on $padId ($playbackMode), amp attack: ${ampEnv.attackMs}")
         return true
     }
+
+    override suspend fun playSampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, trimStartMs: Long, trimEndMs: Long, loopStartMs: Long?, loopEndMs: Long?, isLooping: Boolean): Boolean { println("Preview: play slice $sampleId"); return true}
+
+    override suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, primarySoundSampleId: String, secondarySoundSampleId: String?) { println("Preview: metronome state $isEnabled") }
+    override suspend fun setMetronomeVolume(volume: Float) { println("Preview: metronome vol $volume") }
 }
 
-// Dummy ProjectManager for preview
+// Dummy ProjectManager for preview implementing the main ::domain::ProjectManager
 private class PreviewProjectManager : ProjectManager {
-    // Changed to use SamplerViewModel.SampleMetadata as per its definition in SamplerViewModel for consistency with AudioEngineControl stub
-    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SamplerViewModel.SampleMetadata? = null
+    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): com.example.theone.model.SampleMetadata? { println("Preview: add sample $name"); return null } // Use common model
+    override suspend fun updateSampleMetadata(sample: com.example.theone.model.SampleMetadata): Boolean { println("Preview: update $sample.id"); return true }
+    override suspend fun getSampleById(sampleId: String): com.example.theone.model.SampleMetadata? { println("Preview: get $sampleId"); return null }
+    // Add getAllSamplesInPool if DrumTrackViewModel uses it, for now it simulates its own list
+    // suspend fun getAllSamplesInPool(): List<com.example.theone.model.SampleMetadata> = emptyList()
 }
 
 
 @Preview(showBackground = true, widthDp = 380, heightDp = 700)
 @Composable
 fun DefaultDrumPadScreenPreview() {
-    val previewAudioEngine = PreviewAudioEngineControl()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val previewAudioEngine = PreviewAudioEngineControl(context)
     val previewProjectManager = PreviewProjectManager()
     val drumTrackViewModel = DrumTrackViewModel(previewAudioEngine, previewProjectManager)
 

@@ -7,6 +7,9 @@ package com.example.theone.audio
 // data class LFOSettings(...)
 // enum class PlaybackMode { ONE_SHOT, NOTE_ON_OFF }
 import android.content.Context
+import com.example.theone.features.sampler.PlaybackMode
+import com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
+// Potentially add import for a specific LFO settings type if defined later
 
 interface AudioEngineControl {
     // Initialization & Config
@@ -66,4 +69,34 @@ interface AudioEngineControl {
 
     // Transport Control - Placeholder
     // suspend fun setTransportBpm(bpm: Float)
+
+    suspend fun playPadSample(
+        noteInstanceId: String,
+        trackId: String,
+        padId: String,
+        sampleId: String,
+        sliceId: String?,
+        velocity: Float,
+        playbackMode: PlaybackMode,
+        coarseTune: Int,
+        fineTune: Int,
+        pan: Float,
+        volume: Float,
+        ampEnv: EnvelopeSettings,
+        filterEnv: EnvelopeSettings?,
+        pitchEnv: EnvelopeSettings?,
+        lfos: List<Any> // TODO: Replace Any with a more specific LFO settings type if defined
+    ): Boolean
+
+    suspend fun playSampleSlice(
+        sampleId: String,
+        noteInstanceId: String,
+        volume: Float,
+        pan: Float,
+        trimStartMs: Long,
+        trimEndMs: Long,
+        loopStartMs: Long?,
+        loopEndMs: Long?,
+        isLooping: Boolean
+    ): Boolean
 }

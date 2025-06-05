@@ -271,18 +271,65 @@ fun AssignToPadDialog(
 @Preview(showBackground = true)
 @Composable
 fun DefaultSamplerScreenPreview() {
-    // Create a dummy SamplerViewModel for preview
-    // This requires AudioEngineControl and ProjectManager stubs for the preview
-    val dummyAudioEngine = object : AudioEngineControl {
-        override suspend fun startAudioRecording(filePathUri: String, inputDeviceId: String?) = true
-        override suspend fun stopAudioRecording(): SamplerViewModel.SampleMetadata? = SamplerViewModel.SampleMetadata("prev_id", "PreviewSample", "file://preview")
-        override fun getRecordingLevelPeak()= 0.5f
-        override fun isRecordingActive() = false
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Dummy AudioEngineControl for preview implementing the main ::audio::AudioEngineControl
+    val dummyAudioEngine = object : com.example.theone.audio.AudioEngineControl {
+        override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean { println("Preview: init"); return true }
+        override suspend fun shutdown() { println("Preview: shutdown") }
+        override fun isInitialized(): Boolean = true
+        override fun getReportedLatencyMillis(): Float = 10f
+
+        override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean { println("Preview: load $sampleId"); return true }
+        // This overload is not in AudioEngineControl, but often useful for implementations.
+         suspend fun loadSampleToMemory(context: android.content.Context, sampleId: String, filePathUri: String): Boolean { println("Preview: load $sampleId with context"); return true }
+        override suspend fun unloadSample(sampleId: String) { println("Preview: unload $sampleId") }
+        override fun isSampleLoaded(sampleId: String): Boolean = true
+
+        override suspend fun startAudioRecording(context: android.content.Context, filePathUri: String, sampleRate: Int, channels: Int, inputDeviceId: String?): Boolean { println("Preview: start rec $filePathUri"); return true }
+        override suspend fun stopAudioRecording(): com.example.theone.model.SampleMetadata? {
+            println("Preview: stop rec")
+            // Return a valid SampleMetadata object from the ::model package
+            return com.example.theone.model.SampleMetadata("prev_id", "PreviewSample", "file://preview", 1000L, 44100, 1)
+        }
+        override fun isRecordingActive(): Boolean = false
+        override fun getRecordingLevelPeak(): Float = 0.5f // Return a value for preview
+
+        override suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean { println("Preview: play $sampleId"); return true }
+
+        override suspend fun playPadSample(
+            noteInstanceId: String, trackId: String, padId: String, sampleId: String,
+            sliceId: String?, velocity: Float,
+            playbackMode: PlaybackMode, // This is com.example.theone.features.sampler.PlaybackMode
+            coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
+            ampEnv: SamplerViewModel.EnvelopeSettings, // This is com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
+            filterEnv: SamplerViewModel.EnvelopeSettings?,
+            pitchEnv: SamplerViewModel.EnvelopeSettings?,
+            lfos: List<Any>
+        ): Boolean {
+            println("Preview: Play $sampleId on $padId ($playbackMode), amp attack: ${ampEnv.attackMs}")
+            return true
+        }
+
+        override suspend fun playSampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, trimStartMs: Long, trimEndMs: Long, loopStartMs: Long?, loopEndMs: Long?, isLooping: Boolean): Boolean { println("Preview: play slice $sampleId"); return true}
+
+        override suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, primarySoundSampleId: String, secondarySoundSampleId: String?) { println("Preview: metronome state $isEnabled") }
+        override suspend fun setMetronomeVolume(volume: Float) { println("Preview: metronome vol $volume") }
     }
-    val dummyProjectManager = object : ProjectManager {
-        override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean) = SamplerViewModel.SampleMetadata("new_id", name, sourceFileUri)
+
+    // Dummy ProjectManager for preview implementing the main ::domain::ProjectManager
+    val dummyProjectManager = object : com.example.theone.domain.ProjectManager {
+        override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): com.example.theone.model.SampleMetadata? {
+            println("Preview: add sample $name")
+            // Return a valid SampleMetadata object from the ::model package
+            return com.example.theone.model.SampleMetadata("new_id", name, sourceFileUri, 1000L, 44100, 1)
+        }
+        override suspend fun updateSampleMetadata(sample: com.example.theone.model.SampleMetadata): Boolean { println("Preview: update $sample.id"); return true }
+        override suspend fun getSampleById(sampleId: String): com.example.theone.model.SampleMetadata? { println("Preview: get $sampleId"); return null }
     }
-    val dummyViewModel = SamplerViewModel(dummyAudioEngine, dummyProjectManager)
+
+    // SamplerViewModel constructor now takes Application context.
+    val application = context.applicationContext as android.app.Application
+    val dummyViewModel = SamplerViewModel(application, dummyAudioEngine, dummyProjectManager)
 
     MaterialTheme { // Ensure a MaterialTheme is applied for previews
         SamplerScreen(samplerViewModel = dummyViewModel)

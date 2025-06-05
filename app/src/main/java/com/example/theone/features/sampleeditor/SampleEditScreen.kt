@@ -20,15 +20,36 @@ import java.util.UUID
 // Mock AudioEngineControl for preview
 class MockAudioEngineControl : com.example.theone.audio.AudioEngineControl {
     override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean = true
-    override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean = true
-    override suspend fun loadSampleToMemory(context: android.content.Context, sampleId: String, filePathUri: String): Boolean = true
+    override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean = true // This is on interface
+    // This overload is not in AudioEngineControl interface, so remove override
+    suspend fun loadSampleToMemory(context: android.content.Context, sampleId: String, filePathUri: String): Boolean = true
     override suspend fun unloadSample(sampleId: String) {}
     override fun isSampleLoaded(sampleId: String): Boolean = true
     override suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean = true
+
+    // Add missing interface methods
+    override suspend fun playPadSample(
+        noteInstanceId: String, trackId: String, padId: String, sampleId: String,
+        sliceId: String?, velocity: Float,
+        playbackMode: com.example.theone.features.sampler.PlaybackMode, // Matches interface
+        coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
+        ampEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings, // Matches interface
+        filterEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings?, // Matches interface
+        pitchEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings?, // Matches interface
+        lfos: List<Any> // Matches interface
+    ): Boolean = true
+
+    override suspend fun playSampleSlice(
+        sampleId: String, noteInstanceId: String, volume: Float, pan: Float,
+        trimStartMs: Long, trimEndMs: Long,
+        loopStartMs: Long?, loopEndMs: Long?,
+        isLooping: Boolean
+    ): Boolean = true
+
     override suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, primarySoundSampleId: String, secondarySoundSampleId: String?) {}
     override suspend fun setMetronomeVolume(volume: Float) {}
     override suspend fun startAudioRecording(context: android.content.Context, filePathUri: String, sampleRate: Int, channels: Int, inputDeviceId: String?): Boolean = true
-    override suspend fun stopAudioRecording(): com.example.theone.model.SampleMetadata? = null // Use the correct model
+    override suspend fun stopAudioRecording(): com.example.theone.model.SampleMetadata? = null // Use com.example.theone.model.SampleMetadata
     override fun isRecordingActive(): Boolean = false
     override fun getRecordingLevelPeak(): Float = 0.0f
     override suspend fun shutdown() {}

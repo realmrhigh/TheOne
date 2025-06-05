@@ -1,10 +1,13 @@
 package com.example.theone.features.sampler
 
+import android.app.Application // Added for Application context
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 import com.example.theone.model.SampleMetadata
 import android.util.Log // For logging pad assignment
 import androidx.lifecycle.ViewModel
+// Need java.io.File for cache directory usage
+import java.io.File
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +28,7 @@ enum class RecordingState {
 }
 
 class SamplerViewModel(
+    private val application: Application, // Added Application field
     private val audioEngine: AudioEngineControl,
     private val projectManager: ProjectManager
 ) : ViewModel() {
@@ -106,10 +110,18 @@ class SamplerViewModel(
 
     private fun initiateRecording() {
         viewModelScope.launch {
-            // TODO: Use a proper file naming/management strategy from C3 or app's cache directory
-            val tempRecordingFileName = "sampler_temp_${System.currentTimeMillis()}.wav"
-            Log.d("SamplerVM", "Attempting to start recording to: $tempRecordingFileName")
-            val success = audioEngine.startAudioRecording(tempRecordingFileName, null) // null for default input device
+            val cacheDir = application.cacheDir
+            val tempRecordingFile = File(cacheDir, "sampler_temp_${System.currentTimeMillis()}.wav")
+            val tempRecordingFileUri = "file://${tempRecordingFile.absolutePath}"
+
+            Log.d("SamplerVM", "Attempting to start recording to: $tempRecordingFileUri")
+            val success = audioEngine.startAudioRecording(
+                context = application.applicationContext,
+                filePathUri = tempRecordingFileUri,
+                sampleRate = 48000, // Example: Default sample rate
+                channels = 1,       // Example: Mono recording
+                inputDeviceId = null
+            )
             if (success) {
                 _recordingState.value = RecordingState.RECORDING
                 _userMessage.value = "Recording..."
