@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 // import android.os.ParcelFileDescriptor // Not directly used, but ContentResolver.openFileDescriptor returns it
 import android.util.Log
+import com.example.theone.model.SampleMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException

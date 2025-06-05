@@ -9,6 +9,8 @@ package com.example.theone.audio
 import android.content.Context
 import com.example.theone.model.PlaybackMode
 import com.example.theone.model.EnvelopeSettings
+import com.example.theone.model.SampleMetadata
+
 // Potentially add import for a specific LFO settings type if defined later
 
 interface AudioEngineControl {
