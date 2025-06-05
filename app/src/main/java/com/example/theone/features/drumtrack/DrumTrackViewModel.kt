@@ -5,7 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.theone.features.drumtrack.model.DrumTrack
 // Ensure SampleMetadata is the one from drumtrack.model if it's different from the common one.
 // However, ProjectManager will likely return ::model::SampleMetadata. For now, keep as is.
-import com.example.theone.features.drumtrack.model.SampleMetadata
+// import com.example.theone.features.drumtrack.model.SampleMetadata // Removed
+import com.example.theone.model.SampleMetadata // Added
 // import com.example.theone.features.drumtrack.model.PlaybackMode // Removed
 import com.example.theone.features.drumtrack.model.createDefaultDrumTrack
 // Use the main interfaces
@@ -162,8 +163,8 @@ class DrumTrackViewModel(
 
     // --- Example: Load available samples (simulated) ---
     // In a real app, this would come from ProjectManager (C3)
-    private val _availableSamples = MutableStateFlow<List<SampleMetadata>>(emptyList())
-    val availableSamples: StateFlow<List<SampleMetadata>> = _availableSamples.asStateFlow()
+    private val _availableSamples = MutableStateFlow<List<com.example.theone.model.SampleMetadata>>(emptyList())
+    val availableSamples: StateFlow<List<com.example.theone.model.SampleMetadata>> = _availableSamples.asStateFlow()
 
     fun fetchAvailableSamples() {
         viewModelScope.launch {
@@ -171,10 +172,10 @@ class DrumTrackViewModel(
             // In a real scenario: val samples = projectManager.getAllSamplesInPool()
             // For now, using a hardcoded list for UI development.
             _availableSamples.value = listOf(
-                SampleMetadata(id = "sample1", name = "Kick Basic", filePathUri = "path/kick.wav"),
-                SampleMetadata(id = "sample2", name = "Snare Bright", filePathUri = "path/snare.wav"),
-                SampleMetadata(id = "sample3", name = "HiHat Closed", filePathUri = "path/hat.wav"),
-                SampleMetadata(id = "sample4", name = "Clap Classic", filePathUri = "path/clap.wav")
+                com.example.theone.model.SampleMetadata(id = "sample1", name = "Kick Basic", filePathUri = "path/kick.wav", durationMs = 100L, sampleRate = 48000, channels = 1, userProvidedPath = "path/kick.wav"),
+                com.example.theone.model.SampleMetadata(id = "sample2", name = "Snare Bright", filePathUri = "path/snare.wav", durationMs = 150L, sampleRate = 48000, channels = 1, userProvidedPath = "path/snare.wav"),
+                com.example.theone.model.SampleMetadata(id = "sample3", name = "HiHat Closed", filePathUri = "path/hat.wav", durationMs = 50L, sampleRate = 48000, channels = 1, userProvidedPath = "path/hat.wav"),
+                com.example.theone.model.SampleMetadata(id = "sample4", name = "Clap Classic", filePathUri = "path/clap.wav", durationMs = 200L, sampleRate = 48000, channels = 1, userProvidedPath = "path/clap.wav")
                 // Add more samples as recorded by M1.1 or loaded from disk by C3
             )
             if (_availableSamples.value.isEmpty()){

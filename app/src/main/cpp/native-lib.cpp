@@ -184,12 +184,38 @@ public:
                     break;
                 }
 
-                size_t currentReadFrame = sound.currentFrame;
-                if (currentReadFrame >= loadedSample->frameCount) {
-                    sound.isActive.store(false);
-                    break;
+                // === START NEW SLICING/LOOPING LOGIC ===
+                if (sound.useSlicing) {
+                    if (sound.currentFrame >= sound.endFrame) {
+                        if (sound.isLooping && sound.loopStartFrame < sound.loopEndFrame && sound.loopEndFrame <= sound.endFrame && sound.loopStartFrame < sound.endFrame) { // Ensure loop points are valid and within trim
+                            sound.currentFrame = sound.loopStartFrame;
+                        } else {
+                            sound.isActive.store(false);
+                            // No more break here, let the outer check handle it or it completes the current buffer chunk if already past endFrame
+                        }
+                    }
+                } else { // Original logic for non-sliced sounds
+                    if (sound.currentFrame >= loadedSample->frameCount) {
+                        sound.isActive.store(false);
+                        // No more break here
+                    }
                 }
 
+                if (!sound.isActive.load()) { // Check again after potential deactivation
+                     break; // Break from processing frames for *this sound* for *this buffer chunk*
+                }
+                // At this point, sound.currentFrame should be valid for reading if sound is active
+
+                // Ensure currentFrame is still valid after potential looping/deactivation,
+                // especially if endFrame itself was beyond loadedSample->frameCount (constructor should prevent this for endFrame, but loopEndFrame is less strict initially)
+                if (sound.currentFrame >= loadedSample->frameCount) {
+                     sound.isActive.store(false);
+                     break; // Safety break: currentFrame is out of actual sample bounds
+                }
+                // === END NEW SLICING/LOOPING LOGIC ===
+
+
+                // Existing sample reading logic:
                 float leftSampleValue = 0.0f;
                 float rightSampleValue = 0.0f;
 
@@ -621,17 +647,13 @@ Java_com_example_theone_audio_AudioEngine_native_1playSampleSlice(
         jstring jNoteInstanceId,
         jfloat volume,
         jfloat pan,
-        jint sampleRate, // actual sample rate of the audio data
-        jlong trimStartMs,
-        jlong trimEndMs,
-        jlong loopStartMs, // Nullable, check if non-zero or special value
-        jlong loopEndMs,   // Nullable
-        jboolean isLooping
+        jint jSampleRate, // Sample rate passed from Kotlin (potentially for calculation if metadata not available)
+        jlong jTrimStartMs,
+        jlong jTrimEndMs,
+        jlong jLoopStartMs,
+        jlong jLoopEndMs,
+        jboolean jIsLooping
 ) {
-    // This is a placeholder. True slice and loop playback is complex.
-    // For now, it will play the whole sample like native_playPadSample.
-    // TODO: Implement actual slice and loop logic.
-
     const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
     SampleId sampleIdStr(nativeSampleId);
     env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
@@ -640,14 +662,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playSampleSlice(
     std::string noteInstanceIdStr(nativeNoteInstanceId);
     env->ReleaseStringUTFChars(jNoteInstanceId, nativeNoteInstanceId);
 
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
-                        "native_playSampleSlice (STUB - plays whole sample) called: sampleID='%s', instanceID='%s', vol=%.2f, pan=%.2f",
-                        sampleIdStr.c_str(), noteInstanceIdStr.c_str(), volume, pan);
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
-                        "Slice params: SR=%d, Trim: %lld-%lldms, Loop: %lld-%lldms, Looping: %d",
-                        sampleRate, (long long)trimStartMs, (long long)trimEndMs, (long long)loopStartMs, (long long)loopEndMs, isLooping);
-
-
+    // 1. Retrieve LoadedSample and Actual Sample Rate
     auto mapIt = gSampleMap.find(sampleIdStr);
     if (mapIt == gSampleMap.end()) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playSampleSlice: Sample ID '%s' not found.", sampleIdStr.c_str());
@@ -656,15 +671,106 @@ Java_com_example_theone_audio_AudioEngine_native_1playSampleSlice(
     const theone::audio::LoadedSample* loadedSample = &(mapIt->second);
 
     if (loadedSample->audioData.empty() || loadedSample->frameCount == 0) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playSampleSlice: Sample ID '%s' has no audio data.", sampleIdStr.c_str());
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playSampleSlice: Sample ID '%s' has no audio data or zero frames.", sampleIdStr.c_str());
+        return JNI_FALSE;
+    }
+    uint32_t actualSampleRate = loadedSample->format.sampleRate;
+    if (actualSampleRate == 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playSampleSlice: Sample ID '%s' has an actual sample rate of 0. Cannot proceed.", sampleIdStr.c_str());
         return JNI_FALSE;
     }
 
+    if (static_cast<uint32_t>(jSampleRate) != actualSampleRate) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME,
+                            "playSampleSlice: Kotlin sampleRate (%d) differs from actual sampleRate (%u) for ID '%s'. Using actual rate for calculations.",
+                            jSampleRate, actualSampleRate, sampleIdStr.c_str());
+    }
+
+    // 2. Convert Milliseconds to Frames
+    size_t startFrame = (jTrimStartMs * actualSampleRate) / 1000;
+    size_t endFrame = (jTrimEndMs * actualSampleRate) / 1000; // If jTrimEndMs is 0, endFrame becomes 0. Constructor handles this.
+    size_t loopStartFrame = 0;
+    size_t loopEndFrame = 0;
+
+    if (jIsLooping == JNI_TRUE) {
+        loopStartFrame = (jLoopStartMs * actualSampleRate) / 1000;
+        loopEndFrame = (jLoopEndMs * actualSampleRate) / 1000; // If jLoopEndMs is 0, loopEndFrame becomes 0. Constructor handles this.
+    }
+
+    // 5. Logging (Initial values)
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+                        "playSampleSlice: ID='%s', SR_kotlin=%d, SR_actual=%u, Vol=%.2f, Pan=%.2f, TrimMs:[%lld-%lld], LoopMs:[%lld-%lld], Loop:%d",
+                        sampleIdStr.c_str(), jSampleRate, actualSampleRate, volume, pan,
+                        (long long)jTrimStartMs, (long long)jTrimEndMs,
+                        (long long)jLoopStartMs, (long long)jLoopEndMs, jIsLooping == JNI_TRUE);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+                        "Calculated initial frames: Start=%zu, End=%zu, LoopStart=%zu, LoopEnd=%zu (before constructor adjustment for 0 end/loopEnd)",
+                        startFrame, endFrame, loopStartFrame, loopEndFrame);
+
+
+    // 3. Validate Frame Indices
+    // Note: PlayingSound constructor also does some validation, especially for endFrame=0
+    if (startFrame >= loadedSample->frameCount) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME,
+                            "playSampleSlice: Calculated startFrame (%zu) is out of bounds for sample '%s' (frameCount: %zu).",
+                            startFrame, sampleIdStr.c_str(), loadedSample->frameCount);
+        return JNI_FALSE;
+    }
+
+    // If endFrame was calculated from a non-zero jTrimEndMs, and it's beyond frameCount.
+    // If endFrame is 0 (from jTrimEndMs = 0), constructor will set it to frameCount.
+    if (endFrame != 0 && endFrame > loadedSample->frameCount) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME,
+                            "playSampleSlice: Calculated endFrame (%zu) exceeds sample frameCount (%zu) for '%s'. Clamping to frameCount.",
+                            endFrame, loadedSample->frameCount, sampleIdStr.c_str());
+        endFrame = loadedSample->frameCount;
+    }
+     if (startFrame >= endFrame && endFrame != 0) { // endFrame == 0 means play to end, handled by constructor
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME,
+                            "playSampleSlice: startFrame (%zu) must be less than endFrame (%zu) for '%s'.",
+                            startFrame, endFrame, sampleIdStr.c_str());
+        return JNI_FALSE;
+    }
+
+
+    if (jIsLooping == JNI_TRUE) {
+        if (loopStartFrame >= (loopEndFrame == 0 ? loadedSample->frameCount : loopEndFrame) ) {
+             __android_log_print(ANDROID_LOG_ERROR, APP_NAME,
+                                "playSampleSlice: loopStartFrame (%zu) must be less than loopEndFrame (%zu, effective: %zu) for '%s'.",
+                                loopStartFrame, loopEndFrame, (loopEndFrame == 0 ? loadedSample->frameCount : loopEndFrame), sampleIdStr.c_str());
+            return JNI_FALSE;
+        }
+        // Loop points should be within the main trim region (or sample bounds if endFrame is 0)
+        size_t effectiveEndFrame = (endFrame == 0) ? loadedSample->frameCount : endFrame;
+        if (loopStartFrame < startFrame || loopEndFrame > effectiveEndFrame) {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME,
+                                "playSampleSlice: Loop region [%zu-%zu] is outside effective play region [%zu-%zu] for '%s'. Adjusting or error might occur.",
+                                loopStartFrame, loopEndFrame, startFrame, effectiveEndFrame, sampleIdStr.c_str());
+            // Depending on desired behavior, either clamp loop points or return false.
+            // For now, we'll let the PlayingSound constructor handle potential inconsistencies,
+            // but it's good to log.
+        }
+         if (loopEndFrame != 0 && loopEndFrame > loadedSample->frameCount) {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME,
+                                "playSampleSlice: Calculated loopEndFrame (%zu) exceeds sample frameCount (%zu) for '%s'. Clamping in constructor.",
+                                loopEndFrame, loadedSample->frameCount, sampleIdStr.c_str());
+            // Constructor will clamp this.
+        }
+    }
+
+    // 4. Instantiate PlayingSound
     std::lock_guard<std::mutex> lock(gActiveSoundsMutex);
-    gActiveSounds.emplace_back(loadedSample, noteInstanceIdStr, volume, pan);
-    // For true slice playback, you'd need to pass start/end frames (converted from ms)
-    // to the PlayingSound constructor or modify its playback logic.
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sample '%s' (slice STUB) added. Active sounds: %zu", sampleIdStr.c_str(), gActiveSounds.size());
+    gActiveSounds.emplace_back(loadedSample, noteInstanceIdStr, volume, pan,
+                               startFrame, endFrame,
+                               loopStartFrame, loopEndFrame,
+                               jIsLooping == JNI_TRUE);
+
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+                        "Sample '%s' (slice) added. Active sounds: %zu. Effective playback frames after constructor: current=%zu, start=%zu, end=%zu, loopStart=%zu, loopEnd=%zu, looping=%d, useSlicing=%d",
+                        sampleIdStr.c_str(), gActiveSounds.size(),
+                        gActiveSounds.back().currentFrame, gActiveSounds.back().startFrame, gActiveSounds.back().endFrame,
+                        gActiveSounds.back().loopStartFrame, gActiveSounds.back().loopEndFrame,
+                        gActiveSounds.back().isLooping, gActiveSounds.back().useSlicing);
 
     return JNI_TRUE;
 }
@@ -811,6 +917,29 @@ Java_com_example_theone_audio_AudioEngine_native_1getRecordingLevelPeak(
         JNIEnv *env,
         jobject /* thiz */) {
     return mPeakRecordingLevel.exchange(0.0f);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1getSampleRate(
+        JNIEnv *env,
+        jobject /* thiz */,
+        jstring jSampleId) {
+    const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
+    SampleId sampleIdStr(nativeSampleId);
+    env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
+
+    auto it = gSampleMap.find(sampleIdStr);
+    if (it != gSampleMap.end()) {
+        const theone::audio::LoadedSample* loadedSample = &(it->second);
+        if (loadedSample && loadedSample->format.sampleRate > 0) {
+            return static_cast<jint>(loadedSample->format.sampleRate);
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_getSampleRate: Sample '%s' found but has invalid sample rate: %u", sampleIdStr.c_str(), loadedSample ? loadedSample->format.sampleRate : 0);
+            return 0; // Indicate error or invalid rate
+        }
+    }
+    __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_getSampleRate: Sample ID '%s' not found.", sampleIdStr.c_str());
+    return 0; // Indicate error (sample not found)
 }
 
 // ... Any other JNI functions needed ...

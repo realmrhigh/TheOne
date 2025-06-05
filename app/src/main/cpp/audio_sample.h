@@ -38,44 +38,107 @@ struct LoadedSample {
 };
 
 struct PlayingSound {
-    const LoadedSample* loadedSamplePtr; // Pointer to the sample data in gSampleMap
-    size_t currentFrame;                 // Current frame to read from the sample
-    float gainLeft;                      // Gain for the left channel (0.0 to 1.0)
-    float gainRight;                     // Gain for the right channel (0.0 to 1.0)
-    std::atomic<bool> isActive;          // Is this sound currently active and playing?
-    std::string noteInstanceId;          // Unique ID for this playing instance
+    const LoadedSample* loadedSamplePtr;
+    size_t currentFrame;
+    float gainLeft;
+    float gainRight;
+    std::atomic<bool> isActive;
+    std::string noteInstanceId;
 
-    PlayingSound() : loadedSamplePtr(nullptr), currentFrame(0), gainLeft(1.0f), gainRight(1.0f), isActive(false) {}
+    // New members for slicing and looping
+    size_t startFrame;
+    size_t endFrame; // Relative to the start of the sample data. 0 means effective end of sample.
+    size_t loopStartFrame; // Relative to the start of the sample data.
+    size_t loopEndFrame;   // Relative to the start of the sample data. 0 means effective end of sample.
+    bool isLooping;
+    bool useSlicing;
 
+    // Default constructor
+    PlayingSound() : loadedSamplePtr(nullptr), currentFrame(0),
+                     gainLeft(1.0f), gainRight(1.0f), isActive(false),
+                     startFrame(0), endFrame(0),
+                     loopStartFrame(0), loopEndFrame(0),
+                     isLooping(false), useSlicing(false) {}
+
+    // Constructor for simple playback (no slicing)
     PlayingSound(const LoadedSample* sample, std::string id, float volume, float pan)
         : loadedSamplePtr(sample),
-          currentFrame(0),
+          currentFrame(0), // For non-sliced, always start at 0
           isActive(true),
-          noteInstanceId(std::move(id)) {
+          noteInstanceId(std::move(id)),
+          startFrame(0),
+          endFrame(sample ? sample->frameCount : 0), // Default to full sample length
+          loopStartFrame(0),
+          loopEndFrame(0), // Default to full sample length if looping were added here
+          isLooping(false),
+          useSlicing(false) { // Explicitly false for this constructor
         float panRad = (pan * 0.5f + 0.5f) * (M_PI / 2.0f);
         gainLeft = volume * cosf(panRad);
         gainRight = volume * sinf(panRad);
     }
-    // Explicit Copy Constructor
-    PlayingSound(const PlayingSound& other)
-            : loadedSamplePtr(other.loadedSamplePtr),
-              currentFrame(other.currentFrame),
-              gainLeft(other.gainLeft),
-              gainRight(other.gainRight),
-              isActive(other.isActive.load()), // Load the value from the atomic bool
-              noteInstanceId(other.noteInstanceId) {}
 
-    // Copy Assignment Operator
+    // Constructor for slicing and looping playback
+    PlayingSound(const LoadedSample* sample, std::string id, float volume, float pan,
+                 size_t sf, size_t ef, size_t lsf, size_t lef, bool looping)
+        : loadedSamplePtr(sample),
+          currentFrame(sf), // Start playback at startFrame
+          isActive(true),
+          noteInstanceId(std::move(id)),
+          startFrame(sf),
+          endFrame(ef == 0 && sample ? sample->frameCount : ef), // If 0, use sample's frameCount
+          loopStartFrame(lsf),
+          loopEndFrame(lef == 0 && sample ? sample->frameCount : lef), // If 0, use sample's frameCount
+          isLooping(looping),
+          useSlicing(true) { // Explicitly true for this constructor
+        float panRad = (pan * 0.5f + 0.5f) * (M_PI / 2.0f);
+        gainLeft = volume * cosf(panRad);
+        gainRight = volume * sinf(panRad);
+
+        // Basic validation: ensure endFrame is not beyond actual sample data
+        if (loadedSamplePtr && this->endFrame > loadedSamplePtr->frameCount) {
+            this->endFrame = loadedSamplePtr->frameCount;
+        }
+        if (loadedSamplePtr && this->loopEndFrame > loadedSamplePtr->frameCount) {
+            this->loopEndFrame = loadedSamplePtr->frameCount;
+        }
+        // Ensure currentFrame is not beyond the (potentially adjusted) endFrame
+        if (this->currentFrame >= this->endFrame) {
+             this->currentFrame = this->startFrame; // Or handle as error/inactive
+        }
+    }
+
+    // Copy Constructor (ensure all members are copied)
+    PlayingSound(const PlayingSound& other)
+        : loadedSamplePtr(other.loadedSamplePtr),
+          currentFrame(other.currentFrame),
+          gainLeft(other.gainLeft),
+          gainRight(other.gainRight),
+          isActive(other.isActive.load()),
+          noteInstanceId(other.noteInstanceId),
+          startFrame(other.startFrame),
+          endFrame(other.endFrame),
+          loopStartFrame(other.loopStartFrame),
+          loopEndFrame(other.loopEndFrame),
+          isLooping(other.isLooping),
+          useSlicing(other.useSlicing) {}
+
+    // Copy Assignment Operator (ensure all members are assigned)
     PlayingSound& operator=(const PlayingSound& other) {
-        if (this == &other) { // Handle self-assignment
+        if (this == &other) {
             return *this;
         }
         loadedSamplePtr = other.loadedSamplePtr;
         currentFrame = other.currentFrame;
         gainLeft = other.gainLeft;
         gainRight = other.gainRight;
-        isActive.store(other.isActive.load()); // Store for atomic bool
+        isActive.store(other.isActive.load());
         noteInstanceId = other.noteInstanceId;
+        startFrame = other.startFrame;
+        endFrame = other.endFrame;
+        loopStartFrame = other.loopStartFrame;
+        loopEndFrame = other.loopEndFrame;
+        isLooping = other.isLooping;
+        useSlicing = other.useSlicing;
         return *this;
     }
 };
