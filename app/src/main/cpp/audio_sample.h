@@ -64,6 +64,20 @@ struct PlayingSound {
               gainRight(other.gainRight),
               isActive(other.isActive.load()), // Load the value from the atomic bool
               noteInstanceId(other.noteInstanceId) {}
+
+    // Copy Assignment Operator
+    PlayingSound& operator=(const PlayingSound& other) {
+        if (this == &other) { // Handle self-assignment
+            return *this;
+        }
+        loadedSamplePtr = other.loadedSamplePtr;
+        currentFrame = other.currentFrame;
+        gainLeft = other.gainLeft;
+        gainRight = other.gainRight;
+        isActive.store(other.isActive.load()); // Store for atomic bool
+        noteInstanceId = other.noteInstanceId;
+        return *this;
+    }
 };
 
 // New struct for Metronome State

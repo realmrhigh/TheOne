@@ -22,6 +22,39 @@
 #define M_PI (3.14159265358979323846f)
 #endif
 
+// Helper function for dr_wav to write to a file descriptor
+static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite) {
+    int fd = (int)(intptr_t)pUserData;
+    ssize_t bytesWritten = write(fd, pData, bytesToWrite);
+    if (bytesWritten < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "drwav_write_proc_fd: Failed to write: %s", strerror(errno));
+        return 0;
+    }
+    return (size_t)bytesWritten;
+}
+
+// Helper function for dr_wav to seek in a file descriptor
+static drwav_bool32 drwav_seek_proc_fd(void* pUserData, int offset, drwav_seek_origin origin) {
+    int fd = (int)(intptr_t)pUserData;
+    int whence;
+    switch (origin) {
+        case drwav_seek_origin_start:
+            whence = SEEK_SET;
+            break;
+        case drwav_seek_origin_current:
+            whence = SEEK_CUR;
+            break;
+        default: // Should not happen with dr_wav's current usage, but cover it.
+             __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "drwav_seek_proc_fd: Unknown seek origin: %d", origin);
+            return DRWAV_FALSE;
+    }
+    if (lseek(fd, (off_t)offset, whence) == -1) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "drwav_seek_proc_fd: Failed to seek: %s", strerror(errno));
+        return DRWAV_FALSE;
+    }
+    return DRWAV_TRUE;
+}
+
 // Define a type for our sample map
 using SampleId = std::string;
 using SampleMap = std::map<SampleId, theone::audio::LoadedSample>;
@@ -272,17 +305,28 @@ Java_com_example_theone_audio_AudioEngine_native_1startAudioRecording(
     wavFormat.sampleRate = static_cast<uint32_t>(jSampleRate);
     wavFormat.bitsPerSample = 32;
 
-    // Use drwav_init_fd_write for writing to a file descriptor
-    // We pass the original jFd because dr_wav for writing doesn't typically close the fd it's given.
-    // Kotlin side which opened the FD via ContentResolver is responsible for closing it.
-    if (!drwav_init_fd_write(&mWavWriter, mRecordingFileDescriptor, &wavFormat, nullptr)) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to initialize drwav writer for FD: %d", mRecordingFileDescriptor);
-        // No need to close mRecordingFileDescriptor here, Kotlin will do it.
+    // Use drwav_init_write_sequential_pcm_frames with custom write and seek procedures
+    // We pass the original jFd (cast to void*) as pUserData to our callbacks.
+    // dr_wav will not close this FD; Kotlin side is responsible.
+    // We need to dup the fd because drwav_init_write_sequential_pcm_frames will call lseek, which will modify the file offset of the fd.
+    // If we don't dup the fd, then the original fd's offset will be modified, which could cause problems for other code that uses the original fd.
+    int recordingFdDup = dup(mRecordingFileDescriptor);
+    if (recordingFdDup < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to dup file descriptor: %s", strerror(errno));
+        mCurrentRecordingFilePath = "";
+        // No need to close mRecordingFileDescriptor here, Kotlin will do it if jFd was valid.
+        // If dup failed, mRecordingFileDescriptor is still the original one from Kotlin.
+        return JNI_FALSE;
+    }
+
+    if (!drwav_init_write(&mWavWriter, &wavFormat, drwav_write_proc_fd, drwav_seek_proc_fd, (void*)(intptr_t)recordingFdDup, nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to initialize drwav writer with procs for FD: %d (dup: %d)", mRecordingFileDescriptor, recordingFdDup);
+        close(recordingFdDup); // Close the duplicated FD as init failed
         mCurrentRecordingFilePath = "";
         return JNI_FALSE;
     }
     mWavWriterInitialized = true;
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "dr_wav writer initialized for FD: %d", mRecordingFileDescriptor);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "dr_wav writer initialized with procs for FD: %d (dup: %d)", mRecordingFileDescriptor, recordingFdDup);
 
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Input)
