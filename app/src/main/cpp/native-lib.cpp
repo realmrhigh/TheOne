@@ -55,6 +55,23 @@ static drwav_bool32 drwav_seek_proc_fd(void* pUserData, int offset, drwav_seek_o
     return DRWAV_TRUE;
 }
 
+// Add these two callback functions somewhere before your JNI function
+static size_t on_read_c(void* pUserData, void* pBufferOut, size_t bytesToRead) {
+    return read((int)(intptr_t)pUserData, pBufferOut, bytesToRead);
+}
+
+static drwav_bool32 on_seek_c(void* pUserData, int offset, drwav_seek_origin origin) {
+    int whence = (origin == drwav_seek_origin_current) ? SEEK_CUR : SEEK_SET;
+    // lseek returns -1 on error, so we check for that.
+    // The function should return DRWAV_TRUE on success and DRWAV_FALSE on failure.
+    if (lseek((int)(intptr_t)pUserData, offset, whence) != -1) {
+        return DRWAV_TRUE;
+    }
+    // Log an error if lseek fails
+    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "on_seek_c: Failed to lseek: %s", strerror(errno));
+    return DRWAV_FALSE;
+}
+
 // Define a type for our sample map
 using SampleId = std::string;
 using SampleMap = std::map<SampleId, theone::audio::LoadedSample>;
@@ -489,8 +506,8 @@ Java_com_example_theone_audio_AudioEngine_native_1loadSampleToMemory(
     }
     // Now fd is positioned at the correct offset.
 
-    if (!drwav_init_fd(&wav, fd, nullptr)) { // nullptr for allocation callbacks
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to init drwav from file descriptor for sample %s", sampleIdStr.c_str());
+    if (!drwav_init(&wav, on_read_c, on_seek_c, (void*)(intptr_t)fd, nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to init drwav with callbacks for sample %s", sampleIdStr.c_str());
         return JNI_FALSE;
     }
 
