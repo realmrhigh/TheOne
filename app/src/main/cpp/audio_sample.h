@@ -56,6 +56,14 @@ struct PlayingSound {
         gainLeft = volume * cosf(panRad);
         gainRight = volume * sinf(panRad);
     }
+    // Explicit Copy Constructor
+    PlayingSound(const PlayingSound& other)
+            : loadedSamplePtr(other.loadedSamplePtr),
+              currentFrame(other.currentFrame),
+              gainLeft(other.gainLeft),
+              gainRight(other.gainRight),
+              isActive(other.isActive.load()), // Load the value from the atomic bool
+              noteInstanceId(other.noteInstanceId) {}
 };
 
 // New struct for Metronome State
