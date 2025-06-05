@@ -157,27 +157,35 @@ class SampleEditViewModel(
 
     fun auditionSelection() {
         viewModelScope.launch {
-            // TODO: Update AudioEngine to support playing slices (trimStartMs, trimEndMs)
-            // and looped playback (loopStartMs, loopEndMs, loopMode).
-            // For now, it will play the *entire original sample* based on its ID.
             val sampleToPlay = _currentSample.value
-            // Generate a unique ID for this playback instance, in case C1 needs it
-            val noteInstanceId = "audition_" + UUID.randomUUID().toString()
+            val noteInstanceId = "audition_slice_" + UUID.randomUUID().toString()
 
-            // Call C1.playPadSample()
-            // Parameters for playPadSample: sampleId, noteInstanceId, volume, pan
-            // We don't have slice parameters in the current C1.playPadSample interface.
-            val success = audioEngine.playSample(
+            if (sampleToPlay.sampleRate <= 0) {
+                _userMessage.value = "Cannot audition: Invalid sample rate (${sampleToPlay.sampleRate}) for sample '${sampleToPlay.name}'."
+                return@launch
+            }
+
+            _userMessage.value = "Auditioning selection for '${sampleToPlay.name}'..."
+
+            val success = audioEngine.playSampleSlice(
                 sampleId = sampleToPlay.id,
                 noteInstanceId = noteInstanceId,
                 volume = 1.0f, // Full volume for audition
-                pan = 0.0f     // Centered pan for audition
+                pan = 0.0f,    // Centered pan for audition
+                sampleRate = sampleToPlay.sampleRate,
+                trimStartMs = sampleToPlay.trimStartMs,
+                trimEndMs = sampleToPlay.trimEndMs,
+                loopStartMs = sampleToPlay.loopStartMs,
+                loopEndMs = sampleToPlay.loopEndMs,
+                isLooping = sampleToPlay.loopMode == LoopMode.FORWARD && sampleToPlay.loopStartMs != null && sampleToPlay.loopEndMs != null
             )
 
             if (success) {
-                _userMessage.value = "Auditioning FULL sample '${sampleToPlay.name}'. Slice/loop audition depends on AudioEngine update."
+                // The message in AudioEngine.kt already clarifies if fallback occurred.
+                // So, we can be more general here, or rely on logs from AudioEngine.
+                _userMessage.value = "Auditioning '${sampleToPlay.name}'. (Native slice/loop support pending if not working as expected)"
             } else {
-                _userMessage.value = "Failed to audition sample '${sampleToPlay.name}' (AudioEngine)."
+                _userMessage.value = "Failed to audition sample '${sampleToPlay.name}' using slice playback."
             }
         }
     }

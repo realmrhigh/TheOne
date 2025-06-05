@@ -27,6 +27,20 @@ interface AudioEngineControl {
     // New simplified playback method
     suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean
 
+    // Method for playing a slice of a sample, with optional looping
+    suspend fun playSampleSlice(
+        sampleId: String,
+        noteInstanceId: String,
+        volume: Float,
+        pan: Float,
+        sampleRate: Int,      // Needed for ms to frame conversion if not done by caller
+        trimStartMs: Long,
+        trimEndMs: Long,
+        loopStartMs: Long?,
+        loopEndMs: Long?,
+        isLooping: Boolean
+    ): Boolean
+
     // Metronome control methods
     suspend fun setMetronomeState(
         isEnabled: Boolean,
