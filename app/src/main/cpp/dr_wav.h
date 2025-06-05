@@ -160,26 +160,26 @@ typedef unsigned short          drwav_uint16;
 typedef   signed int            drwav_int32;
 typedef unsigned int            drwav_uint32;
 #if defined(_MSC_VER) && !defined(__clang__)
-typedef   signed __int64    drwav_int64;
+    typedef   signed __int64    drwav_int64;
     typedef unsigned __int64    drwav_uint64;
 #else
-#if defined(__clang__) || (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)))
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wlong-long"
-#if defined(__clang__)
-#pragma GCC diagnostic ignored "-Wc++11-long-long"
-#endif
-#endif
-typedef   signed long long  drwav_int64;
-typedef unsigned long long  drwav_uint64;
-#if defined(__clang__) || (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)))
-#pragma GCC diagnostic pop
-#endif
+    #if defined(__clang__) || (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)))
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wlong-long"
+        #if defined(__clang__)
+            #pragma GCC diagnostic ignored "-Wc++11-long-long"
+        #endif
+    #endif
+    typedef   signed long long  drwav_int64;
+    typedef unsigned long long  drwav_uint64;
+    #if defined(__clang__) || (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)))
+        #pragma GCC diagnostic pop
+    #endif
 #endif
 #if defined(__LP64__) || defined(_WIN64) || (defined(__x86_64__) && !defined(__ILP32__)) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC) || defined(__powerpc64__)
-typedef drwav_uint64        drwav_uintptr;
+    typedef drwav_uint64        drwav_uintptr;
 #else
-typedef drwav_uint32        drwav_uintptr;
+    typedef drwav_uint32        drwav_uintptr;
 #endif
 typedef drwav_uint8             drwav_bool8;
 typedef drwav_uint32            drwav_bool32;
@@ -189,8 +189,8 @@ typedef drwav_uint32            drwav_bool32;
 
 /* Decorations */
 #if !defined(DRWAV_API)
-#if defined(DRWAV_DLL)
-#if defined(_WIN32)
+    #if defined(DRWAV_DLL)
+        #if defined(_WIN32)
             #define DRWAV_DLL_IMPORT  __declspec(dllimport)
             #define DRWAV_DLL_EXPORT  __declspec(dllexport)
             #define DRWAV_DLL_PRIVATE static
@@ -212,10 +212,10 @@ typedef drwav_uint32            drwav_bool32;
             #define DRWAV_API  DRWAV_DLL_IMPORT
         #endif
         #define DRWAV_PRIVATE DRWAV_DLL_PRIVATE
-#else
-#define DRWAV_API extern
-#define DRWAV_PRIVATE static
-#endif
+    #else
+        #define DRWAV_API extern
+        #define DRWAV_PRIVATE static
+    #endif
 #endif
 /* End Decorations */
 
@@ -517,18 +517,18 @@ typedef enum
 
     /* Other type constants for convenience. */
     drwav_metadata_type_list_all_info_strings       = drwav_metadata_type_list_info_software
-                                                      | drwav_metadata_type_list_info_copyright
-                                                      | drwav_metadata_type_list_info_title
-                                                      | drwav_metadata_type_list_info_artist
-                                                      | drwav_metadata_type_list_info_comment
-                                                      | drwav_metadata_type_list_info_date
-                                                      | drwav_metadata_type_list_info_genre
-                                                      | drwav_metadata_type_list_info_album
-                                                      | drwav_metadata_type_list_info_tracknumber,
+                                                    | drwav_metadata_type_list_info_copyright
+                                                    | drwav_metadata_type_list_info_title
+                                                    | drwav_metadata_type_list_info_artist
+                                                    | drwav_metadata_type_list_info_comment
+                                                    | drwav_metadata_type_list_info_date
+                                                    | drwav_metadata_type_list_info_genre
+                                                    | drwav_metadata_type_list_info_album
+                                                    | drwav_metadata_type_list_info_tracknumber,
 
     drwav_metadata_type_list_all_adtl               = drwav_metadata_type_list_label
-                                                      | drwav_metadata_type_list_note
-                                                      | drwav_metadata_type_list_labelled_cue_region,
+                                                    | drwav_metadata_type_list_note
+                                                    | drwav_metadata_type_list_labelled_cue_region,
 
     drwav_metadata_type_all                         = -2,   /*0xFFFFFFFF & ~drwav_metadata_type_unknown,*/
     drwav_metadata_type_all_including_unknown       = -1    /*0xFFFFFFFF,*/
@@ -1385,38 +1385,38 @@ DRWAV_API drwav_bool32 drwav_fourcc_equal(const drwav_uint8* a, const char* b);
 
 /* Architecture Detection */
 #if defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC))
-#define DRWAV_X64
+    #define DRWAV_X64
 #elif defined(__i386) || defined(_M_IX86)
-#define DRWAV_X86
+    #define DRWAV_X86
 #elif defined(__arm__) || defined(_M_ARM)
-#define DRWAV_ARM
+    #define DRWAV_ARM
 #endif
 /* End Architecture Detection */
 
 /* Inline */
 #ifdef _MSC_VER
-#define DRWAV_INLINE __forceinline
+    #define DRWAV_INLINE __forceinline
 #elif defined(__GNUC__)
-/*
-I've had a bug report where GCC is emitting warnings about functions possibly not being inlineable. This warning happens when
-the __attribute__((always_inline)) attribute is defined without an "inline" statement. I think therefore there must be some
-case where "__inline__" is not always defined, thus the compiler emitting these warnings. When using -std=c89 or -ansi on the
-command line, we cannot use the "inline" keyword and instead need to use "__inline__". In an attempt to work around this issue
-I am using "__inline__" only when we're compiling in strict ANSI mode.
-*/
-#if defined(__STRICT_ANSI__)
-#define DRWAV_GNUC_INLINE_HINT __inline__
-#else
-#define DRWAV_GNUC_INLINE_HINT inline
-#endif
+    /*
+    I've had a bug report where GCC is emitting warnings about functions possibly not being inlineable. This warning happens when
+    the __attribute__((always_inline)) attribute is defined without an "inline" statement. I think therefore there must be some
+    case where "__inline__" is not always defined, thus the compiler emitting these warnings. When using -std=c89 or -ansi on the
+    command line, we cannot use the "inline" keyword and instead need to use "__inline__". In an attempt to work around this issue
+    I am using "__inline__" only when we're compiling in strict ANSI mode.
+    */
+    #if defined(__STRICT_ANSI__)
+        #define DRWAV_GNUC_INLINE_HINT __inline__
+    #else
+        #define DRWAV_GNUC_INLINE_HINT inline
+    #endif
 
-#if (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 2)) || defined(__clang__)
-#define DRWAV_INLINE DRWAV_GNUC_INLINE_HINT __attribute__((always_inline))
-#else
-#define DRWAV_INLINE DRWAV_GNUC_INLINE_HINT
-#endif
+    #if (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 2)) || defined(__clang__)
+        #define DRWAV_INLINE DRWAV_GNUC_INLINE_HINT __attribute__((always_inline))
+    #else
+        #define DRWAV_INLINE DRWAV_GNUC_INLINE_HINT
+    #endif
 #elif defined(__WATCOMC__)
-#define DRWAV_INLINE __inline
+    #define DRWAV_INLINE __inline
 #else
     #define DRWAV_INLINE
 #endif
@@ -1424,9 +1424,9 @@ I am using "__inline__" only when we're compiling in strict ANSI mode.
 
 /* SIZE_MAX */
 #if defined(SIZE_MAX)
-#define DRWAV_SIZE_MAX  SIZE_MAX
+    #define DRWAV_SIZE_MAX  SIZE_MAX
 #else
-#if defined(_WIN64) || defined(_LP64) || defined(__LP64__)
+    #if defined(_WIN64) || defined(_LP64) || defined(__LP64__)
         #define DRWAV_SIZE_MAX  ((drwav_uint64)0xFFFFFFFFFFFFFFFF)
     #else
         #define DRWAV_SIZE_MAX  0xFFFFFFFF
@@ -1439,23 +1439,23 @@ I am using "__inline__" only when we're compiling in strict ANSI mode.
 #define DRWAV_INT64_MAX ((drwav_int64)(((drwav_uint64)0x7FFFFFFF << 32) | 0xFFFFFFFF))
 
 #if defined(_MSC_VER) && _MSC_VER >= 1400
-#define DRWAV_HAS_BYTESWAP16_INTRINSIC
+    #define DRWAV_HAS_BYTESWAP16_INTRINSIC
     #define DRWAV_HAS_BYTESWAP32_INTRINSIC
     #define DRWAV_HAS_BYTESWAP64_INTRINSIC
 #elif defined(__clang__)
-#if defined(__has_builtin)
-#if __has_builtin(__builtin_bswap16)
-#define DRWAV_HAS_BYTESWAP16_INTRINSIC
-#endif
-#if __has_builtin(__builtin_bswap32)
-#define DRWAV_HAS_BYTESWAP32_INTRINSIC
-#endif
-#if __has_builtin(__builtin_bswap64)
-#define DRWAV_HAS_BYTESWAP64_INTRINSIC
-#endif
-#endif
+    #if defined(__has_builtin)
+        #if __has_builtin(__builtin_bswap16)
+            #define DRWAV_HAS_BYTESWAP16_INTRINSIC
+        #endif
+        #if __has_builtin(__builtin_bswap32)
+            #define DRWAV_HAS_BYTESWAP32_INTRINSIC
+        #endif
+        #if __has_builtin(__builtin_bswap64)
+            #define DRWAV_HAS_BYTESWAP64_INTRINSIC
+        #endif
+    #endif
 #elif defined(__GNUC__)
-#if ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))
+    #if ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))
         #define DRWAV_HAS_BYTESWAP32_INTRINSIC
         #define DRWAV_HAS_BYTESWAP64_INTRINSIC
     #endif
@@ -1901,8 +1901,8 @@ DRWAV_PRIVATE drwav_allocation_callbacks drwav_copy_allocation_callbacks_or_defa
 static DRWAV_INLINE drwav_bool32 drwav__is_compressed_format_tag(drwav_uint16 formatTag)
 {
     return
-            formatTag == DR_WAVE_FORMAT_ADPCM ||
-            formatTag == DR_WAVE_FORMAT_DVI_ADPCM;
+        formatTag == DR_WAVE_FORMAT_ADPCM ||
+        formatTag == DR_WAVE_FORMAT_DVI_ADPCM;
 }
 
 DRWAV_PRIVATE unsigned int drwav__chunk_padding_size_riff(drwav_uint64 chunkSize)
@@ -3570,7 +3570,7 @@ DRWAV_PRIVATE drwav_bool32 drwav_init__internal(drwav* pWav, drwav_chunk_proc on
                     we'll need to abort because we can't be doing a backwards seek back to the SSND chunk in order to read the
                     data. For this reason, this configuration of AIFF files are not supported with sequential mode.
                     */
-                    return DRWAV_FALSE;
+                    return DRWAV_FALSE; 
                 }
             } else {
                 chunkSize += header.paddingSize;                /* <-- Make sure we seek past the padding. */
@@ -3898,8 +3898,8 @@ DRWAV_PRIVATE size_t drwav__write_u64ne_to_le(drwav* pWav, drwav_uint64 value)
 DRWAV_PRIVATE size_t drwav__write_f32ne_to_le(drwav* pWav, float value)
 {
     union {
-        drwav_uint32 u32;
-        float f32;
+       drwav_uint32 u32;
+       float f32;
     } u;
 
     DRWAV_ASSERT(pWav          != NULL);
@@ -4634,399 +4634,399 @@ DRWAV_PRIVATE drwav_result drwav_result_from_errno(int e)
     switch (e)
     {
         case 0: return DRWAV_SUCCESS;
-#ifdef EPERM
+    #ifdef EPERM
         case EPERM: return DRWAV_INVALID_OPERATION;
-#endif
-#ifdef ENOENT
+    #endif
+    #ifdef ENOENT
         case ENOENT: return DRWAV_DOES_NOT_EXIST;
-#endif
-#ifdef ESRCH
+    #endif
+    #ifdef ESRCH
         case ESRCH: return DRWAV_DOES_NOT_EXIST;
-#endif
-#ifdef EINTR
+    #endif
+    #ifdef EINTR
         case EINTR: return DRWAV_INTERRUPT;
-#endif
-#ifdef EIO
+    #endif
+    #ifdef EIO
         case EIO: return DRWAV_IO_ERROR;
-#endif
-#ifdef ENXIO
+    #endif
+    #ifdef ENXIO
         case ENXIO: return DRWAV_DOES_NOT_EXIST;
-#endif
-#ifdef E2BIG
+    #endif
+    #ifdef E2BIG
         case E2BIG: return DRWAV_INVALID_ARGS;
-#endif
-#ifdef ENOEXEC
+    #endif
+    #ifdef ENOEXEC
         case ENOEXEC: return DRWAV_INVALID_FILE;
-#endif
-#ifdef EBADF
+    #endif
+    #ifdef EBADF
         case EBADF: return DRWAV_INVALID_FILE;
-#endif
-#ifdef ECHILD
+    #endif
+    #ifdef ECHILD
         case ECHILD: return DRWAV_ERROR;
-#endif
-#ifdef EAGAIN
+    #endif
+    #ifdef EAGAIN
         case EAGAIN: return DRWAV_UNAVAILABLE;
-#endif
-#ifdef ENOMEM
+    #endif
+    #ifdef ENOMEM
         case ENOMEM: return DRWAV_OUT_OF_MEMORY;
-#endif
-#ifdef EACCES
+    #endif
+    #ifdef EACCES
         case EACCES: return DRWAV_ACCESS_DENIED;
-#endif
-#ifdef EFAULT
+    #endif
+    #ifdef EFAULT
         case EFAULT: return DRWAV_BAD_ADDRESS;
-#endif
-#ifdef ENOTBLK
+    #endif
+    #ifdef ENOTBLK
         case ENOTBLK: return DRWAV_ERROR;
-#endif
-#ifdef EBUSY
+    #endif
+    #ifdef EBUSY
         case EBUSY: return DRWAV_BUSY;
-#endif
-#ifdef EEXIST
+    #endif
+    #ifdef EEXIST
         case EEXIST: return DRWAV_ALREADY_EXISTS;
-#endif
-#ifdef EXDEV
+    #endif
+    #ifdef EXDEV
         case EXDEV: return DRWAV_ERROR;
-#endif
-#ifdef ENODEV
+    #endif
+    #ifdef ENODEV
         case ENODEV: return DRWAV_DOES_NOT_EXIST;
-#endif
-#ifdef ENOTDIR
+    #endif
+    #ifdef ENOTDIR
         case ENOTDIR: return DRWAV_NOT_DIRECTORY;
-#endif
-#ifdef EISDIR
+    #endif
+    #ifdef EISDIR
         case EISDIR: return DRWAV_IS_DIRECTORY;
-#endif
-#ifdef EINVAL
+    #endif
+    #ifdef EINVAL
         case EINVAL: return DRWAV_INVALID_ARGS;
-#endif
-#ifdef ENFILE
+    #endif
+    #ifdef ENFILE
         case ENFILE: return DRWAV_TOO_MANY_OPEN_FILES;
-#endif
-#ifdef EMFILE
+    #endif
+    #ifdef EMFILE
         case EMFILE: return DRWAV_TOO_MANY_OPEN_FILES;
-#endif
-#ifdef ENOTTY
+    #endif
+    #ifdef ENOTTY
         case ENOTTY: return DRWAV_INVALID_OPERATION;
-#endif
-#ifdef ETXTBSY
+    #endif
+    #ifdef ETXTBSY
         case ETXTBSY: return DRWAV_BUSY;
-#endif
-#ifdef EFBIG
+    #endif
+    #ifdef EFBIG
         case EFBIG: return DRWAV_TOO_BIG;
-#endif
-#ifdef ENOSPC
+    #endif
+    #ifdef ENOSPC
         case ENOSPC: return DRWAV_NO_SPACE;
-#endif
-#ifdef ESPIPE
+    #endif
+    #ifdef ESPIPE
         case ESPIPE: return DRWAV_BAD_SEEK;
-#endif
-#ifdef EROFS
+    #endif
+    #ifdef EROFS
         case EROFS: return DRWAV_ACCESS_DENIED;
-#endif
-#ifdef EMLINK
+    #endif
+    #ifdef EMLINK
         case EMLINK: return DRWAV_TOO_MANY_LINKS;
-#endif
-#ifdef EPIPE
+    #endif
+    #ifdef EPIPE
         case EPIPE: return DRWAV_BAD_PIPE;
-#endif
-#ifdef EDOM
+    #endif
+    #ifdef EDOM
         case EDOM: return DRWAV_OUT_OF_RANGE;
-#endif
-#ifdef ERANGE
+    #endif
+    #ifdef ERANGE
         case ERANGE: return DRWAV_OUT_OF_RANGE;
-#endif
-#ifdef EDEADLK
+    #endif
+    #ifdef EDEADLK
         case EDEADLK: return DRWAV_DEADLOCK;
-#endif
-#ifdef ENAMETOOLONG
+    #endif
+    #ifdef ENAMETOOLONG
         case ENAMETOOLONG: return DRWAV_PATH_TOO_LONG;
-#endif
-#ifdef ENOLCK
+    #endif
+    #ifdef ENOLCK
         case ENOLCK: return DRWAV_ERROR;
-#endif
-#ifdef ENOSYS
+    #endif
+    #ifdef ENOSYS
         case ENOSYS: return DRWAV_NOT_IMPLEMENTED;
-#endif
-#if defined(ENOTEMPTY) && ENOTEMPTY != EEXIST   /* In AIX, ENOTEMPTY and EEXIST use the same value. */
+    #endif
+    #if defined(ENOTEMPTY) && ENOTEMPTY != EEXIST   /* In AIX, ENOTEMPTY and EEXIST use the same value. */
         case ENOTEMPTY: return DRWAV_DIRECTORY_NOT_EMPTY;
-#endif
-#ifdef ELOOP
+    #endif
+    #ifdef ELOOP
         case ELOOP: return DRWAV_TOO_MANY_LINKS;
-#endif
-#ifdef ENOMSG
+    #endif
+    #ifdef ENOMSG
         case ENOMSG: return DRWAV_NO_MESSAGE;
-#endif
-#ifdef EIDRM
+    #endif
+    #ifdef EIDRM
         case EIDRM: return DRWAV_ERROR;
-#endif
-#ifdef ECHRNG
+    #endif
+    #ifdef ECHRNG
         case ECHRNG: return DRWAV_ERROR;
-#endif
-#ifdef EL2NSYNC
+    #endif
+    #ifdef EL2NSYNC
         case EL2NSYNC: return DRWAV_ERROR;
-#endif
-#ifdef EL3HLT
+    #endif
+    #ifdef EL3HLT
         case EL3HLT: return DRWAV_ERROR;
-#endif
-#ifdef EL3RST
+    #endif
+    #ifdef EL3RST
         case EL3RST: return DRWAV_ERROR;
-#endif
-#ifdef ELNRNG
+    #endif
+    #ifdef ELNRNG
         case ELNRNG: return DRWAV_OUT_OF_RANGE;
-#endif
-#ifdef EUNATCH
+    #endif
+    #ifdef EUNATCH
         case EUNATCH: return DRWAV_ERROR;
-#endif
-#ifdef ENOCSI
+    #endif
+    #ifdef ENOCSI
         case ENOCSI: return DRWAV_ERROR;
-#endif
-#ifdef EL2HLT
+    #endif
+    #ifdef EL2HLT
         case EL2HLT: return DRWAV_ERROR;
-#endif
-#ifdef EBADE
+    #endif
+    #ifdef EBADE
         case EBADE: return DRWAV_ERROR;
-#endif
-#ifdef EBADR
+    #endif
+    #ifdef EBADR
         case EBADR: return DRWAV_ERROR;
-#endif
-#ifdef EXFULL
+    #endif
+    #ifdef EXFULL
         case EXFULL: return DRWAV_ERROR;
-#endif
-#ifdef ENOANO
+    #endif
+    #ifdef ENOANO
         case ENOANO: return DRWAV_ERROR;
-#endif
-#ifdef EBADRQC
+    #endif
+    #ifdef EBADRQC
         case EBADRQC: return DRWAV_ERROR;
-#endif
-#ifdef EBADSLT
+    #endif
+    #ifdef EBADSLT
         case EBADSLT: return DRWAV_ERROR;
-#endif
-#ifdef EBFONT
+    #endif
+    #ifdef EBFONT
         case EBFONT: return DRWAV_INVALID_FILE;
-#endif
-#ifdef ENOSTR
+    #endif
+    #ifdef ENOSTR
         case ENOSTR: return DRWAV_ERROR;
-#endif
-#ifdef ENODATA
+    #endif
+    #ifdef ENODATA
         case ENODATA: return DRWAV_NO_DATA_AVAILABLE;
-#endif
-#ifdef ETIME
+    #endif
+    #ifdef ETIME
         case ETIME: return DRWAV_TIMEOUT;
-#endif
-#ifdef ENOSR
+    #endif
+    #ifdef ENOSR
         case ENOSR: return DRWAV_NO_DATA_AVAILABLE;
-#endif
-#ifdef ENONET
+    #endif
+    #ifdef ENONET
         case ENONET: return DRWAV_NO_NETWORK;
-#endif
-#ifdef ENOPKG
+    #endif
+    #ifdef ENOPKG
         case ENOPKG: return DRWAV_ERROR;
-#endif
-#ifdef EREMOTE
+    #endif
+    #ifdef EREMOTE
         case EREMOTE: return DRWAV_ERROR;
-#endif
-#ifdef ENOLINK
+    #endif
+    #ifdef ENOLINK
         case ENOLINK: return DRWAV_ERROR;
-#endif
-#ifdef EADV
+    #endif
+    #ifdef EADV
         case EADV: return DRWAV_ERROR;
-#endif
-#ifdef ESRMNT
+    #endif
+    #ifdef ESRMNT
         case ESRMNT: return DRWAV_ERROR;
-#endif
-#ifdef ECOMM
+    #endif
+    #ifdef ECOMM
         case ECOMM: return DRWAV_ERROR;
-#endif
-#ifdef EPROTO
+    #endif
+    #ifdef EPROTO
         case EPROTO: return DRWAV_ERROR;
-#endif
-#ifdef EMULTIHOP
+    #endif
+    #ifdef EMULTIHOP
         case EMULTIHOP: return DRWAV_ERROR;
-#endif
-#ifdef EDOTDOT
+    #endif
+    #ifdef EDOTDOT
         case EDOTDOT: return DRWAV_ERROR;
-#endif
-#ifdef EBADMSG
+    #endif
+    #ifdef EBADMSG
         case EBADMSG: return DRWAV_BAD_MESSAGE;
-#endif
-#ifdef EOVERFLOW
+    #endif
+    #ifdef EOVERFLOW
         case EOVERFLOW: return DRWAV_TOO_BIG;
-#endif
-#ifdef ENOTUNIQ
+    #endif
+    #ifdef ENOTUNIQ
         case ENOTUNIQ: return DRWAV_NOT_UNIQUE;
-#endif
-#ifdef EBADFD
+    #endif
+    #ifdef EBADFD
         case EBADFD: return DRWAV_ERROR;
-#endif
-#ifdef EREMCHG
+    #endif
+    #ifdef EREMCHG
         case EREMCHG: return DRWAV_ERROR;
-#endif
-#ifdef ELIBACC
+    #endif
+    #ifdef ELIBACC
         case ELIBACC: return DRWAV_ACCESS_DENIED;
-#endif
-#ifdef ELIBBAD
+    #endif
+    #ifdef ELIBBAD
         case ELIBBAD: return DRWAV_INVALID_FILE;
-#endif
-#ifdef ELIBSCN
+    #endif
+    #ifdef ELIBSCN
         case ELIBSCN: return DRWAV_INVALID_FILE;
-#endif
-#ifdef ELIBMAX
+    #endif
+    #ifdef ELIBMAX
         case ELIBMAX: return DRWAV_ERROR;
-#endif
-#ifdef ELIBEXEC
+    #endif
+    #ifdef ELIBEXEC
         case ELIBEXEC: return DRWAV_ERROR;
-#endif
-#ifdef EILSEQ
+    #endif
+    #ifdef EILSEQ
         case EILSEQ: return DRWAV_INVALID_DATA;
-#endif
-#ifdef ERESTART
+    #endif
+    #ifdef ERESTART
         case ERESTART: return DRWAV_ERROR;
-#endif
-#ifdef ESTRPIPE
+    #endif
+    #ifdef ESTRPIPE
         case ESTRPIPE: return DRWAV_ERROR;
-#endif
-#ifdef EUSERS
+    #endif
+    #ifdef EUSERS
         case EUSERS: return DRWAV_ERROR;
-#endif
-#ifdef ENOTSOCK
+    #endif
+    #ifdef ENOTSOCK
         case ENOTSOCK: return DRWAV_NOT_SOCKET;
-#endif
-#ifdef EDESTADDRREQ
+    #endif
+    #ifdef EDESTADDRREQ
         case EDESTADDRREQ: return DRWAV_NO_ADDRESS;
-#endif
-#ifdef EMSGSIZE
+    #endif
+    #ifdef EMSGSIZE
         case EMSGSIZE: return DRWAV_TOO_BIG;
-#endif
-#ifdef EPROTOTYPE
+    #endif
+    #ifdef EPROTOTYPE
         case EPROTOTYPE: return DRWAV_BAD_PROTOCOL;
-#endif
-#ifdef ENOPROTOOPT
+    #endif
+    #ifdef ENOPROTOOPT
         case ENOPROTOOPT: return DRWAV_PROTOCOL_UNAVAILABLE;
-#endif
-#ifdef EPROTONOSUPPORT
+    #endif
+    #ifdef EPROTONOSUPPORT
         case EPROTONOSUPPORT: return DRWAV_PROTOCOL_NOT_SUPPORTED;
-#endif
-#ifdef ESOCKTNOSUPPORT
+    #endif
+    #ifdef ESOCKTNOSUPPORT
         case ESOCKTNOSUPPORT: return DRWAV_SOCKET_NOT_SUPPORTED;
-#endif
-#ifdef EOPNOTSUPP
+    #endif
+    #ifdef EOPNOTSUPP
         case EOPNOTSUPP: return DRWAV_INVALID_OPERATION;
-#endif
-#ifdef EPFNOSUPPORT
+    #endif
+    #ifdef EPFNOSUPPORT
         case EPFNOSUPPORT: return DRWAV_PROTOCOL_FAMILY_NOT_SUPPORTED;
-#endif
-#ifdef EAFNOSUPPORT
+    #endif
+    #ifdef EAFNOSUPPORT
         case EAFNOSUPPORT: return DRWAV_ADDRESS_FAMILY_NOT_SUPPORTED;
-#endif
-#ifdef EADDRINUSE
+    #endif
+    #ifdef EADDRINUSE
         case EADDRINUSE: return DRWAV_ALREADY_IN_USE;
-#endif
-#ifdef EADDRNOTAVAIL
+    #endif
+    #ifdef EADDRNOTAVAIL
         case EADDRNOTAVAIL: return DRWAV_ERROR;
-#endif
-#ifdef ENETDOWN
+    #endif
+    #ifdef ENETDOWN
         case ENETDOWN: return DRWAV_NO_NETWORK;
-#endif
-#ifdef ENETUNREACH
+    #endif
+    #ifdef ENETUNREACH
         case ENETUNREACH: return DRWAV_NO_NETWORK;
-#endif
-#ifdef ENETRESET
+    #endif
+    #ifdef ENETRESET
         case ENETRESET: return DRWAV_NO_NETWORK;
-#endif
-#ifdef ECONNABORTED
+    #endif
+    #ifdef ECONNABORTED
         case ECONNABORTED: return DRWAV_NO_NETWORK;
-#endif
-#ifdef ECONNRESET
+    #endif
+    #ifdef ECONNRESET
         case ECONNRESET: return DRWAV_CONNECTION_RESET;
-#endif
-#ifdef ENOBUFS
+    #endif
+    #ifdef ENOBUFS
         case ENOBUFS: return DRWAV_NO_SPACE;
-#endif
-#ifdef EISCONN
+    #endif
+    #ifdef EISCONN
         case EISCONN: return DRWAV_ALREADY_CONNECTED;
-#endif
-#ifdef ENOTCONN
+    #endif
+    #ifdef ENOTCONN
         case ENOTCONN: return DRWAV_NOT_CONNECTED;
-#endif
-#ifdef ESHUTDOWN
+    #endif
+    #ifdef ESHUTDOWN
         case ESHUTDOWN: return DRWAV_ERROR;
-#endif
-#ifdef ETOOMANYREFS
+    #endif
+    #ifdef ETOOMANYREFS
         case ETOOMANYREFS: return DRWAV_ERROR;
-#endif
-#ifdef ETIMEDOUT
+    #endif
+    #ifdef ETIMEDOUT
         case ETIMEDOUT: return DRWAV_TIMEOUT;
-#endif
-#ifdef ECONNREFUSED
+    #endif
+    #ifdef ECONNREFUSED
         case ECONNREFUSED: return DRWAV_CONNECTION_REFUSED;
-#endif
-#ifdef EHOSTDOWN
+    #endif
+    #ifdef EHOSTDOWN
         case EHOSTDOWN: return DRWAV_NO_HOST;
-#endif
-#ifdef EHOSTUNREACH
+    #endif
+    #ifdef EHOSTUNREACH
         case EHOSTUNREACH: return DRWAV_NO_HOST;
-#endif
-#ifdef EALREADY
+    #endif
+    #ifdef EALREADY
         case EALREADY: return DRWAV_IN_PROGRESS;
-#endif
-#ifdef EINPROGRESS
+    #endif
+    #ifdef EINPROGRESS
         case EINPROGRESS: return DRWAV_IN_PROGRESS;
-#endif
-#ifdef ESTALE
+    #endif
+    #ifdef ESTALE
         case ESTALE: return DRWAV_INVALID_FILE;
-#endif
-#ifdef EUCLEAN
+    #endif
+    #ifdef EUCLEAN
         case EUCLEAN: return DRWAV_ERROR;
-#endif
-#ifdef ENOTNAM
+    #endif
+    #ifdef ENOTNAM
         case ENOTNAM: return DRWAV_ERROR;
-#endif
-#ifdef ENAVAIL
+    #endif
+    #ifdef ENAVAIL
         case ENAVAIL: return DRWAV_ERROR;
-#endif
-#ifdef EISNAM
+    #endif
+    #ifdef EISNAM
         case EISNAM: return DRWAV_ERROR;
-#endif
-#ifdef EREMOTEIO
+    #endif
+    #ifdef EREMOTEIO
         case EREMOTEIO: return DRWAV_IO_ERROR;
-#endif
-#ifdef EDQUOT
+    #endif
+    #ifdef EDQUOT
         case EDQUOT: return DRWAV_NO_SPACE;
-#endif
-#ifdef ENOMEDIUM
+    #endif
+    #ifdef ENOMEDIUM
         case ENOMEDIUM: return DRWAV_DOES_NOT_EXIST;
-#endif
-#ifdef EMEDIUMTYPE
+    #endif
+    #ifdef EMEDIUMTYPE
         case EMEDIUMTYPE: return DRWAV_ERROR;
-#endif
-#ifdef ECANCELED
+    #endif
+    #ifdef ECANCELED
         case ECANCELED: return DRWAV_CANCELLED;
-#endif
-#ifdef ENOKEY
+    #endif
+    #ifdef ENOKEY
         case ENOKEY: return DRWAV_ERROR;
-#endif
-#ifdef EKEYEXPIRED
+    #endif
+    #ifdef EKEYEXPIRED
         case EKEYEXPIRED: return DRWAV_ERROR;
-#endif
-#ifdef EKEYREVOKED
+    #endif
+    #ifdef EKEYREVOKED
         case EKEYREVOKED: return DRWAV_ERROR;
-#endif
-#ifdef EKEYREJECTED
+    #endif
+    #ifdef EKEYREJECTED
         case EKEYREJECTED: return DRWAV_ERROR;
-#endif
-#ifdef EOWNERDEAD
+    #endif
+    #ifdef EOWNERDEAD
         case EOWNERDEAD: return DRWAV_ERROR;
-#endif
-#ifdef ENOTRECOVERABLE
+    #endif
+    #ifdef ENOTRECOVERABLE
         case ENOTRECOVERABLE: return DRWAV_ERROR;
-#endif
-#ifdef ERFKILL
+    #endif
+    #ifdef ERFKILL
         case ERFKILL: return DRWAV_ERROR;
-#endif
-#ifdef EHWPOISON
+    #endif
+    #ifdef EHWPOISON
         case EHWPOISON: return DRWAV_ERROR;
-#endif
+    #endif
         default: return DRWAV_ERROR;
     }
 }
@@ -5056,11 +5056,11 @@ DRWAV_PRIVATE drwav_result drwav_fopen(FILE** ppFile, const char* pFilePath, con
 #if defined(_WIN32) || defined(__APPLE__)
     *ppFile = fopen(pFilePath, pOpenMode);
 #else
-#if defined(_FILE_OFFSET_BITS) && _FILE_OFFSET_BITS == 64 && defined(_LARGEFILE64_SOURCE)
-    *ppFile = fopen64(pFilePath, pOpenMode);
-#else
-    *ppFile = fopen(pFilePath, pOpenMode);
-#endif
+    #if defined(_FILE_OFFSET_BITS) && _FILE_OFFSET_BITS == 64 && defined(_LARGEFILE64_SOURCE)
+        *ppFile = fopen64(pFilePath, pOpenMode);
+    #else
+        *ppFile = fopen(pFilePath, pOpenMode);
+    #endif
 #endif
     if (*ppFile == NULL) {
         drwav_result result = drwav_result_from_errno(errno);
@@ -5088,7 +5088,7 @@ This can be reviewed as compatibility issues arise. The preference is to use _wf
 fallback, so if you notice your compiler not detecting this properly I'm happy to look at adding support.
 */
 #if defined(_WIN32)
-#if defined(_MSC_VER) || defined(__MINGW64__) || (!defined(__STRICT_ANSI__) && !defined(_NO_EXT_KEYS))
+    #if defined(_MSC_VER) || defined(__MINGW64__) || (!defined(__STRICT_ANSI__) && !defined(_NO_EXT_KEYS))
         #define DRWAV_HAS_WFOPEN
     #endif
 #endif
@@ -5121,24 +5121,24 @@ DRWAV_PRIVATE drwav_result drwav_wfopen(FILE** ppFile, const wchar_t* pFilePath,
         (void)pAllocationCallbacks;
     }
 #else
-    /*
+	/*
     Use fopen() on anything other than Windows. Requires a conversion. This is annoying because
-    fopen() is locale specific. The only real way I can think of to do this is with wcsrtombs(). Note
-    that wcstombs() is apparently not thread-safe because it uses a static global mbstate_t object for
+	fopen() is locale specific. The only real way I can think of to do this is with wcsrtombs(). Note
+	that wcstombs() is apparently not thread-safe because it uses a static global mbstate_t object for
     maintaining state. I've checked this with -std=c89 and it works, but if somebody get's a compiler
-    error I'll look into improving compatibility.
+	error I'll look into improving compatibility.
     */
 
-    /*
-    Some compilers don't support wchar_t or wcsrtombs() which we're using below. In this case we just
-    need to abort with an error. If you encounter a compiler lacking such support, add it to this list
-    and submit a bug report and it'll be added to the library upstream.
-    */
-#if defined(__DJGPP__)
-    {
+	/*
+	Some compilers don't support wchar_t or wcsrtombs() which we're using below. In this case we just
+	need to abort with an error. If you encounter a compiler lacking such support, add it to this list
+	and submit a bug report and it'll be added to the library upstream.
+	*/
+	#if defined(__DJGPP__)
+	{
 		/* Nothing to do here. This will fall through to the error check below. */
 	}
-#else
+	#else
     {
         mbstate_t mbs;
         size_t lenMB;
@@ -5180,7 +5180,7 @@ DRWAV_PRIVATE drwav_result drwav_wfopen(FILE** ppFile, const wchar_t* pFilePath,
 
         drwav__free_from_callbacks(pFilePathMB, pAllocationCallbacks);
     }
-#endif
+	#endif
 
     if (*ppFile == NULL) {
         return DRWAV_ERROR;
@@ -6146,8 +6146,8 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s16__msadpcm(drwav* pWav, drwav
     drwav_uint64 totalFramesRead = 0;
 
     static drwav_int32 adaptationTable[] = {
-            230, 230, 230, 230, 307, 409, 512, 614,
-            768, 614, 512, 409, 307, 230, 230, 230
+        230, 230, 230, 230, 307, 409, 512, 614,
+        768, 614, 512, 409, 307, 230, 230, 230
     };
     static drwav_int32 coeff1Table[] = { 256, 512, 0, 192, 240, 460,  392 };
     static drwav_int32 coeff2Table[] = { 0,  -256, 0, 64,  0,  -208, -232 };
@@ -6339,20 +6339,20 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s16__ima(drwav* pWav, drwav_uin
     drwav_uint32 iChannel;
 
     static drwav_int32 indexTable[16] = {
-            -1, -1, -1, -1, 2, 4, 6, 8,
-            -1, -1, -1, -1, 2, 4, 6, 8
+        -1, -1, -1, -1, 2, 4, 6, 8,
+        -1, -1, -1, -1, 2, 4, 6, 8
     };
 
     static drwav_int32 stepTable[89] = {
-            7,     8,     9,     10,    11,    12,    13,    14,    16,    17,
-            19,    21,    23,    25,    28,    31,    34,    37,    41,    45,
-            50,    55,    60,    66,    73,    80,    88,    97,    107,   118,
-            130,   143,   157,   173,   190,   209,   230,   253,   279,   307,
-            337,   371,   408,   449,   494,   544,   598,   658,   724,   796,
-            876,   963,   1060,  1166,  1282,  1411,  1552,  1707,  1878,  2066,
-            2272,  2499,  2749,  3024,  3327,  3660,  4026,  4428,  4871,  5358,
-            5894,  6484,  7132,  7845,  8630,  9493,  10442, 11487, 12635, 13899,
-            15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
+        7,     8,     9,     10,    11,    12,    13,    14,    16,    17,
+        19,    21,    23,    25,    28,    31,    34,    37,    41,    45,
+        50,    55,    60,    66,    73,    80,    88,    97,    107,   118,
+        130,   143,   157,   173,   190,   209,   230,   253,   279,   307,
+        337,   371,   408,   449,   494,   544,   598,   658,   724,   796,
+        876,   963,   1060,  1166,  1282,  1411,  1552,  1707,  1878,  2066,
+        2272,  2499,  2749,  3024,  3327,  3660,  4026,  4428,  4871,  5358,
+        5894,  6484,  7132,  7845,  8630,  9493,  10442, 11487, 12635, 13899,
+        15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
     };
 
     DRWAV_ASSERT(pWav != NULL);
@@ -6472,7 +6472,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s16__ima(drwav* pWav, drwav_uin
                         step      = stepTable[pWav->ima.stepIndex[iChannel]];
                         predictor = pWav->ima.predictor[iChannel];
 
-                        diff  = step >> 3;
+                                         diff  = step >> 3;
                         if (nibble1 & 1) diff += step >> 2;
                         if (nibble1 & 2) diff += step >> 1;
                         if (nibble1 & 4) diff += step;
@@ -6494,41 +6494,41 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s16__ima(drwav* pWav, drwav_uin
 
 #ifndef DR_WAV_NO_CONVERSION_API
 static unsigned short g_drwavAlawTable[256] = {
-        0xEA80, 0xEB80, 0xE880, 0xE980, 0xEE80, 0xEF80, 0xEC80, 0xED80, 0xE280, 0xE380, 0xE080, 0xE180, 0xE680, 0xE780, 0xE480, 0xE580,
-        0xF540, 0xF5C0, 0xF440, 0xF4C0, 0xF740, 0xF7C0, 0xF640, 0xF6C0, 0xF140, 0xF1C0, 0xF040, 0xF0C0, 0xF340, 0xF3C0, 0xF240, 0xF2C0,
-        0xAA00, 0xAE00, 0xA200, 0xA600, 0xBA00, 0xBE00, 0xB200, 0xB600, 0x8A00, 0x8E00, 0x8200, 0x8600, 0x9A00, 0x9E00, 0x9200, 0x9600,
-        0xD500, 0xD700, 0xD100, 0xD300, 0xDD00, 0xDF00, 0xD900, 0xDB00, 0xC500, 0xC700, 0xC100, 0xC300, 0xCD00, 0xCF00, 0xC900, 0xCB00,
-        0xFEA8, 0xFEB8, 0xFE88, 0xFE98, 0xFEE8, 0xFEF8, 0xFEC8, 0xFED8, 0xFE28, 0xFE38, 0xFE08, 0xFE18, 0xFE68, 0xFE78, 0xFE48, 0xFE58,
-        0xFFA8, 0xFFB8, 0xFF88, 0xFF98, 0xFFE8, 0xFFF8, 0xFFC8, 0xFFD8, 0xFF28, 0xFF38, 0xFF08, 0xFF18, 0xFF68, 0xFF78, 0xFF48, 0xFF58,
-        0xFAA0, 0xFAE0, 0xFA20, 0xFA60, 0xFBA0, 0xFBE0, 0xFB20, 0xFB60, 0xF8A0, 0xF8E0, 0xF820, 0xF860, 0xF9A0, 0xF9E0, 0xF920, 0xF960,
-        0xFD50, 0xFD70, 0xFD10, 0xFD30, 0xFDD0, 0xFDF0, 0xFD90, 0xFDB0, 0xFC50, 0xFC70, 0xFC10, 0xFC30, 0xFCD0, 0xFCF0, 0xFC90, 0xFCB0,
-        0x1580, 0x1480, 0x1780, 0x1680, 0x1180, 0x1080, 0x1380, 0x1280, 0x1D80, 0x1C80, 0x1F80, 0x1E80, 0x1980, 0x1880, 0x1B80, 0x1A80,
-        0x0AC0, 0x0A40, 0x0BC0, 0x0B40, 0x08C0, 0x0840, 0x09C0, 0x0940, 0x0EC0, 0x0E40, 0x0FC0, 0x0F40, 0x0CC0, 0x0C40, 0x0DC0, 0x0D40,
-        0x5600, 0x5200, 0x5E00, 0x5A00, 0x4600, 0x4200, 0x4E00, 0x4A00, 0x7600, 0x7200, 0x7E00, 0x7A00, 0x6600, 0x6200, 0x6E00, 0x6A00,
-        0x2B00, 0x2900, 0x2F00, 0x2D00, 0x2300, 0x2100, 0x2700, 0x2500, 0x3B00, 0x3900, 0x3F00, 0x3D00, 0x3300, 0x3100, 0x3700, 0x3500,
-        0x0158, 0x0148, 0x0178, 0x0168, 0x0118, 0x0108, 0x0138, 0x0128, 0x01D8, 0x01C8, 0x01F8, 0x01E8, 0x0198, 0x0188, 0x01B8, 0x01A8,
-        0x0058, 0x0048, 0x0078, 0x0068, 0x0018, 0x0008, 0x0038, 0x0028, 0x00D8, 0x00C8, 0x00F8, 0x00E8, 0x0098, 0x0088, 0x00B8, 0x00A8,
-        0x0560, 0x0520, 0x05E0, 0x05A0, 0x0460, 0x0420, 0x04E0, 0x04A0, 0x0760, 0x0720, 0x07E0, 0x07A0, 0x0660, 0x0620, 0x06E0, 0x06A0,
-        0x02B0, 0x0290, 0x02F0, 0x02D0, 0x0230, 0x0210, 0x0270, 0x0250, 0x03B0, 0x0390, 0x03F0, 0x03D0, 0x0330, 0x0310, 0x0370, 0x0350
+    0xEA80, 0xEB80, 0xE880, 0xE980, 0xEE80, 0xEF80, 0xEC80, 0xED80, 0xE280, 0xE380, 0xE080, 0xE180, 0xE680, 0xE780, 0xE480, 0xE580,
+    0xF540, 0xF5C0, 0xF440, 0xF4C0, 0xF740, 0xF7C0, 0xF640, 0xF6C0, 0xF140, 0xF1C0, 0xF040, 0xF0C0, 0xF340, 0xF3C0, 0xF240, 0xF2C0,
+    0xAA00, 0xAE00, 0xA200, 0xA600, 0xBA00, 0xBE00, 0xB200, 0xB600, 0x8A00, 0x8E00, 0x8200, 0x8600, 0x9A00, 0x9E00, 0x9200, 0x9600,
+    0xD500, 0xD700, 0xD100, 0xD300, 0xDD00, 0xDF00, 0xD900, 0xDB00, 0xC500, 0xC700, 0xC100, 0xC300, 0xCD00, 0xCF00, 0xC900, 0xCB00,
+    0xFEA8, 0xFEB8, 0xFE88, 0xFE98, 0xFEE8, 0xFEF8, 0xFEC8, 0xFED8, 0xFE28, 0xFE38, 0xFE08, 0xFE18, 0xFE68, 0xFE78, 0xFE48, 0xFE58,
+    0xFFA8, 0xFFB8, 0xFF88, 0xFF98, 0xFFE8, 0xFFF8, 0xFFC8, 0xFFD8, 0xFF28, 0xFF38, 0xFF08, 0xFF18, 0xFF68, 0xFF78, 0xFF48, 0xFF58,
+    0xFAA0, 0xFAE0, 0xFA20, 0xFA60, 0xFBA0, 0xFBE0, 0xFB20, 0xFB60, 0xF8A0, 0xF8E0, 0xF820, 0xF860, 0xF9A0, 0xF9E0, 0xF920, 0xF960,
+    0xFD50, 0xFD70, 0xFD10, 0xFD30, 0xFDD0, 0xFDF0, 0xFD90, 0xFDB0, 0xFC50, 0xFC70, 0xFC10, 0xFC30, 0xFCD0, 0xFCF0, 0xFC90, 0xFCB0,
+    0x1580, 0x1480, 0x1780, 0x1680, 0x1180, 0x1080, 0x1380, 0x1280, 0x1D80, 0x1C80, 0x1F80, 0x1E80, 0x1980, 0x1880, 0x1B80, 0x1A80,
+    0x0AC0, 0x0A40, 0x0BC0, 0x0B40, 0x08C0, 0x0840, 0x09C0, 0x0940, 0x0EC0, 0x0E40, 0x0FC0, 0x0F40, 0x0CC0, 0x0C40, 0x0DC0, 0x0D40,
+    0x5600, 0x5200, 0x5E00, 0x5A00, 0x4600, 0x4200, 0x4E00, 0x4A00, 0x7600, 0x7200, 0x7E00, 0x7A00, 0x6600, 0x6200, 0x6E00, 0x6A00,
+    0x2B00, 0x2900, 0x2F00, 0x2D00, 0x2300, 0x2100, 0x2700, 0x2500, 0x3B00, 0x3900, 0x3F00, 0x3D00, 0x3300, 0x3100, 0x3700, 0x3500,
+    0x0158, 0x0148, 0x0178, 0x0168, 0x0118, 0x0108, 0x0138, 0x0128, 0x01D8, 0x01C8, 0x01F8, 0x01E8, 0x0198, 0x0188, 0x01B8, 0x01A8,
+    0x0058, 0x0048, 0x0078, 0x0068, 0x0018, 0x0008, 0x0038, 0x0028, 0x00D8, 0x00C8, 0x00F8, 0x00E8, 0x0098, 0x0088, 0x00B8, 0x00A8,
+    0x0560, 0x0520, 0x05E0, 0x05A0, 0x0460, 0x0420, 0x04E0, 0x04A0, 0x0760, 0x0720, 0x07E0, 0x07A0, 0x0660, 0x0620, 0x06E0, 0x06A0,
+    0x02B0, 0x0290, 0x02F0, 0x02D0, 0x0230, 0x0210, 0x0270, 0x0250, 0x03B0, 0x0390, 0x03F0, 0x03D0, 0x0330, 0x0310, 0x0370, 0x0350
 };
 
 static unsigned short g_drwavMulawTable[256] = {
-        0x8284, 0x8684, 0x8A84, 0x8E84, 0x9284, 0x9684, 0x9A84, 0x9E84, 0xA284, 0xA684, 0xAA84, 0xAE84, 0xB284, 0xB684, 0xBA84, 0xBE84,
-        0xC184, 0xC384, 0xC584, 0xC784, 0xC984, 0xCB84, 0xCD84, 0xCF84, 0xD184, 0xD384, 0xD584, 0xD784, 0xD984, 0xDB84, 0xDD84, 0xDF84,
-        0xE104, 0xE204, 0xE304, 0xE404, 0xE504, 0xE604, 0xE704, 0xE804, 0xE904, 0xEA04, 0xEB04, 0xEC04, 0xED04, 0xEE04, 0xEF04, 0xF004,
-        0xF0C4, 0xF144, 0xF1C4, 0xF244, 0xF2C4, 0xF344, 0xF3C4, 0xF444, 0xF4C4, 0xF544, 0xF5C4, 0xF644, 0xF6C4, 0xF744, 0xF7C4, 0xF844,
-        0xF8A4, 0xF8E4, 0xF924, 0xF964, 0xF9A4, 0xF9E4, 0xFA24, 0xFA64, 0xFAA4, 0xFAE4, 0xFB24, 0xFB64, 0xFBA4, 0xFBE4, 0xFC24, 0xFC64,
-        0xFC94, 0xFCB4, 0xFCD4, 0xFCF4, 0xFD14, 0xFD34, 0xFD54, 0xFD74, 0xFD94, 0xFDB4, 0xFDD4, 0xFDF4, 0xFE14, 0xFE34, 0xFE54, 0xFE74,
-        0xFE8C, 0xFE9C, 0xFEAC, 0xFEBC, 0xFECC, 0xFEDC, 0xFEEC, 0xFEFC, 0xFF0C, 0xFF1C, 0xFF2C, 0xFF3C, 0xFF4C, 0xFF5C, 0xFF6C, 0xFF7C,
-        0xFF88, 0xFF90, 0xFF98, 0xFFA0, 0xFFA8, 0xFFB0, 0xFFB8, 0xFFC0, 0xFFC8, 0xFFD0, 0xFFD8, 0xFFE0, 0xFFE8, 0xFFF0, 0xFFF8, 0x0000,
-        0x7D7C, 0x797C, 0x757C, 0x717C, 0x6D7C, 0x697C, 0x657C, 0x617C, 0x5D7C, 0x597C, 0x557C, 0x517C, 0x4D7C, 0x497C, 0x457C, 0x417C,
-        0x3E7C, 0x3C7C, 0x3A7C, 0x387C, 0x367C, 0x347C, 0x327C, 0x307C, 0x2E7C, 0x2C7C, 0x2A7C, 0x287C, 0x267C, 0x247C, 0x227C, 0x207C,
-        0x1EFC, 0x1DFC, 0x1CFC, 0x1BFC, 0x1AFC, 0x19FC, 0x18FC, 0x17FC, 0x16FC, 0x15FC, 0x14FC, 0x13FC, 0x12FC, 0x11FC, 0x10FC, 0x0FFC,
-        0x0F3C, 0x0EBC, 0x0E3C, 0x0DBC, 0x0D3C, 0x0CBC, 0x0C3C, 0x0BBC, 0x0B3C, 0x0ABC, 0x0A3C, 0x09BC, 0x093C, 0x08BC, 0x083C, 0x07BC,
-        0x075C, 0x071C, 0x06DC, 0x069C, 0x065C, 0x061C, 0x05DC, 0x059C, 0x055C, 0x051C, 0x04DC, 0x049C, 0x045C, 0x041C, 0x03DC, 0x039C,
-        0x036C, 0x034C, 0x032C, 0x030C, 0x02EC, 0x02CC, 0x02AC, 0x028C, 0x026C, 0x024C, 0x022C, 0x020C, 0x01EC, 0x01CC, 0x01AC, 0x018C,
-        0x0174, 0x0164, 0x0154, 0x0144, 0x0134, 0x0124, 0x0114, 0x0104, 0x00F4, 0x00E4, 0x00D4, 0x00C4, 0x00B4, 0x00A4, 0x0094, 0x0084,
-        0x0078, 0x0070, 0x0068, 0x0060, 0x0058, 0x0050, 0x0048, 0x0040, 0x0038, 0x0030, 0x0028, 0x0020, 0x0018, 0x0010, 0x0008, 0x0000
+    0x8284, 0x8684, 0x8A84, 0x8E84, 0x9284, 0x9684, 0x9A84, 0x9E84, 0xA284, 0xA684, 0xAA84, 0xAE84, 0xB284, 0xB684, 0xBA84, 0xBE84,
+    0xC184, 0xC384, 0xC584, 0xC784, 0xC984, 0xCB84, 0xCD84, 0xCF84, 0xD184, 0xD384, 0xD584, 0xD784, 0xD984, 0xDB84, 0xDD84, 0xDF84,
+    0xE104, 0xE204, 0xE304, 0xE404, 0xE504, 0xE604, 0xE704, 0xE804, 0xE904, 0xEA04, 0xEB04, 0xEC04, 0xED04, 0xEE04, 0xEF04, 0xF004,
+    0xF0C4, 0xF144, 0xF1C4, 0xF244, 0xF2C4, 0xF344, 0xF3C4, 0xF444, 0xF4C4, 0xF544, 0xF5C4, 0xF644, 0xF6C4, 0xF744, 0xF7C4, 0xF844,
+    0xF8A4, 0xF8E4, 0xF924, 0xF964, 0xF9A4, 0xF9E4, 0xFA24, 0xFA64, 0xFAA4, 0xFAE4, 0xFB24, 0xFB64, 0xFBA4, 0xFBE4, 0xFC24, 0xFC64,
+    0xFC94, 0xFCB4, 0xFCD4, 0xFCF4, 0xFD14, 0xFD34, 0xFD54, 0xFD74, 0xFD94, 0xFDB4, 0xFDD4, 0xFDF4, 0xFE14, 0xFE34, 0xFE54, 0xFE74,
+    0xFE8C, 0xFE9C, 0xFEAC, 0xFEBC, 0xFECC, 0xFEDC, 0xFEEC, 0xFEFC, 0xFF0C, 0xFF1C, 0xFF2C, 0xFF3C, 0xFF4C, 0xFF5C, 0xFF6C, 0xFF7C,
+    0xFF88, 0xFF90, 0xFF98, 0xFFA0, 0xFFA8, 0xFFB0, 0xFFB8, 0xFFC0, 0xFFC8, 0xFFD0, 0xFFD8, 0xFFE0, 0xFFE8, 0xFFF0, 0xFFF8, 0x0000,
+    0x7D7C, 0x797C, 0x757C, 0x717C, 0x6D7C, 0x697C, 0x657C, 0x617C, 0x5D7C, 0x597C, 0x557C, 0x517C, 0x4D7C, 0x497C, 0x457C, 0x417C,
+    0x3E7C, 0x3C7C, 0x3A7C, 0x387C, 0x367C, 0x347C, 0x327C, 0x307C, 0x2E7C, 0x2C7C, 0x2A7C, 0x287C, 0x267C, 0x247C, 0x227C, 0x207C,
+    0x1EFC, 0x1DFC, 0x1CFC, 0x1BFC, 0x1AFC, 0x19FC, 0x18FC, 0x17FC, 0x16FC, 0x15FC, 0x14FC, 0x13FC, 0x12FC, 0x11FC, 0x10FC, 0x0FFC,
+    0x0F3C, 0x0EBC, 0x0E3C, 0x0DBC, 0x0D3C, 0x0CBC, 0x0C3C, 0x0BBC, 0x0B3C, 0x0ABC, 0x0A3C, 0x09BC, 0x093C, 0x08BC, 0x083C, 0x07BC,
+    0x075C, 0x071C, 0x06DC, 0x069C, 0x065C, 0x061C, 0x05DC, 0x059C, 0x055C, 0x051C, 0x04DC, 0x049C, 0x045C, 0x041C, 0x03DC, 0x039C,
+    0x036C, 0x034C, 0x032C, 0x030C, 0x02EC, 0x02CC, 0x02AC, 0x028C, 0x026C, 0x024C, 0x022C, 0x020C, 0x01EC, 0x01CC, 0x01AC, 0x018C,
+    0x0174, 0x0164, 0x0154, 0x0144, 0x0134, 0x0124, 0x0114, 0x0104, 0x00F4, 0x00E4, 0x00D4, 0x00C4, 0x00B4, 0x00A4, 0x0094, 0x0084,
+    0x0078, 0x0070, 0x0068, 0x0060, 0x0058, 0x0050, 0x0048, 0x0040, 0x0038, 0x0030, 0x0028, 0x0020, 0x0018, 0x0010, 0x0008, 0x0000
 };
 
 static DRWAV_INLINE drwav_int16 drwav__alaw_to_s16(drwav_uint8 sampleIn)
@@ -6557,7 +6557,7 @@ DRWAV_PRIVATE void drwav__pcm_to_s16(drwav_int16* pOut, const drwav_uint8* pIn, 
     /* Slightly more optimal implementation for common formats. */
     if (bytesPerSample == 2) {
         for (i = 0; i < totalSampleCount; ++i) {
-            *pOut++ = ((const drwav_int16*)pIn)[i];
+           *pOut++ = ((const drwav_int16*)pIn)[i];
         }
         return;
     }
@@ -6759,7 +6759,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s16__alaw(drwav* pWav, drwav_ui
         automated tests failing. I'm not sure which is correct, but will assume dr_wav. If we're enforcing
         libsndfile compatibility we'll swap the signs here.
         */
-#ifdef DR_WAV_LIBSNDFILE_COMPAT
+        #ifdef DR_WAV_LIBSNDFILE_COMPAT
         {
             if (pWav->container == drwav_container_aiff) {
                 drwav_uint64 iSample;
@@ -6768,7 +6768,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s16__alaw(drwav* pWav, drwav_ui
                 }
             }
         }
-#endif
+        #endif
 
         pBufferOut      += samplesRead;
         framesToRead    -= framesRead;
@@ -6824,7 +6824,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s16__mulaw(drwav* pWav, drwav_u
         Just like with alaw, for some reason the signs between libsndfile and dr_wav are opposite. We just need to
         swap the sign if we're compiling with libsndfile compatiblity so our automated tests don't fail.
         */
-#ifdef DR_WAV_LIBSNDFILE_COMPAT
+        #ifdef DR_WAV_LIBSNDFILE_COMPAT
         {
             if (pWav->container == drwav_container_aiff) {
                 drwav_uint64 iSample;
@@ -6833,7 +6833,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s16__mulaw(drwav* pWav, drwav_u
                 }
             }
         }
-#endif
+        #endif
 
         pBufferOut      += samplesRead;
         framesToRead    -= framesRead;
@@ -7220,7 +7220,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_f32__alaw(drwav* pWav, drwav_ui
 
         drwav_alaw_to_f32(pBufferOut, sampleData, (size_t)samplesRead);
 
-#ifdef DR_WAV_LIBSNDFILE_COMPAT
+        #ifdef DR_WAV_LIBSNDFILE_COMPAT
         {
             if (pWav->container == drwav_container_aiff) {
                 drwav_uint64 iSample;
@@ -7229,7 +7229,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_f32__alaw(drwav* pWav, drwav_ui
                 }
             }
         }
-#endif
+        #endif
 
         pBufferOut      += samplesRead;
         framesToRead    -= framesRead;
@@ -7277,7 +7277,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_f32__mulaw(drwav* pWav, drwav_u
 
         drwav_mulaw_to_f32(pBufferOut, sampleData, (size_t)samplesRead);
 
-#ifdef DR_WAV_LIBSNDFILE_COMPAT
+        #ifdef DR_WAV_LIBSNDFILE_COMPAT
         {
             if (pWav->container == drwav_container_aiff) {
                 drwav_uint64 iSample;
@@ -7286,7 +7286,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_f32__mulaw(drwav* pWav, drwav_u
                 }
             }
         }
-#endif
+        #endif
 
         pBufferOut      += samplesRead;
         framesToRead    -= framesRead;
@@ -7490,7 +7490,7 @@ DRWAV_PRIVATE void drwav__pcm_to_s32(drwav_int32* pOut, const drwav_uint8* pIn, 
     }
     if (bytesPerSample == 4) {
         for (i = 0; i < totalSampleCount; ++i) {
-            *pOut++ = ((const drwav_int32*)pIn)[i];
+           *pOut++ = ((const drwav_int32*)pIn)[i];
         }
         return;
     }
@@ -7699,7 +7699,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s32__alaw(drwav* pWav, drwav_ui
 
         drwav_alaw_to_s32(pBufferOut, sampleData, (size_t)samplesRead);
 
-#ifdef DR_WAV_LIBSNDFILE_COMPAT
+        #ifdef DR_WAV_LIBSNDFILE_COMPAT
         {
             if (pWav->container == drwav_container_aiff) {
                 drwav_uint64 iSample;
@@ -7708,7 +7708,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s32__alaw(drwav* pWav, drwav_ui
                 }
             }
         }
-#endif
+        #endif
 
         pBufferOut      += samplesRead;
         framesToRead    -= framesRead;
@@ -7756,7 +7756,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s32__mulaw(drwav* pWav, drwav_u
 
         drwav_mulaw_to_s32(pBufferOut, sampleData, (size_t)samplesRead);
 
-#ifdef DR_WAV_LIBSNDFILE_COMPAT
+        #ifdef DR_WAV_LIBSNDFILE_COMPAT
         {
             if (pWav->container == drwav_container_aiff) {
                 drwav_uint64 iSample;
@@ -7765,7 +7765,7 @@ DRWAV_PRIVATE drwav_uint64 drwav_read_pcm_frames_s32__mulaw(drwav* pWav, drwav_u
                 }
             }
         }
-#endif
+        #endif
 
         pBufferOut      += samplesRead;
         framesToRead    -= framesRead;
@@ -8362,8 +8362,8 @@ DRWAV_API drwav_int32 drwav_bytes_to_s32(const drwav_uint8* data)
 DRWAV_API drwav_uint64 drwav_bytes_to_u64(const drwav_uint8* data)
 {
     return
-            ((drwav_uint64)data[0] <<  0) | ((drwav_uint64)data[1] <<  8) | ((drwav_uint64)data[2] << 16) | ((drwav_uint64)data[3] << 24) |
-            ((drwav_uint64)data[4] << 32) | ((drwav_uint64)data[5] << 40) | ((drwav_uint64)data[6] << 48) | ((drwav_uint64)data[7] << 56);
+        ((drwav_uint64)data[0] <<  0) | ((drwav_uint64)data[1] <<  8) | ((drwav_uint64)data[2] << 16) | ((drwav_uint64)data[3] << 24) |
+        ((drwav_uint64)data[4] << 32) | ((drwav_uint64)data[5] << 40) | ((drwav_uint64)data[6] << 48) | ((drwav_uint64)data[7] << 56);
 }
 
 DRWAV_API drwav_int64 drwav_bytes_to_s64(const drwav_uint8* data)
@@ -8387,10 +8387,10 @@ DRWAV_API drwav_bool32 drwav_guid_equal(const drwav_uint8 a[16], const drwav_uin
 DRWAV_API drwav_bool32 drwav_fourcc_equal(const drwav_uint8* a, const char* b)
 {
     return
-            a[0] == b[0] &&
-            a[1] == b[1] &&
-            a[2] == b[2] &&
-            a[3] == b[3];
+        a[0] == b[0] &&
+        a[1] == b[1] &&
+        a[2] == b[2] &&
+        a[3] == b[3];
 }
 
 #ifdef __MRC__
