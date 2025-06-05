@@ -27,7 +27,8 @@ class AudioEngine : AudioEngineControl {
     private external fun native_unloadSample(sampleId: String)
 
     // JNI declaration for sample playback
-    private external fun native_playPadSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean
+    private external fun native_playPadSample(noteInstanceId: String, trackId: String, padId: String, sampleId: String, sliceId: String?, velocity: Float, coarseTune: Int, fineTune: Int, pan: Float, volume: Float): Boolean
+    private external fun native_playSampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, sampleRate: Int, trimStartMs: Long, trimEndMs: Long, loopStartMs: Long, loopEndMs: Long, isLooping: Boolean): Boolean
 
     // JNI declarations for metronome
     private external fun native_setMetronomeState(
@@ -153,10 +154,13 @@ class AudioEngine : AudioEngineControl {
       pitchEnv: com.example.theone.model.EnvelopeSettings?,
       lfos: List<Any>
   ): Boolean {
-      // This is a placeholder to make the code compile.
-      // The actual call to a native function will be implemented later.
-      Log.d("AudioEngine", "playPadSample called for sample: $sampleId on pad: $padId")
-      return true
+      if (!initialized) {
+          Log.e("AudioEngine", "AudioEngine not initialized. Cannot play pad sample.")
+          return false
+      }
+      Log.d("AudioEngine", "playPadSample called: sampleID='$sampleId', padID='$padId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
+      // Note: playbackMode, ampEnv, filterEnv, pitchEnv, lfos are not used in the native call yet as per new signature
+      return native_playPadSample(noteInstanceId, trackId, padId, sampleId, sliceId, velocity, coarseTune, fineTune, pan, volume)
   }
 
     override suspend fun playSampleSlice(
@@ -170,7 +174,27 @@ class AudioEngine : AudioEngineControl {
         loopEndMs: Long?,
         isLooping: Boolean
     ): Boolean {
-        TODO("Not yet implemented")
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot play sample slice.")
+            return false
+        }
+        // TODO: Replace hardcoded sampleRate with actual sample metadata lookup.
+        val sampleRate = 48000
+        Log.w("AudioEngine", "playSampleSlice: Using hardcoded sample rate of $sampleRate. Replace with actual metadata lookup.")
+
+        Log.d("AudioEngine", "playSampleSlice called: sampleID='$sampleId', instanceID='$noteInstanceId', vol=$volume, pan=$pan, trimStart=$trimStartMs, trimEnd=$trimEndMs, loopStart=${loopStartMs ?: 0L}, loopEnd=${loopEndMs ?: 0L}, looping=$isLooping")
+        return native_playSampleSlice(
+            sampleId,
+            noteInstanceId,
+            volume,
+            pan,
+            sampleRate, // Hardcoded for now
+            trimStartMs,
+            trimEndMs,
+            loopStartMs ?: 0L, // Pass 0 if null
+            loopEndMs ?: 0L,   // Pass 0 if null
+            isLooping
+        )
     }
 
     override suspend fun setMetronomeState(
