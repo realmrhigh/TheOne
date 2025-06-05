@@ -6,7 +6,7 @@ package com.example.theone.audio
 // data class EnvelopeSettings(...)
 // data class LFOSettings(...)
 // enum class PlaybackMode { ONE_SHOT, NOTE_ON_OFF }
-
+import android.content.Context
 
 interface AudioEngineControl {
     // Initialization & Config
@@ -35,9 +35,9 @@ interface AudioEngineControl {
         timeSignatureDen: Int,
         primarySoundSampleId: String,
         secondarySoundSampleId: String? // Nullable if no secondary sound
-    ): Unit // JNI function is void
+    )
 
-    suspend fun setMetronomeVolume(volume: Float): Unit // JNI function is void
+    suspend fun setMetronomeVolume(volume: Float)
 
     // Recording methods
     suspend fun startAudioRecording(

@@ -63,38 +63,38 @@ class MainActivity : ComponentActivity() {
         CoroutineScope(Dispatchers.Main).launch {
             try {
                 val initResult = audioEngine.initialize(sampleRate = 48000, bufferSize = 256, enableLowLatency = true)
-                android.util.Log.i("MainActivity", "AudioEngine.initialize() returned: $initResult")
+                Log.i("MainActivity", "AudioEngine.initialize() returned: $initResult")
                 if (initResult) {
-                    android.util.Log.i("MainActivity", "AudioEngine isInitialized after init: ${audioEngine.isInitialized()}")
-                    android.util.Log.i("MainActivity", "AudioEngine Latency: ${audioEngine.getReportedLatencyMillis()} ms")
+                    Log.i("MainActivity", "AudioEngine isInitialized after init: ${audioEngine.isInitialized()}")
+                    Log.i("MainActivity", "AudioEngine Latency: ${audioEngine.getReportedLatencyMillis()} ms")
 
                     val primaryClickId = "__METRONOME_PRIMARY__"
                     val secondaryClickId = "__METRONOME_SECONDARY__"
                     val primaryAssetName = "click_primary.wav"
                     val secondaryAssetName = "click_secondary.wav"
 
-                    android.util.Log.i("MainActivity", "Pre-loading primary metronome click sound...")
+                    Log.i("MainActivity", "Pre-loading primary metronome click sound...")
                     // Reinstate actual call to copyAssetToCache
                     val primaryCachedPath = copyAssetToCache(applicationContext, primaryAssetName, "cached_click_primary.wav")
                     if (primaryCachedPath != null) {
                         val primaryFileUri = "file://$primaryCachedPath"
                         val primaryLoadSuccess = audioEngine.loadSampleToMemory(applicationContext, primaryClickId, primaryFileUri)
-                        android.util.Log.i("MainActivity", "Loading $primaryClickId ($primaryAssetName) result: $primaryLoadSuccess. URI: $primaryFileUri")
-                        if (!primaryLoadSuccess) android.util.Log.e("MainActivity", "Failed to load $primaryClickId")
+                        Log.i("MainActivity", "Loading $primaryClickId ($primaryAssetName) result: $primaryLoadSuccess. URI: $primaryFileUri")
+                        if (!primaryLoadSuccess) Log.e("MainActivity", "Failed to load $primaryClickId")
                     } else {
-                        android.util.Log.e("MainActivity", "Failed to copy $primaryAssetName to cache.")
+                        Log.e("MainActivity", "Failed to copy $primaryAssetName to cache.")
                     }
 
-                    android.util.Log.i("MainActivity", "Pre-loading secondary metronome click sound...")
+                    Log.i("MainActivity", "Pre-loading secondary metronome click sound...")
                     // Reinstate actual call to copyAssetToCache
                     val secondaryCachedPath = copyAssetToCache(applicationContext, secondaryAssetName, "cached_click_secondary.wav")
                     if (secondaryCachedPath != null) {
                         val secondaryFileUri = "file://$secondaryCachedPath"
                         val secondaryLoadSuccess = audioEngine.loadSampleToMemory(applicationContext, secondaryClickId, secondaryFileUri)
-                        android.util.Log.i("MainActivity", "Loading $secondaryClickId ($secondaryAssetName) result: $secondaryLoadSuccess. URI: $secondaryFileUri")
-                        if (!secondaryLoadSuccess) android.util.Log.e("MainActivity", "Failed to load $secondaryClickId")
+                        Log.i("MainActivity", "Loading $secondaryClickId ($secondaryAssetName) result: $secondaryLoadSuccess. URI: $secondaryFileUri")
+                        if (!secondaryLoadSuccess) Log.e("MainActivity", "Failed to load $secondaryClickId")
                     } else {
-                        android.util.Log.e("MainActivity", "Failed to copy $secondaryAssetName to cache.")
+                        Log.e("MainActivity", "Failed to copy $secondaryAssetName to cache.")
                     }
 
                     Log.i("MainActivity", "Metronome sounds loading attempted. Proceeding to test metronome.")
@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
                     }
                     Log.i("MainActivity", "--- Audio Recording Test Finished ---")
 
-                    android.util.Log.i("MainActivity", "Proceeding to test general sample loading (test.wav).")
+                    Log.i("MainActivity", "Proceeding to test general sample loading (test.wav).")
                     val sampleId = "testSampleWav"
                     val generalAssetName = "test.wav"
 
@@ -175,42 +175,42 @@ class MainActivity : ComponentActivity() {
                     val cachedFilePathGeneral = copyAssetToCache(applicationContext, generalAssetName, "cached_test.wav")
                     if (cachedFilePathGeneral != null) {
                         val fileUriString = "file://$cachedFilePathGeneral"
-                        android.util.Log.i("MainActivity", "Testing loadSampleToMemory with URI: $fileUriString for $sampleId")
+                        Log.i("MainActivity", "Testing loadSampleToMemory with URI: $fileUriString for $sampleId")
                         val loadSuccess = audioEngine.loadSampleToMemory(applicationContext, sampleId, fileUriString)
-                        android.util.Log.i("MainActivity", "loadSampleToMemory($sampleId) result: $loadSuccess")
+                        Log.i("MainActivity", "loadSampleToMemory($sampleId) result: $loadSuccess")
                         // ... (rest of this test block as it was)
                          if (loadSuccess) {
                             val isLoaded = audioEngine.isSampleLoaded(sampleId)
-                            android.util.Log.i("MainActivity", "isSampleLoaded($sampleId) after load: $isLoaded")
+                            Log.i("MainActivity", "isSampleLoaded($sampleId) after load: $isLoaded")
                             if (isLoaded) {
-                                android.util.Log.i("MainActivity", "Attempting to play sample $sampleId (instance_1)...")
+                                Log.i("MainActivity", "Attempting to play sample $sampleId (instance_1)...")
                                 val play1Success = audioEngine.playSample(sampleId = sampleId, noteInstanceId = "instance_1", volume = 0.8f, pan = 0.0f)
-                                android.util.Log.i("MainActivity", "playSample($sampleId, instance_1) result: $play1Success")
+                                Log.i("MainActivity", "playSample($sampleId, instance_1) result: $play1Success")
                                 delay(500)
-                                android.util.Log.i("MainActivity", "Attempting to play sample $sampleId (instance_2) panned left...")
+                                Log.i("MainActivity", "Attempting to play sample $sampleId (instance_2) panned left...")
                                 val play2Success = audioEngine.playSample(sampleId = sampleId, noteInstanceId = "instance_2", volume = 0.7f, pan = -0.8f)
-                                android.util.Log.i("MainActivity", "playSample($sampleId, instance_2) result: $play2Success")
+                                Log.i("MainActivity", "playSample($sampleId, instance_2) result: $play2Success")
                                 delay(500)
-                                android.util.Log.i("MainActivity", "Attempting to play sample $sampleId (instance_3) panned right...")
+                                Log.i("MainActivity", "Attempting to play sample $sampleId (instance_3) panned right...")
                                 val play3Success = audioEngine.playSample(sampleId = sampleId, noteInstanceId = "instance_3", volume = 0.7f, pan = 0.8f)
-                                android.util.Log.i("MainActivity", "playSample($sampleId, instance_3) result: $play3Success")
-                            } else { android.util.Log.e("MainActivity", "Sample $sampleId was reported as not loaded after load attempt. Cannot play.") }
+                                Log.i("MainActivity", "playSample($sampleId, instance_3) result: $play3Success")
+                            } else { Log.e("MainActivity", "Sample $sampleId was reported as not loaded after load attempt. Cannot play.") }
                             delay(2000)
                             audioEngine.unloadSample(sampleId)
-                            android.util.Log.i("MainActivity", "unloadSample($sampleId) called.")
+                            Log.i("MainActivity", "unloadSample($sampleId) called.")
                             val isLoadedAfterUnload = audioEngine.isSampleLoaded(sampleId)
-                            android.util.Log.i("MainActivity", "isSampleLoaded($sampleId) after unload: $isLoadedAfterUnload")
-                        } else { android.util.Log.e("MainActivity", "Failed to load sample $sampleId. Cannot test playback.") }
+                            Log.i("MainActivity", "isSampleLoaded($sampleId) after unload: $isLoadedAfterUnload")
+                        } else { Log.e("MainActivity", "Failed to load sample $sampleId. Cannot test playback.") }
                     } else {
                         // Log specific to generalAssetName
-                        android.util.Log.e("MainActivity", "Failed to copy asset $generalAssetName to cache. Cannot test sample loading.")
+                        Log.e("MainActivity", "Failed to copy asset $generalAssetName to cache. Cannot test sample loading.")
                     }
 
                 } else {
-                    android.util.Log.e("MainActivity", "AudioEngine initialization failed.")
+                    Log.e("MainActivity", "AudioEngine initialization failed.")
                 }
             } catch (e: Exception) {
-                android.util.Log.e("MainActivity", "Exception during AudioEngine initialization or tests: ${e.message}", e)
+                Log.e("MainActivity", "Exception during AudioEngine initialization or tests: ${e.message}", e)
             }
         }
 
@@ -228,11 +228,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        android.util.Log.i("MainActivity", "onDestroy called, preparing to shutdown AudioEngine.")
+        Log.i("MainActivity", "onDestroy called, preparing to shutdown AudioEngine.")
         if (::audioEngine.isInitialized) {
              CoroutineScope(Dispatchers.IO).launch {
                 audioEngine.shutdown()
-                android.util.Log.i("MainActivity", "AudioEngine shutdown complete. IsInitialized: ${audioEngine.isInitialized()}")
+                Log.i("MainActivity", "AudioEngine shutdown complete. IsInitialized: ${audioEngine.isInitialized()}")
             }
         }
     }
