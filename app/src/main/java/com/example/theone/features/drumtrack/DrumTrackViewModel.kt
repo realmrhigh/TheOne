@@ -3,7 +3,6 @@ package com.example.theone.features.drumtrack
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.theone.features.drumtrack.model.DrumTrack
-import com.example.theone.features.drumtrack.model.PadSettings
 // Ensure SampleMetadata is the one from drumtrack.model if it's different from the common one.
 // However, ProjectManager will likely return ::model::SampleMetadata. For now, keep as is.
 import com.example.theone.features.drumtrack.model.SampleMetadata
@@ -37,7 +36,7 @@ class DrumTrackViewModel(
     private val projectManager: ProjectManager // Use main interface
 ) : ViewModel() {
 
-    private val _drumTrack = MutableStateFlow<DrumTrack>(createDefaultDrumTrack())
+    private val _drumTrack = MutableStateFlow(createDefaultDrumTrack())
     val drumTrack: StateFlow<DrumTrack> = _drumTrack.asStateFlow()
 
     // To communicate messages like "sample assigned" or "playback failed" to the UI
@@ -69,17 +68,14 @@ class DrumTrackViewModel(
 
             _userMessage.value = "Playing Pad $padId (Sample: ${padSetting.sampleName ?: padSetting.sampleId})"
 
-            // Mapping drumtrack.model.PlaybackMode to sampler.PlaybackMode
-            // This is needed because they are currently separate enum definitions.
-            // Ideally, there would be one shared PlaybackMode enum.
-            // The variable samplerPlaybackMode is declared twice. Remove one.
-            val mappedSamplerPlaybackMode = when (padSetting.playbackMode) {
-                // padSetting.playbackMode should now be com.example.theone.model.PlaybackMode due to changes in DrumTrackModels.kt
+            // --- THIS IS THE CORRECTED BLOCK ---
+            // It maps the PlaybackMode from the drum track's model to the one
+            // expected by the audio engine, and it is now "exhaustive".
+            val samplerPlaybackMode = when (padSetting.playbackMode) {
                 PlaybackMode.ONE_SHOT -> PlaybackMode.ONE_SHOT
                 PlaybackMode.NOTE_ON_OFF -> PlaybackMode.NOTE_ON_OFF
-                // Add an 'else' branch to make it exhaustive
-                else -> PlaybackMode.ONE_SHOT // Ensure this default is appropriate
             }
+            // --- END OF CORRECTION ---
 
             // Using SamplerViewModel.EnvelopeSettings as expected by the AudioEngineControl interface for playPadSample
             val defaultAmpEnv = EnvelopeSettings( // Use the new shared EnvelopeSettings
@@ -123,7 +119,7 @@ class DrumTrackViewModel(
 
     // --- Sample Assignment ---
 
-    fun assignSampleToPad(padId: String, sample: SampleMetadata) {
+    fun assignSampleToPad(padId: String, sample: com.example.theone.model.SampleMetadata) {
         _drumTrack.update { currentTrack ->
             val newPads = currentTrack.pads.map { pad ->
                 if (pad.id == padId) {

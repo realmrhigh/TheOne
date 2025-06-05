@@ -1,6 +1,5 @@
 package com.example.theone.features.drumtrack
 
-import com.example.theone.features.drumtrack.model.PadSettings
 import com.example.theone.features.drumtrack.model.SampleMetadata
 import com.example.theone.features.sampler.AudioEngineControl // Using the one from sampler package
 import com.example.theone.features.sampler.ProjectManager     // Using the one from sampler package

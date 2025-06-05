@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.theone.features.drumtrack.model.PadSettings
-import com.example.theone.features.drumtrack.model.SampleMetadata
 // Assuming DrumTrackViewModel and related models are in this package or accessible
 
 // These are needed for the Preview stubs.
@@ -148,7 +147,7 @@ fun PadView(
 @Composable
 fun AssignSampleDialog(
     pad: PadSettings,
-    availableSamples: List<SampleMetadata>,
+    availableSamples: List<com.example.theone.features.drumtrack.model.SampleMetadata>,
     onDismiss: () -> Unit,
     onAssignSample: (PadSettings, SampleMetadata) -> Unit,
     onClearSample: (PadSettings) -> Unit
@@ -198,6 +197,10 @@ fun AssignSampleDialog(
     )
 }
 
+fun onAssignSample(pad: PadSettings, sample: SampleMetadata) {
+
+}
+
 
 // --- Preview ---
 // Dummy AudioEngineControl for preview implementing the main ::audio::AudioEngineControl
@@ -216,7 +219,7 @@ private class PreviewAudioEngineControl(private val context: Context) : AudioEng
     override fun isSampleLoaded(sampleId: String): Boolean = true
 
     override suspend fun startAudioRecording(context: Context, filePathUri: String, sampleRate: Int, channels: Int, inputDeviceId: String?): Boolean { println("Preview: start rec $filePathUri"); return true }
-    override suspend fun stopAudioRecording(): com.example.theone.model.SampleMetadata? { println("Preview: stop rec"); return null } // Use the common model type
+    override suspend fun stopAudioRecording(): com.example.theone.audio.SampleMetadata? { println("Preview: stop rec"); return null } // Use the common model type
     override fun isRecordingActive(): Boolean = false
     override fun getRecordingLevelPeak(): Float = 0.0f
 

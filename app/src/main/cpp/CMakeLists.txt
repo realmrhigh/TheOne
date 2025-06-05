@@ -29,6 +29,7 @@ find_library( # Defines the name of the NDK library that
 
 target_link_libraries( # Specifies the target library.
         theone
+        PUBLIC
 
         # Links the target library to the log library
         # included in the NDK.
@@ -36,6 +37,6 @@ target_link_libraries( # Specifies the target library.
 
         # Links to Oboe. This should now work because
         # FetchContent_MakeAvailable makes Oboe's targets available.
-        PUBLIC oboe ) #
+        oboe ) #
 
 

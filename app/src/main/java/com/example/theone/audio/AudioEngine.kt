@@ -1,13 +1,14 @@
 package com.example.theone.audio
 
 import android.content.Context
-import android.net.Uri
+//import android.net.Uri
 // import android.os.ParcelFileDescriptor // Not directly used, but ContentResolver.openFileDescriptor returns it
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.UUID    // For generating unique IDs
+import androidx.core.net.toUri
 
 class AudioEngine : AudioEngineControl {
 
@@ -15,7 +16,7 @@ class AudioEngine : AudioEngineControl {
 
     // JNI declarations (Oboe)
     private external fun native_initOboe(): Boolean
-    private external fun native_shutdownOboe(): Unit
+    private external fun native_shutdownOboe()
     private external fun native_isOboeInitialized(): Boolean
     private external fun native_getOboeReportedLatencyMillis(): Float
     external fun native_stringFromJNI(): String
@@ -23,7 +24,7 @@ class AudioEngine : AudioEngineControl {
     // JNI declarations for sample loading
     private external fun native_loadSampleToMemory(sampleId: String, fd: Int, offset: Long, length: Long): Boolean
     private external fun native_isSampleLoaded(sampleId: String): Boolean
-    private external fun native_unloadSample(sampleId: String): Unit
+    private external fun native_unloadSample(sampleId: String)
 
     // JNI declaration for sample playback
     private external fun native_playPadSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean
@@ -36,8 +37,9 @@ class AudioEngine : AudioEngineControl {
         timeSignatureDen: Int,
         primarySoundSampleId: String,
         secondarySoundSampleId: String?
-    ): Unit
-    private external fun native_setMetronomeVolume(volume: Float): Unit
+    )
+
+    private external fun native_setMetronomeVolume(volume: Float)
 
     // JNI declarations for recording
     private external fun native_startAudioRecording(fd: Int, storagePathForMetadata: String, sampleRate: Int, channels: Int): Boolean
@@ -73,7 +75,7 @@ class AudioEngine : AudioEngineControl {
 
         return withContext(Dispatchers.IO) {
             try {
-                val uri = Uri.parse(filePathUri)
+                val uri = filePathUri.toUri()
                 val contentResolver = context.contentResolver
                 contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
                     val fd = pfd.fd
@@ -157,6 +159,20 @@ class AudioEngine : AudioEngineControl {
       return true
   }
 
+    override suspend fun playSampleSlice(
+        sampleId: String,
+        noteInstanceId: String,
+        volume: Float,
+        pan: Float,
+        trimStartMs: Long,
+        trimEndMs: Long,
+        loopStartMs: Long?,
+        loopEndMs: Long?,
+        isLooping: Boolean
+    ): Boolean {
+        TODO("Not yet implemented")
+    }
+
     override suspend fun setMetronomeState(
         isEnabled: Boolean,
         bpm: Float,
@@ -201,7 +217,7 @@ class AudioEngine : AudioEngineControl {
 
         return withContext(Dispatchers.IO) {
             try {
-                val uri = Uri.parse(filePathUri)
+                val uri = filePathUri.toUri()
                 context.contentResolver.openFileDescriptor(uri, "w")?.use { pfd ->
                     val fd = pfd.fd
                     if (fd == -1) {
@@ -242,7 +258,7 @@ class AudioEngine : AudioEngineControl {
                 if (filePath != null && totalFrames != null && recSampleRate > 0 && recChannels > 0) {
                     val durationMs = if (recSampleRate > 0) (totalFrames * 1000) / recSampleRate else 0L
                     val id = UUID.randomUUID().toString()
-                    val name = Uri.parse(filePath).lastPathSegment ?: id
+                    val name = filePath.toUri().lastPathSegment ?: id
 
                     Log.i("AudioEngine", "Recording stopped. Path: $filePath, Frames: $totalFrames, SR: $recSampleRate, Ch: $recChannels, Duration: $durationMs ms")
                     SampleMetadata(

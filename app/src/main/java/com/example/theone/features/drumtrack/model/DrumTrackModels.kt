@@ -53,7 +53,7 @@ data class DrumTrack(
     // Using a List of PadSettings assuming a fixed order (e.g. 16 pads)
     // A Map<String, PadSettings> where key is PadSettings.id is also good.
     // For simplicity in iterating for a UI grid, a List might be easier initially.
-    val pads: List<PadSettings> = List(16) { index -> PadSettings(id = "Pad${index + 1}") }
+    val pads: List<PadSettings> = List(16) { index -> PadSettings(id = "Pad${index + 1}") },
     // Example: pads[0] is Pad1, pads[15] is Pad16
 
     // Other track-specific properties as per README's full Track definition (volume, pan, solo, mute etc.)

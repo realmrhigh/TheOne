@@ -70,16 +70,10 @@ class SampleEditViewModel(
         }
     }
 
-    init {
-         // The currentSample is already validated by the ensureValid function during initialization.
-         // If waveform loading is implemented, it could be triggered here.
-         // e.g., loadWaveformDisplayData(initialSampleMetadata.filePathUri)
-    }
-
     fun updateTrimPoints(startMs: Long, endMs: Long) {
         val current = _currentSample.value
         var newStart = startMs.coerceIn(0L, current.durationMs)
-        var newEnd = endMs.coerceIn(0L, current.durationMs)
+        val newEnd = endMs.coerceIn(0L, current.durationMs)
 
         if (newStart > newEnd) { // Ensure start is not after end
            newStart = newEnd
@@ -131,6 +125,7 @@ class SampleEditViewModel(
         _currentSample.value = ensureValid(current.copy(loopStartMs = newLoopStart, loopEndMs = newLoopEnd))
     }
 
+    // Replace the existing setLoopMode function with this one.
     fun setLoopMode(loopMode: LoopMode) {
         val currentVal = _currentSample.value
         if (loopMode == LoopMode.NONE) {
@@ -140,18 +135,26 @@ class SampleEditViewModel(
                 loopEndMs = null
             ))
         } else { // For FORWARD or other active loop modes
-            // If loop points are not set or invalid, default them to the current trim region
-            if (currentVal.loopStartMs == null || currentVal.loopEndMs == null || currentVal.loopStartMs >= currentVal.loopEndMs ||
-                currentVal.loopStartMs < currentVal.trimStartMs || currentVal.loopEndMs > currentVal.trimEndMs) {
-                 _currentSample.value = ensureValid(currentVal.copy(
+
+            // --- START OF CORRECTION ---
+            // Copy the mutable, nullable properties to local, immutable variables.
+            val loopStart = currentVal.loopStartMs
+            val loopEnd = currentVal.loopEndMs
+
+            // Now perform all checks using the safe, local variables.
+            if (loopStart == null || loopEnd == null || loopStart >= loopEnd ||
+                loopStart < currentVal.trimStartMs || loopEnd > currentVal.trimEndMs) {
+                // If loop points are not set or invalid, default them to the current trim region
+                _currentSample.value = ensureValid(currentVal.copy(
                     loopMode = loopMode,
                     loopStartMs = currentVal.trimStartMs,
                     loopEndMs = currentVal.trimEndMs
                 ))
             } else {
                 // Loop points are valid, just update the mode
-                 _currentSample.value = ensureValid(currentVal.copy(loopMode = loopMode))
+                _currentSample.value = ensureValid(currentVal.copy(loopMode = loopMode))
             }
+            // --- END OF CORRECTION ---
         }
     }
 
@@ -198,9 +201,13 @@ class SampleEditViewModel(
             if (sampleToSave.loopMode == LoopMode.NONE) {
                 sampleToSave = sampleToSave.copy(loopStartMs = null, loopEndMs = null)
             } else {
-                 // If loop mode is active but points are invalid, set them to full trim region
-                if (sampleToSave.loopStartMs == null || sampleToSave.loopEndMs == null || sampleToSave.loopStartMs >= sampleToSave.loopEndMs) {
-                     sampleToSave = sampleToSave.copy(loopStartMs = sampleToSave.trimStartMs, loopEndMs = sampleToSave.trimEndMs)
+                // Copy to local variables first!
+                val loopStart = sampleToSave.loopStartMs
+                val loopEnd = sampleToSave.loopEndMs
+
+                // Now, perform the check on the local, immutable variables.
+                if (loopStart == null || loopEnd == null || loopStart >= loopEnd) {
+                    sampleToSave = sampleToSave.copy(loopStartMs = sampleToSave.trimStartMs, loopEndMs = sampleToSave.trimEndMs)
                 }
             }
 

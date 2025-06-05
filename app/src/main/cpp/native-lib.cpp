@@ -21,7 +21,23 @@
 #ifndef M_PI // Define M_PI if not defined by cmath (common on some compilers)
 #define M_PI (3.14159265358979323846f)
 #endif
+// Define a type for our sample map
+using SampleId = std::string;
+using SampleMap = std::map<SampleId, theone::audio::LoadedSample>;
 
+// Declare a global instance of the sample map
+static SampleMap gSampleMap;
+
+// Placeholder for logging
+const char* APP_NAME = "TheOneNative";
+
+// List for active playing sounds and its mutex
+static std::vector<theone::audio::PlayingSound> gActiveSounds;
+static std::mutex gActiveSoundsMutex; // Mutex to protect gActiveSounds
+
+// Metronome state object and its mutex
+static theone::audio::MetronomeState gMetronomeState;
+static std::mutex gMetronomeStateMutex; // Mutex to protect gMetronomeState
 // Basic Oboe audio callback
 class MyAudioCallback : public oboe::AudioStreamCallback {
 public:
@@ -163,23 +179,7 @@ static MyAudioCallback myCallback;
 static oboe::ManagedStream outStream;
 static bool oboeInitialized = false;
 
-// Define a type for our sample map
-using SampleId = std::string;
-using SampleMap = std::map<SampleId, theone::audio::LoadedSample>;
 
-// Declare a global instance of the sample map
-static SampleMap gSampleMap;
-
-// Placeholder for logging
-const char* APP_NAME = "TheOneNative";
-
-// List for active playing sounds and its mutex
-static std::vector<theone::audio::PlayingSound> gActiveSounds;
-static std::mutex gActiveSoundsMutex; // Mutex to protect gActiveSounds
-
-// Metronome state object and its mutex
-static theone::audio::MetronomeState gMetronomeState;
-static std::mutex gMetronomeStateMutex; // Mutex to protect gMetronomeState
 
 // Recording State Variables
 static oboe::ManagedStream mInputStream; // Oboe Input Stream
