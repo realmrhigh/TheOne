@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel // Required for viewModel()
-
+// Import unified models for the dummy/preview implementations
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.EnvelopeSettings
 // Assuming SamplerViewModel is in the same package
 // Assuming RecordingState is accessible
 
@@ -299,11 +301,11 @@ fun DefaultSamplerScreenPreview() {
         override suspend fun playPadSample(
             noteInstanceId: String, trackId: String, padId: String, sampleId: String,
             sliceId: String?, velocity: Float,
-            playbackMode: PlaybackMode, // This is com.example.theone.features.sampler.PlaybackMode
+            playbackMode: com.example.theone.model.PlaybackMode, // Corrected type
             coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-            ampEnv: SamplerViewModel.EnvelopeSettings, // This is com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
-            filterEnv: SamplerViewModel.EnvelopeSettings?,
-            pitchEnv: SamplerViewModel.EnvelopeSettings?,
+            ampEnv: com.example.theone.model.EnvelopeSettings, // Corrected type
+            filterEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
+            pitchEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
             lfos: List<Any>
         ): Boolean {
             println("Preview: Play $sampleId on $padId ($playbackMode), amp attack: ${ampEnv.attackMs}")

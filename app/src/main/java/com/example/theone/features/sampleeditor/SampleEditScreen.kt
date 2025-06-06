@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.theone.model.LoopMode
 import com.example.theone.model.SampleMetadata
+import com.example.theone.model.PlaybackMode // Added import
+import com.example.theone.model.EnvelopeSettings // Added import
 import java.util.UUID
 
 // Mock AudioEngineControl for preview
@@ -31,11 +33,11 @@ class MockAudioEngineControl : com.example.theone.audio.AudioEngineControl {
     override suspend fun playPadSample(
         noteInstanceId: String, trackId: String, padId: String, sampleId: String,
         sliceId: String?, velocity: Float,
-        playbackMode: com.example.theone.features.sampler.PlaybackMode, // Matches interface
+        playbackMode: com.example.theone.model.PlaybackMode, // Corrected type
         coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        ampEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings, // Matches interface
-        filterEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings?, // Matches interface
-        pitchEnv: com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings?, // Matches interface
+        ampEnv: com.example.theone.model.EnvelopeSettings, // Corrected type
+        filterEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
+        pitchEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
         lfos: List<Any> // Matches interface
     ): Boolean = true
 

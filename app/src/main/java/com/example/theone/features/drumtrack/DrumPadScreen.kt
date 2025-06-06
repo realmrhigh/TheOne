@@ -24,9 +24,9 @@ import com.example.theone.features.drumtrack.model.PadSettings
 // Use the main interfaces from 'audio' and 'domain' packages
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
-// SamplerPlaybackMode and SamplerEnvelopeSettings are specific types expected by the playPadSample method in AudioEngineControl
-import com.example.theone.features.sampler.PlaybackMode as SamplerPlaybackMode
-import com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings as SamplerEnvelopeSettings
+// Import unified models
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.EnvelopeSettings
 import com.example.theone.model.SampleMetadata // Common model for stopAudioRecording
 import android.content.Context // For startAudioRecording in PreviewAudioEngineControl
 // data class LFOSettingsPreviewStub(val id: String = "dummyLfo") // Not using this for List<Any>
@@ -147,9 +147,9 @@ fun PadView(
 @Composable
 fun AssignSampleDialog(
     pad: PadSettings,
-    availableSamples: List<com.example.theone.features.drumtrack.model.SampleMetadata>,
+    availableSamples: List<com.example.theone.model.SampleMetadata>, // Corrected type
     onDismiss: () -> Unit,
-    onAssignSample: (PadSettings, SampleMetadata) -> Unit,
+    onAssignSample: (PadSettings, com.example.theone.model.SampleMetadata) -> Unit, // Corrected type
     onClearSample: (PadSettings) -> Unit
 ) {
     AlertDialog(
@@ -219,7 +219,7 @@ private class PreviewAudioEngineControl(private val context: Context) : AudioEng
     override fun isSampleLoaded(sampleId: String): Boolean = true
 
     override suspend fun startAudioRecording(context: Context, filePathUri: String, sampleRate: Int, channels: Int, inputDeviceId: String?): Boolean { println("Preview: start rec $filePathUri"); return true }
-    override suspend fun stopAudioRecording(): com.example.theone.audio.SampleMetadata? { println("Preview: stop rec"); return null } // Use the common model type
+    override suspend fun stopAudioRecording(): com.example.theone.model.SampleMetadata? { println("Preview: stop rec"); return null } // Corrected return type
     override fun isRecordingActive(): Boolean = false
     override fun getRecordingLevelPeak(): Float = 0.0f
 
@@ -228,11 +228,11 @@ private class PreviewAudioEngineControl(private val context: Context) : AudioEng
     override suspend fun playPadSample(
         noteInstanceId: String, trackId: String, padId: String, sampleId: String,
         sliceId: String?, velocity: Float,
-        playbackMode: SamplerPlaybackMode, // This is com.example.theone.features.sampler.PlaybackMode
+        playbackMode: com.example.theone.model.PlaybackMode, // Corrected type
         coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        ampEnv: SamplerEnvelopeSettings, // This is com.example.theone.features.sampler.SamplerViewModel.EnvelopeSettings
-        filterEnv: SamplerEnvelopeSettings?,
-        pitchEnv: SamplerEnvelopeSettings?,
+        ampEnv: com.example.theone.model.EnvelopeSettings, // Corrected type
+        filterEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
+        pitchEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
         lfos: List<Any> // Interface expects List<Any>
     ): Boolean {
         println("Preview: Play $sampleId on $padId ($playbackMode), amp attack: ${ampEnv.attackMs}")
