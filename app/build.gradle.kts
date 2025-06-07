@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    kotlin("plugin.serialization") version "1.9.0" // Or the latest stable version
 }
 
 android {
@@ -68,6 +69,7 @@ dependencies {
     implementation(libs.androidx.material.icons.core)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0") // Or the latest stable version
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.10.3")
     testImplementation("androidx.test:core:1.5.0") // May be needed by Robolectric
