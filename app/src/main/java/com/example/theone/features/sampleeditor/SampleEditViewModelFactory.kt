@@ -2,19 +2,20 @@ package com.example.theone.features.sampleeditor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.example.theone.audio.AudioEngineControl // C1
-import com.example.theone.domain.ProjectManager     // C3
+import com.example.theone.audio.AudioEngine // Changed from AudioEngineControl
+import com.example.theone.domain.ProjectManager
 import com.example.theone.model.SampleMetadata
 
 class SampleEditViewModelFactory(
-    private val audioEngine: AudioEngineControl,
-    private val projectManager: ProjectManager,
-    private val sampleMetadata: SampleMetadata
+    private val initialSampleMetadata: SampleMetadata, // Name and order changed
+    private val audioEngine: AudioEngine, // Type and order changed
+    private val projectManager: ProjectManager // Order changed
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(SampleEditViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return SampleEditViewModel(audioEngine, projectManager, sampleMetadata) as T
+            // Parameters now match SampleEditViewModel constructor
+            return SampleEditViewModel(initialSampleMetadata, audioEngine, projectManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

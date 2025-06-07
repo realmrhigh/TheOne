@@ -10,6 +10,9 @@ import java.io.IOException
 import java.util.UUID    // For generating unique IDs
 import androidx.core.net.toUri
 import com.example.theone.model.SampleMetadata // Added import
+import com.example.theone.model.AudioInputSource
+import com.example.theone.features.drumtrack.model.PadSettings
+import java.io.File
 
 class AudioEngine : AudioEngineControl {
 
@@ -47,6 +50,7 @@ class AudioEngine : AudioEngineControl {
     // JNI declarations for recording
     private external fun native_startAudioRecording(fd: Int, storagePathForMetadata: String, sampleRate: Int, channels: Int): Boolean
     private external fun native_stopAudioRecording(): Array<Any>? // Returns [String_filePath, Long_totalFrames] or null
+    // This Array<Any>? needs to be processed to create SampleMetadata for the new startAudioRecording
     private external fun native_isRecordingActive(): Boolean
     private external fun native_getRecordingLevelPeak(): Float
 
@@ -353,6 +357,90 @@ class AudioEngine : AudioEngineControl {
             native_getOboeReportedLatencyMillis()
         } else {
             -1.0f
+        }
+    }
+
+    // New methods for SamplerViewModel as per subtask
+
+    fun startAudioRecording(audioInputSource: AudioInputSource, tempFilePath: String): SampleMetadata {
+        // TODO: Implement actual audio recording logic using Android APIs (e.g., MediaRecorder or AudioRecord)
+        // TODO: Handle different audioInputSource types (MICROPHONE, INTERNAL_LOOPBACK, EXTERNAL_USB)
+        // This would involve calling native_startAudioRecording with appropriate parameters (FD from tempFilePath, SR, Ch)
+        // and then processing the result from native_stopAudioRecording.
+        println("AudioEngine: Starting recording from ${audioInputSource} to $tempFilePath")
+
+        // TODO: Implement 2-minute (120,000 ms) recording limit. If reached, stop recording automatically.
+        // For now, simulate a fixed duration, e.g., 2 seconds
+        // In a real scenario, native_startAudioRecording would be called here (perhaps with a context for FD)
+        // and native_stopAudioRecording would be called after duration or by stopCurrentRecording().
+        // The result of native_stopAudioRecording would then be used to create SampleMetadata.
+
+        Thread.sleep(2000) // Simulate recording time
+        println("AudioEngine: Recording finished for $tempFilePath")
+
+        val file = File(tempFilePath)
+        try {
+            file.createNewFile() // Create a dummy file
+            // Simulate writing some data if necessary for other parts to read metadata like duration
+            // For example, write a dummy WAV header if other tools expect it.
+        } catch (e: Exception) {
+            Log.e("AudioEngine", "Error creating dummy file $tempFilePath", e)
+            // Fallback or rethrow, for now just print stack trace via Log.e
+        }
+
+        // TODO: Get actual duration from the recording (e.g. from native_stopAudioRecording's result)
+        val durationMs = 2000L // Simulated duration
+
+        // The SampleMetadata should have trimEndMs set to durationMs by default in its constructor
+        return SampleMetadata(
+            uri = file.toURI().toString(),
+            duration = durationMs,
+            name = file.nameWithoutExtension, // Or null as per original spec
+            trimStartMs = 0,
+            trimEndMs = durationMs // Explicitly set, though constructor should handle it
+        )
+    }
+
+    fun stopCurrentRecording() {
+        // TODO: Implement logic to stop the ongoing recording initiated by startAudioRecording.
+        // This method would signal the recording process to finalize the file.
+        // It should ideally trigger the finalization part of the new startAudioRecording method,
+        // possibly by setting a flag that the recording loop checks, or by directly calling native_stopAudioRecording().
+        println("AudioEngine: stopCurrentRecording called.")
+        // val recordingInfo = native_stopAudioRecording() // This would be called
+        // And the result (filePath, duration) would be used by startAudioRecording's logic or a callback.
+        // For now, this is a stub. The SamplerViewModel expects startAudioRecording to eventually return metadata.
+    }
+
+    fun playSampleSlice(audioUri: String, startMs: Long, endMs: Long) {
+        // TODO: Implement actual audio playback logic for a slice of an audio file
+        // This might involve using the existing native_playSampleSlice.
+        // The existing native_playSampleSlice requires a sampleId. If audioUri is a file path,
+        // it might need to be "loaded" temporarily to get a temporary ID, or native code needs to handle direct URI.
+        // For now, simulate.
+        println("AudioEngine: Playing slice of $audioUri from $startMs ms to $endMs ms")
+        if (startMs < endMs) {
+            try {
+                Thread.sleep(endMs - startMs)
+            } catch (ie: InterruptedException) {
+                Thread.currentThread().interrupt() // Restore interrupt status
+                Log.w("AudioEngine", "Playback simulation interrupted for $audioUri")
+            }
+        }
+        println("AudioEngine: Finished playing slice of $audioUri")
+    }
+
+    fun playPadSample(padSettings: PadSettings) {
+        // TODO: Full implementation in M1.2. This will involve fetching sample by padSettings.sampleId
+        // and applying volume, pan, tuning etc., likely using the more detailed native_playPadSample.
+        println("AudioEngine: playPadSample called for sampleId ${padSettings.sampleId}. Placeholder - full implementation later.")
+        if (padSettings.sampleId != null) {
+            // Simulate playback of a short sound.
+            // Assuming padSettings.sampleId could be a URI or an ID that native layer understands.
+            // If it's a URI and native layer needs ID, it would need to be loaded first.
+            // For placeholder, directly use it in playSampleSlice simulation.
+            Log.d("AudioEngine", "Simulating pad sample playback for ${padSettings.sampleId}")
+            playSampleSlice(padSettings.sampleId!!, 0, 500) // Using the new simpler playSampleSlice for simulation
         }
     }
 

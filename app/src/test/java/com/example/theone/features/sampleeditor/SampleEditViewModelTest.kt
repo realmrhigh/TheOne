@@ -1,8 +1,8 @@
 package com.example.theone.features.sampleeditor
 
-import com.example.theone.audio.AudioEngineControl
+import com.example.theone.audio.AudioEngine
 import com.example.theone.domain.ProjectManager
-import com.example.theone.model.LoopMode
+import com.example.theone.model.AudioInputSource // For FakeAudioEngine consistency
 import com.example.theone.model.SampleMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

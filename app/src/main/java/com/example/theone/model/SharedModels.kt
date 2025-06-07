@@ -13,3 +13,9 @@ data class EnvelopeSettings(
     val sustainLevel: Float,
     val releaseMs: Float
 )
+
+enum class AudioInputSource {
+    MICROPHONE,
+    INTERNAL_LOOPBACK,
+    EXTERNAL_USB
+}
