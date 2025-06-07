@@ -85,8 +85,8 @@ class AudioEngine : AudioEngineControl {
                     val statSize = pfd.statSize
                     Log.d("AudioEngine", "Opened FD: $fd, StatSize: $statSize for URI: $filePathUri")
                     if (fd == -1) {
-                         Log.e("AudioEngine", "Failed to get valid FileDescriptor for URI: $filePathUri (FD is -1)")
-                         return@withContext false
+                        Log.e("AudioEngine", "Failed to get valid FileDescriptor for URI: $filePathUri (FD is -1)")
+                        return@withContext false
                     }
                     native_loadSampleToMemory(sampleId, fd, 0L, statSize)
                 } ?: run {
@@ -136,34 +136,46 @@ class AudioEngine : AudioEngineControl {
             return false
         }
         Log.d("AudioEngine", "playSample called: sampleID='$sampleId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
-        return native_playPadSample(sampleId, noteInstanceId, volume, pan)
+        // Correctly call the more detailed native function with default values.
+        return native_playPadSample(
+            noteInstanceId = noteInstanceId,
+            trackId = "general_playback_track", // Default value
+            padId = "general_playback_pad",     // Default value
+            sampleId = sampleId,
+            sliceId = null,                     // Default value
+            velocity = 1.0f,                    // Default value
+            coarseTune = 0,                     // Default value
+            fineTune = 0,                       // Default value
+            pan = pan,
+            volume = volume
+        )
     }
 
     override suspend fun playPadSample(
-      noteInstanceId: String,
-      trackId: String,
-      padId: String,
-      sampleId: String,
-      sliceId: String?,
-      velocity: Float,
-      playbackMode: com.example.theone.model.PlaybackMode,
-      coarseTune: Int,
-      fineTune: Int,
-      pan: Float,
-      volume: Float,
-      ampEnv: com.example.theone.model.EnvelopeSettings,
-      filterEnv: com.example.theone.model.EnvelopeSettings?,
-      pitchEnv: com.example.theone.model.EnvelopeSettings?,
-      lfos: List<Any>
-  ): Boolean {
-      if (!initialized) {
-          Log.e("AudioEngine", "AudioEngine not initialized. Cannot play pad sample.")
-          return false
-      }
-      Log.d("AudioEngine", "playPadSample called: sampleID='$sampleId', padID='$padId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
-      // Note: playbackMode, ampEnv, filterEnv, pitchEnv, lfos are not used in the native call yet as per new signature
-      return native_playPadSample(noteInstanceId, trackId, padId, sampleId, sliceId, velocity, coarseTune, fineTune, pan, volume)
-  }
+        noteInstanceId: String,
+        trackId: String,
+        padId: String,
+        sampleId: String,
+        sliceId: String?,
+        velocity: Float,
+        playbackMode: com.example.theone.model.PlaybackMode,
+        coarseTune: Int,
+        fineTune: Int,
+        pan: Float,
+        volume: Float,
+        ampEnv: com.example.theone.model.EnvelopeSettings,
+        filterEnv: com.example.theone.model.EnvelopeSettings?,
+        pitchEnv: com.example.theone.model.EnvelopeSettings?,
+        lfos: List<Any>
+    ): Boolean {
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot play pad sample.")
+            return false
+        }
+        Log.d("AudioEngine", "playPadSample called: sampleID='$sampleId', padID='$padId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
+        // Note: playbackMode, ampEnv, filterEnv, pitchEnv, lfos are not used in the native call yet as per new signature
+        return native_playPadSample(noteInstanceId, trackId, padId, sampleId, sliceId, velocity, coarseTune, fineTune, pan, volume)
+    }
 
     override suspend fun playSampleSlice(
         sampleId: String,
@@ -218,7 +230,7 @@ class AudioEngine : AudioEngineControl {
         }
         Log.d("AudioEngine", "setMetronomeState called: enabled=$isEnabled, bpm=$bpm, timeSig=$timeSignatureNum/$timeSignatureDen, primaryID='$primarySoundSampleId', secondaryID='$secondarySoundSampleId'")
         withContext(Dispatchers.IO) {
-             native_setMetronomeState(isEnabled, bpm, timeSignatureNum, timeSignatureDen, primarySoundSampleId, secondarySoundSampleId ?: "")
+            native_setMetronomeState(isEnabled, bpm, timeSignatureNum, timeSignatureDen, primarySoundSampleId, secondarySoundSampleId ?: "")
         }
     }
 
@@ -234,7 +246,7 @@ class AudioEngine : AudioEngineControl {
     }
 
     override suspend fun startAudioRecording(
-        context: Context,
+        context: Context, // Added context here for Uri handling
         filePathUri: String,
         sampleRate: Int,
         channels: Int,

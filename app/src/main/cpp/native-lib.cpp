@@ -11,8 +11,10 @@
 
 // Define this in exactly one .c or .cpp file
 #define DR_WAV_IMPLEMENTATION
-#include "dr_wav.h" // Include the dr_wav header
+// In a .h or .cpp file
+#define APP_NAME "TheOne"
 
+#include "dr_wav.h" // Include the dr_wav header
 #include <vector>   // For std::vector
 #include <mutex>    // For std::mutex
 #include <cmath>    // For cosf, sinf for panning
@@ -80,7 +82,7 @@ using SampleMap = std::map<SampleId, theone::audio::LoadedSample>;
 static SampleMap gSampleMap;
 
 // Placeholder for logging
-const char* APP_NAME = "TheOneNative";
+//const char* APP_NAME = "TheOneNative";
 
 // List for active playing sounds and its mutex
 static std::vector<theone::audio::PlayingSound> gActiveSounds;
