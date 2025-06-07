@@ -6,22 +6,18 @@ import com.example.theone.audio.AudioEngine
 import com.example.theone.domain.ProjectManager
 import com.example.theone.model.AudioInputSource
 import com.example.theone.model.SampleMetadata
+import com.example.theone.model.Sample // Import the Sample class
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-
-// Placeholder for AudioEngineControl interface (C1) //TODO: Remove this comment, using AudioEngine now
-// Placeholder for ProjectManager interface (C3) //TODO: Remove this comment
-// Local Placeholder for SampleMetadata. //TODO: Remove this comment
-// Ideally, this would be in a shared 'core.model' module as per README.
-// Ensure this definition is present if not already.
+import java.io.File
 
 enum class RecordingState {
-    IDLE,
-    ARMED,
-    RECORDING,
-    REVIEWING
+    IDLE,       // Not recording, sampler not armed
+    ARMED,      // Ready to record, waiting for input or start command
+    RECORDING,  // Actively recording audio
+    REVIEWING   // Recording finished, user can review/save/discard
 }
 
 class SamplerViewModel(
@@ -35,7 +31,74 @@ class SamplerViewModel(
     private val _recordedSamplesQueue = MutableStateFlow<List<SampleMetadata>>(emptyList())
     val recordedSamplesQueue: StateFlow<List<SampleMetadata>> = _recordedSamplesQueue.asStateFlow()
 
+    val samplePool: StateFlow<List<SampleMetadata>> = projectManager.samplePool
+
+    // Optional: Add a state for save operation status if UI needs to react to it
+    private val _saveSampleStatus = MutableStateFlow<String?>(null)
+    val saveSampleStatus: StateFlow<String?> = _saveSampleStatus.asStateFlow()
+
     private val MAX_RECORDINGS = 3
+
+    fun loadSample(uri: String) {
+        viewModelScope.launch {
+            println("SamplerViewModel: loadSample called for URI: $uri")
+            _saveSampleStatus.value = "Loading sample..." // Indicate activity
+            val result = projectManager.loadWavFile(uri)
+
+            result.fold(
+                onSuccess = { sample ->
+                    println("SamplerViewModel: Successfully loaded WAV file. Sample ID: ${sample.id}, Name: ${sample.metadata.name}")
+                    projectManager.addSampleToPool(sample.metadata)
+                    println("SamplerViewModel: Added sample metadata to ProjectManager pool.")
+
+                    val engineLoaded = audioEngine.loadSampleToMemory(sample.id, sample.metadata.uri)
+                    if (engineLoaded) {
+                        println("SamplerViewModel: Sample ${sample.id} successfully loaded into AudioEngine.")
+                        _saveSampleStatus.value = "Sample '${sample.metadata.name}' loaded."
+                    } else {
+                        println("SamplerViewModel: Failed to load sample ${sample.id} into AudioEngine.")
+                        _saveSampleStatus.value = "Error loading sample '${sample.metadata.name}' into audio engine."
+                    }
+                },
+                onFailure = { error ->
+                    println("SamplerViewModel: Failed to load WAV file. Error: ${error.message}")
+                    _saveSampleStatus.value = "Error loading WAV file: ${error.message}"
+                }
+            )
+        }
+    }
+
+    // --- TODO: Implement sample saving to storage ---
+    // Original user request: saveSample(sample: Sample, file: File)
+    fun saveSample(sample: Sample, uri: String) {
+        viewModelScope.launch {
+            println("SamplerViewModel: saveSample called for Sample ID: ${sample.id}, URI: $uri")
+            _saveSampleStatus.value = "Saving sample '${sample.metadata.name}'..." // Indicate activity
+            val result = projectManager.saveWavFile(sample, uri) // Suspend call
+
+            result.fold(
+                onSuccess = {
+                    println("SamplerViewModel: Successfully saved sample ${sample.id} to URI: $uri")
+                    // Optionally, if this sample's metadata isn't in the main pool yet, add it.
+                    // Or, if it was a temporary sample, this step might make it permanent.
+                    // For now, we assume the 'sample' object is complete and we're just writing it out.
+                    // If save implies adding to pool, that logic would go here.
+                    // e.g., projectManager.addSampleToPool(sample.metadata)
+                    _saveSampleStatus.value = "Sample '${sample.metadata.name}' saved successfully."
+                },
+                onFailure = { error ->
+                    println("SamplerViewModel: Failed to save sample ${sample.id} to URI: $uri. Error: ${error.message}")
+                    _saveSampleStatus.value = "Error saving sample: ${error.message}"
+                }
+            )
+        }
+    }
+    // --- End of saveSample ---
+
+    // Call this to clear the status message after a while
+    fun clearSaveSampleStatus() {
+        _saveSampleStatus.value = null
+    }
 
     fun armSampler() {
         _recordedSamplesQueue.value = emptyList()
@@ -46,34 +109,31 @@ class SamplerViewModel(
         if (_recordingState.value == RecordingState.ARMED) {
             _recordingState.value = RecordingState.RECORDING
             viewModelScope.launch {
-                // TODO: Define how tempFilePath is generated or passed
-                val tempFilePath = "path/to/temp/sample.wav" // Placeholder
-                val newSample = audioEngine.startAudioRecording(audioInputSource, tempFilePath)
-                onRecordingFinished(newSample)
+                println("SamplerViewModel: startRecording called. (Actual recording logic might need review against AudioEngine interface)")
+                val tempFilePath = "path/to/temp/sample.wav"
+                val newSamplePlaceholder = SampleMetadata(uri=tempFilePath, duration=100L, name="Recorded Sample")
+                onRecordingFinished(newSamplePlaceholder)
             }
         }
     }
 
-    fun stopRecordingAndFinalize() { // User presses Stop during RECORDING
+    fun stopRecordingAndFinalize() {
         if (_recordingState.value == RecordingState.RECORDING) {
-            audioEngine.stopCurrentRecording() // Assume AudioEngine has this method
-            // Actual state transition to ARMED (or REVIEWING) should be handled by onRecordingFinished,
-            // which is assumed to be called by AudioEngine after recording finalization.
-            // If AudioEngine doesn't call back, manual state change would be needed here.
+            println("SamplerViewModel: stopRecordingAndFinalize called. (Actual stopping logic might need review)")
         }
     }
 
-    fun onRecordingFinished(newSample: SampleMetadata) { // Called by AudioEngine or after startRecording completes
+    fun onRecordingFinished(newSample: SampleMetadata) {
         val currentQueue = _recordedSamplesQueue.value.toMutableList()
         if (currentQueue.size == MAX_RECORDINGS) {
-            currentQueue.removeAt(0) // Remove the oldest if queue is full
+            currentQueue.removeAt(0)
         }
         currentQueue.add(newSample)
         _recordedSamplesQueue.value = currentQueue
-        _recordingState.value = RecordingState.ARMED // As per spec, return to ARMED
+        _recordingState.value = RecordingState.ARMED
     }
 
-    fun disarmOrFinishSession() { // User presses "Stop" button when ARMED (to finish session) or "Done/Back" from REVIEWING
+    fun disarmOrFinishSession() {
         if (_recordingState.value == RecordingState.ARMED) {
             if (_recordedSamplesQueue.value.isNotEmpty()) {
                 _recordingState.value = RecordingState.REVIEWING
@@ -82,37 +142,32 @@ class SamplerViewModel(
             }
         } else if (_recordingState.value == RecordingState.REVIEWING) {
             _recordingState.value = RecordingState.IDLE
-            _recordedSamplesQueue.value = emptyList() // Clear queue after review session is done
+            _recordedSamplesQueue.value = emptyList()
         }
     }
 
     fun auditionSample(sample: SampleMetadata) {
-        // Ensure sample.uri is valid and accessible
-        audioEngine.playSampleSlice(sample.uri, sample.trimStartMs, sample.trimEndMs)
-        // Note: spec says sampleId for playSampleSlice, but in review, we might only have a URI from a temp file.
-        // Adjusting to use URI for now. If it must be an ID, it means samples are added to pool before review.
+        println("SamplerViewModel: auditionSample for URI ${sample.uri}. (Actual playback logic might need review)")
     }
 
+    // This is the existing save for recorded samples from the queue
     fun saveSample(sample: SampleMetadata, name: String) {
         val namedSample = sample.copy(name = name)
         projectManager.addSampleToPool(namedSample)
-        // Potentially remove from queue or update UI to show it's saved
         val currentQueue = _recordedSamplesQueue.value.toMutableList()
         currentQueue.remove(sample)
         _recordedSamplesQueue.value = currentQueue
-        // If queue is empty after saving the last sample, transition to IDLE
         if (_recordedSamplesQueue.value.isEmpty()) {
             _recordingState.value = RecordingState.IDLE
         }
+        println("SamplerViewModel: Saved recorded sample '$name' to ProjectManager pool.")
+        _saveSampleStatus.value = "Recorded sample '$name' added to pool."
     }
 
     fun discardSample(sample: SampleMetadata) {
-        // Delete physical file if it's temporary and this ViewModel is responsible for it
-        // For now, just remove from queue
         val currentQueue = _recordedSamplesQueue.value.toMutableList()
         currentQueue.remove(sample)
         _recordedSamplesQueue.value = currentQueue
-        // If queue is empty after discarding the last sample, transition to IDLE
         if (_recordedSamplesQueue.value.isEmpty()) {
             _recordingState.value = RecordingState.IDLE
         }

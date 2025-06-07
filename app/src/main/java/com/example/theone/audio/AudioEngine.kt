@@ -13,8 +13,9 @@ import com.example.theone.model.SampleMetadata // Added import
 import com.example.theone.model.AudioInputSource
 import com.example.theone.features.drumtrack.model.PadSettings
 import java.io.File
+import android.content.Context // Ensure Context is imported
 
-class AudioEngine : AudioEngineControl {
+class AudioEngine(private val context: Context) : AudioEngineControl {
 
     private var initialized = false
 
@@ -120,8 +121,9 @@ class AudioEngine : AudioEngineControl {
     }
 
     override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean {
-        Log.e("AudioEngine", "loadSampleToMemory from interface called for ID: $sampleId. This version of the method needs application Context to be available to AudioEngine instance. Please ensure AudioEngine is initialized with Context or use the overloaded version that accepts Context directly.")
-        return false
+        // Now uses the stored context
+        Log.d("AudioEngine", "loadSampleToMemory (interface version) called for ID: $sampleId, URI: $filePathUri")
+        return loadSampleToMemory(context, sampleId, filePathUri)
     }
 
     override suspend fun unloadSample(sampleId: String) {

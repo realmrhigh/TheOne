@@ -47,6 +47,12 @@ android {
     }
 
     ndkVersion = "25.1.8937393"
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true // Might be needed for Robolectric
+        }
+    }
 }
 
 dependencies {
@@ -63,6 +69,8 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.10.3")
+    testImplementation("androidx.test:core:1.5.0") // May be needed by Robolectric
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

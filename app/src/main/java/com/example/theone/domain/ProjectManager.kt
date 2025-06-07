@@ -1,24 +1,32 @@
 package com.example.theone.domain
 
 import com.example.theone.model.SampleMetadata // Import the unified SampleMetadata
+import com.example.theone.model.Sample // Import the new Sample class
+import java.io.File // For the user's original request context, though URIs are better
+import kotlinx.coroutines.flow.StateFlow // Keep this if getSamplesFromPool uses it
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.UUID // For generating IDs if needed for interface methods
+import java.util.UUID
+import kotlin.Result // Ensure this is Kotlin's Result
+
+// Define a placeholder Error class for the Result type
+// Using 'Error' directly from Kotlin stdlib for simplicity, though a custom sealed class is more robust for domain errors.
+// data class ProjectManagerError(override val message: String, override val cause: Throwable? = null) : Error(message, cause)
+// For the subtask, Error is fine. In a real app, a more specific error type (e.g. sealed class) would be better.
 
 interface ProjectManager {
     // Original interface methods - will be implemented minimally
     suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata?
-    suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean // To save changes from M1.3
-    suspend fun getSampleById(sampleId: String): SampleMetadata?     // To load a sample for editing
+    suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean
+    suspend fun getSampleById(sampleId: String): SampleMetadata?
 
     // New methods from the plan (non-suspend, slightly different signatures/purpose for M1 ViewModels)
-    fun addSampleToPool(sampleMetadata: SampleMetadata) // New, from plan
-    fun getSamplesFromPool(): List<SampleMetadata>      // New, from plan
-    // updateSampleMetadata is tricky: plan has (SampleMetadata) -> Unit, interface has (SampleMetadata) -> Boolean (suspend)
-    // For now, the planned one will be implemented as a separate public method in Impl
-    // and the interface one will be implemented to call the new one or act as a wrapper.
-    // Let's refine this: the planned updateSampleMetadata will be the primary one in Impl.
+    fun addSampleToPool(sampleMetadata: SampleMetadata) // From previous work
+    fun getSamplesFromPool(): List<SampleMetadata>      // From previous work
+
+    // --- New methods for WAV I/O ---
+    suspend fun loadWavFile(fileUri: String): Result<Sample, Error> // Using Kotlin's Result
+    suspend fun saveWavFile(sample: Sample, fileUri: String): Result<Unit, Error> // Using Kotlin's Result
 }
 
 class ProjectManagerImpl : ProjectManager {
@@ -26,7 +34,8 @@ class ProjectManagerImpl : ProjectManager {
     private val _samplePool = MutableStateFlow<List<SampleMetadata>>(emptyList())
     val samplePool: StateFlow<List<SampleMetadata>> = _samplePool.asStateFlow()
 
-    // Implementation of new methods from the plan
+    // ... (existing addSampleToPool, getSamplesFromPool, updateSampleMetadataNonSuspend, etc.)
+
     override fun addSampleToPool(sampleMetadata: SampleMetadata) {
         val currentPool = _samplePool.value.toMutableList()
         val existingSampleIndex = currentPool.indexOfFirst { it.uri == sampleMetadata.uri }
@@ -47,10 +56,8 @@ class ProjectManagerImpl : ProjectManager {
         return _samplePool.value
     }
 
-    // This is the primary implementation for the M1.3 SampleEditViewModel
     fun updateSampleMetadataNonSuspend(updatedSampleMetadata: SampleMetadata) {
         val currentPool = _samplePool.value.toMutableList()
-        // Assuming URI is the key for now. If SampleMetadata gets a unique ID, use that.
         val index = currentPool.indexOfFirst { it.uri == updatedSampleMetadata.uri }
         if (index != -1) {
             currentPool[index] = updatedSampleMetadata
@@ -58,40 +65,83 @@ class ProjectManagerImpl : ProjectManager {
             println("ProjectManager: Updated metadata for sample '${updatedSampleMetadata.name ?: updatedSampleMetadata.uri}'")
         } else {
             println("ProjectManager: Could not update metadata. Sample with URI '${updatedSampleMetadata.uri}' not found.")
-            // Optionally add if not found, but spec implies update only.
         }
         // TODO: Persist changes to project file (C3 core responsibility)
     }
 
-    // Minimal implementations for original interface methods
     override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
-        // This interface method is more detailed (copyToProjectDir etc.)
-        // For M1, we can make it call the simpler addSampleToPool or simulate.
         println("ProjectManager: Interface addSampleToPool(name,uri,copy) called. Simulating add.")
-        // Create a SampleMetadata to add via the other method.
-        // The `id` field was in an older version of SampleMetadata, the current one from M1.1 has uri, duration, name, trims
-        // The SampleMetadata in M1.1 plan does not have a settable `id` field. URI is the main identifier.
-        // The name in SampleMetadata is nullable.
-        val newSample = SampleMetadata(
-            uri = sourceFileUri, // Using sourceFileUri as URI
-            duration = 0L, // Dummy duration, should be determined from file
+        val newSampleMeta = SampleMetadata(
+            uri = sourceFileUri,
+            duration = 0L,
             name = name
-            // trimStartMs and trimEndMs will use defaults
         )
-        addSampleToPool(newSample) // Call the other addSampleToPool
-        return newSample // Or null if simulation fails
+        addSampleToPool(newSampleMeta)
+        return newSampleMeta
     }
 
     override suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean {
         println("ProjectManager: Interface updateSampleMetadata(sample) called.")
-        updateSampleMetadataNonSuspend(sample) // Call the non-suspend version
-        return true // Simulate success
+        updateSampleMetadataNonSuspend(sample)
+        return true
     }
 
     override suspend fun getSampleById(sampleId: String): SampleMetadata? {
-        // Assuming sampleId might be a URI in the context of M1.
-        // If SampleMetadata had a dedicated ID field, this would search by that.
         println("ProjectManager: Interface getSampleById called for ID: $sampleId")
-        return _samplePool.value.firstOrNull { it.uri == sampleId || it.name == sampleId } // Simple search by URI or name
+        return _samplePool.value.firstOrNull { it.uri == sampleId || it.name == sampleId }
+    }
+
+    // --- Placeholder Implementations for WAV I/O ---
+    override suspend fun loadWavFile(fileUri: String): Result<Sample, Error> {
+        println("ProjectManagerImpl: loadWavFile called for URI: $fileUri")
+        // TODO: Implement actual WAV file reading and parsing here.
+        // This involves:
+        // 1. Opening the file stream from fileUri (handle Content URIs and File URIs).
+        // 2. Reading WAV header (format, sample rate, channels, bit depth).
+        // 3. Reading audio data.
+        // 4. Converting audio data to FloatArray normalized to [-1.0, 1.0].
+        // 5. Populating SampleMetadata and creating a Sample object.
+
+        // Placeholder implementation:
+        val placeholderMetadata = SampleMetadata(
+            uri = fileUri,
+            duration = 1000L, // Dummy duration 1 sec
+            name = "Loaded Sample: " + fileUri.substringAfterLast('/'),
+            sampleRate = 44100,
+            channels = 1,
+            bitDepth = 16
+        )
+        val placeholderAudioData = FloatArray(44100) { 0.0f } // 1 sec of silence
+        val placeholderSample = Sample(
+            metadata = placeholderMetadata,
+            audioData = placeholderAudioData
+        )
+        // Simulate success
+        // return Result.success(placeholderSample)
+        // Simulate failure:
+        // return Result.failure(Error("Failed to load WAV: Not implemented"))
+
+        // For now, return success with placeholder data for testing ViewModel
+        return Result.success(placeholderSample)
+    }
+
+    override suspend fun saveWavFile(sample: Sample, fileUri: String): Result<Unit, Error> {
+        println("ProjectManagerImpl: saveWavFile called for sample '${sample.metadata.name}' to URI: $fileUri")
+        // TODO: Implement actual WAV file writing here.
+        // This involves:
+        // 1. Creating/opening the output file stream from fileUri.
+        // 2. Writing WAV header based on sample.metadata (sampleRate, channels, bitDepth).
+        // 3. Converting sample.audioData (FloatArray) back to PCM format (e.g., 16-bit ShortArray or ByteArray).
+        // 4. Writing audio data to the file.
+
+        // Placeholder implementation:
+        println("  Sample ID: ${sample.id}")
+        println("  Sample Rate: ${sample.metadata.sampleRate}, Channels: ${sample.metadata.channels}, BitDepth: ${sample.metadata.bitDepth}")
+        println("  Audio Data Length: ${sample.audioData.size}")
+
+        // Simulate success
+        return Result.success(Unit)
+        // Simulate failure:
+        // return Result.failure(Error("Failed to save WAV: Not implemented"))
     }
 }
