@@ -1,12 +1,13 @@
 package com.example.theone.features.drumtrack
 
-import com.example.theone.features.drumtrack.model.SampleMetadata
-import com.example.theone.features.sampler.AudioEngineControl // Using the one from sampler package
-import com.example.theone.features.sampler.ProjectManager     // Using the one from sampler package
-import com.example.theone.features.sampler.SamplerViewModel // For SamplerViewModel.EnvelopeSettings
-import io.mockk.*
+import com.example.theone.audio.AudioEngine
+import com.example.theone.domain.ProjectManager
+import com.example.theone.model.* // Import all from model for Layer, Envelopes etc.
+import com.example.theone.features.drumtrack.model.PadSettings
+import com.example.theone.features.drumtrack.model.PlaybackMode // Specific import
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow // For fakes if they expose flows
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -14,163 +15,269 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TestWatcher // Explicit import
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
+
+// --- Test Doubles (Should be in a shared test util file) ---
+
+class FakeAudioEngine : AudioEngine() {
+    var triggerPadCalledWith: Triple<String, PadSettings, Int>? = null
+    // Keep other mocked methods if they are indirectly called or needed for other tests
+    var startAudioRecordingCalledWith: Pair<AudioInputSource, String>? = null
+    var stopCurrentRecordingCalled = false
+    var playSampleSliceCalledWith: Triple<String, Long, Long>? = null
+    var nextSampleMetadataToReturn: SampleMetadata = SampleMetadata("default_uri", 1000L, "Default Sample")
+
+
+    override fun triggerPad(padSettingsId: String, padSettings: PadSettings, velocity: Int) {
+        triggerPadCalledWith = Triple(padSettingsId, padSettings, velocity)
+    }
+
+    // Minimal implementations for other methods from AudioEngine that might be called by other components.
+    override fun startAudioRecording(audioInputSource: AudioInputSource, tempFilePath: String): SampleMetadata {
+        startAudioRecordingCalledWith = Pair(audioInputSource, tempFilePath)
+        return nextSampleMetadataToReturn
+    }
+    override fun stopCurrentRecording() {
+        stopCurrentRecordingCalled = true
+    }
+    override fun playSampleSlice(audioUri: String, startMs: Long, endMs: Long) {
+        playSampleSliceCalledWith = Triple(audioUri, startMs, endMs)
+    }
+    override fun playPadSample(padSettings: PadSettings) {
+        // This is the deprecated one, ideally not called by new VM logic
+        // but AudioEngine still has it.
+    }
+}
+
+class FakeProjectManager : ProjectManager {
+    val samplesInPool = mutableListOf<SampleMetadata>()
+    val padSettingsStore = mutableMapOf<String, PadSettings>() // For PadSettings
+    var addSampleToPoolCalledWith: SampleMetadata? = null
+    var updateSampleMetadataCalledWith: SampleMetadata? = null
+    var savedPadSettings: PadSettings? = null
+
+    // Sample Management
+    override fun addSampleToPool(sampleMetadata: SampleMetadata) {
+        addSampleToPoolCalledWith = sampleMetadata
+        val existingIndex = samplesInPool.indexOfFirst { it.uri == sampleMetadata.uri }
+        if (existingIndex != -1) {
+            samplesInPool[existingIndex] = sampleMetadata
+        } else {
+            samplesInPool.add(sampleMetadata)
+        }
+    }
+    override fun getSamplesFromPool(): List<SampleMetadata> {
+        return samplesInPool.toList()
+    }
+    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
+        val sample = SampleMetadata(uri = sourceFileUri, duration = 0L, name = name)
+        addSampleToPool(sample)
+        return sample
+    }
+    fun updateSampleMetadataNonSuspend(updatedSampleMetadata: SampleMetadata) { // For SampleEditVM
+        updateSampleMetadataCalledWith = updatedSampleMetadata
+        val index = samplesInPool.indexOfFirst { it.uri == updatedSampleMetadata.uri }
+        if (index != -1) {
+            samplesInPool[index] = updatedSampleMetadata
+        }
+    }
+    override suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean {
+        updateSampleMetadataNonSuspend(sample)
+        return true
+    }
+    override suspend fun getSampleById(sampleId: String): SampleMetadata? {
+        return samplesInPool.find { it.uri == sampleId || it.name == sampleId }
+    }
+
+    // PadSettings Management
+    override suspend fun savePadSettings(padSettings: PadSettings) {
+        savedPadSettings = padSettings
+        padSettingsStore[padSettings.padSettingsId] = padSettings
+    }
+    override suspend fun loadPadSettings(padSettingsId: String): PadSettings? {
+        return padSettingsStore[padSettingsId]
+    }
+    override suspend fun getAllPadSettings(): Map<String, PadSettings> {
+        return padSettingsStore.toMap() // Return a copy
+    }
+}
+
+class FakeProjectManager : ProjectManager {
+    val samplesInPool = mutableListOf<SampleMetadata>()
+    var addSampleToPoolCalledWith: SampleMetadata? = null
+    var updateSampleMetadataCalledWith: SampleMetadata? = null
+
+    override fun addSampleToPool(sampleMetadata: SampleMetadata) {
+        addSampleToPoolCalledWith = sampleMetadata
+        val existingIndex = samplesInPool.indexOfFirst { it.uri == sampleMetadata.uri }
+        if (existingIndex != -1) {
+            samplesInPool[existingIndex] = sampleMetadata
+        } else {
+            samplesInPool.add(sampleMetadata)
+        }
+    }
+
+    override fun getSamplesFromPool(): List<SampleMetadata> {
+        return samplesInPool.toList()
+    }
+
+    fun updateSampleMetadataNonSuspend(updatedSampleMetadata: SampleMetadata) {
+        updateSampleMetadataCalledWith = updatedSampleMetadata
+        val index = samplesInPool.indexOfFirst { it.uri == updatedSampleMetadata.uri }
+        if (index != -1) {
+            samplesInPool[index] = updatedSampleMetadata
+        }
+    }
+
+    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
+        val sample = SampleMetadata(uri = sourceFileUri, duration = 0L, name = name)
+        addSampleToPool(sample)
+        return sample
+    }
+    override suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean {
+        updateSampleMetadataNonSuspend(sample)
+        return true
+    }
+    override suspend fun getSampleById(sampleId: String): SampleMetadata? {
+        return samplesInPool.find { it.uri == sampleId || it.name == sampleId }
+    }
+}
+
 
 @ExperimentalCoroutinesApi
 class DrumTrackViewModelTest {
 
     @get:Rule
-    val mainCoroutineRule = MainCoroutineRule() // Reusing from SamplerViewModelTest, ensure it's accessible or redefine
+    val mainCoroutineRule = MainCoroutineRule()
 
     private lateinit var viewModel: DrumTrackViewModel
-    private lateinit var mockAudioEngine: AudioEngineControl
-    private lateinit var mockProjectManager: ProjectManager // Although not directly used in these tests, it's a dependency
+    private lateinit var fakeAudioEngine: FakeAudioEngine
+    private lateinit var fakeProjectManager: FakeProjectManager
 
-    private val testSample1 = SampleMetadata(id = "s1", name = "Kick", filePathUri = "uri/kick.wav")
-    private val testSample2 = SampleMetadata(id = "s2", name = "Snare", filePathUri = "uri/snare.wav")
+    private val testSample1 = SampleMetadata(uri = "uri/kick.wav", duration = 100L, name = "Kick")
+    private val testSample2 = SampleMetadata(uri = "uri/snare.wav", duration = 150L, name = "Snare")
 
     @Before
     fun setUp() {
-        mockAudioEngine = mockk(relaxed = true)
-        mockProjectManager = mockk(relaxed = true) // Relaxed as it's not the focus here
-        viewModel = DrumTrackViewModel(mockAudioEngine, mockProjectManager)
-
-        // Simulate fetching available samples as DrumTrackViewModel's init calls it
-        // This uses the internal _availableSamples.value which is not ideal for testing,
-        // but given the current implementation of fetchAvailableSamples, we mock its effect.
-        // A better approach would be to make fetchAvailableSamples use ProjectManager
-        // and mock that behavior. For now, we bypass it by setting the flow directly if possible,
-        // or just acknowledge it runs. The tests below focus on assignment and playback.
-        // For this test suite, we'll ensure `availableSamples` has items if needed for assignment tests.
-        coEvery { mockProjectManager.addSampleToPool(any(), any(), any()) } returns null // Default mock
-        // No direct way to set _availableSamples from outside, so tests will rely on assignSampleToPad
-        // which doesn't depend on _availableSamples state.
+        fakeAudioEngine = FakeAudioEngine()
+        fakeProjectManager = FakeProjectManager()
+        // ViewModel's init block calls loadSamplesForAssignment, which calls projectManager.getSamplesFromPool()
+        // So, pre-populate samples in fakeProjectManager if needed for initial state.
+        fakeProjectManager.samplesInPool.addAll(listOf(testSample1, testSample2))
+        viewModel = DrumTrackViewModel(fakeAudioEngine, fakeProjectManager)
     }
 
     @After
     fun tearDown() {
-        unmockkAll()
+        // Clear fakes if they hold state across tests, though these are new instances each time.
     }
 
     @Test
-    fun `initial drumTrack has 16 pads`() = runTest {
-        val drumTrack = viewModel.drumTrack.first()
-        assertEquals(16, drumTrack.pads.size)
-        assertTrue(drumTrack.pads.all { it.sampleId == null })
+    fun `initialState_hasDefaultPadSettingsAndLoadsAvailableSamples`() = runTest {
+        // Check padSettingsMap
+        val padSettings = viewModel.padSettingsMap.value
+        assertEquals(16, padSettings.size) // NUM_PADS = 16
+        assertTrue(padSettings.values.all { it.sampleId == null && it.sampleName == null })
+
+        // Check availableSamples (called from init)
+        val available = viewModel.availableSamples.value
+        assertEquals(2, available.size)
+        assertEquals(listOf(testSample1, testSample2), available)
     }
 
     @Test
-    fun `assignSampleToPad updates the correct pad`() = runTest {
-        val padToAssign = "Pad5"
-        viewModel.assignSampleToPad(padToAssign, testSample1)
+    fun `loadSamplesForAssignment_fetchesFromProjectManager`() = runTest {
+        // Clear initial samples and set new ones for this test
+        fakeProjectManager.samplesInPool.clear()
+        val newSamples = listOf(SampleMetadata("new_uri", 123L, "New Sample"))
+        fakeProjectManager.samplesInPool.addAll(newSamples)
 
-        val drumTrack = viewModel.drumTrack.first()
-        val targetPad = drumTrack.pads.find { it.id == padToAssign }
-        assertNotNull(targetPad)
-        assertEquals(testSample1.id, targetPad?.sampleId)
-        assertEquals(testSample1.name, targetPad?.sampleName)
-        assertEquals("Sample '${testSample1.name}' assigned to Pad $padToAssign.", viewModel.userMessage.first())
+        viewModel.loadSamplesForAssignment() // Manually call again
+
+        assertEquals(newSamples, viewModel.availableSamples.value)
     }
 
     @Test
-    fun `clearSampleFromPad clears the sample from the pad`() = runTest {
-        val padToClear = "Pad3"
+    fun `assignSampleToPad_updatesPadSettingsMap`() = runTest {
+        val padIdToAssign = 5 // Int ID
+        viewModel.assignSampleToPad(padIdToAssign, testSample1)
+
+        val currentPadSettings = viewModel.padSettingsMap.value[padIdToAssign]
+        assertNotNull(currentPadSettings)
+        assertEquals(testSample1.uri, currentPadSettings?.sampleId)
+        assertEquals(testSample1.name, currentPadSettings?.sampleName)
+    }
+
+    @Test
+    fun `onPadTriggered_withAssignedSample_callsAudioEngine`() = runTest {
+        val padIdToTrigger = 3
+        viewModel.assignSampleToPad(padIdToTrigger, testSample1)
+
+        val expectedPadSettings = viewModel.padSettingsMap.value[padIdToTrigger]!!
+
+        viewModel.onPadTriggered(padIdToTrigger)
+
+        assertNotNull(fakeAudioEngine.playPadSampleCalledWith)
+        assertEquals(expectedPadSettings, fakeAudioEngine.playPadSampleCalledWith)
+    }
+
+    @Test
+    fun `onPadTriggered_withoutAssignedSample_doesNotCallAudioEngine`() = runTest {
+        val padIdToTrigger = 10 // Assuming this pad has no sample (default state)
+
+        viewModel.onPadTriggered(padIdToTrigger)
+
+        assertNull(fakeAudioEngine.playPadSampleCalledWith)
+    }
+
+    @Test
+    fun `clearSampleFromPad_clearsPadSetting`() = runTest {
+        val padIdToClear = 7
         // Assign first
-        viewModel.assignSampleToPad(padToClear, testSample1)
-        var drumTrack = viewModel.drumTrack.first()
-        assertNotNull(drumTrack.pads.find { it.id == padToClear }?.sampleId)
+        viewModel.assignSampleToPad(padIdToClear, testSample2)
+        assertNotNull(viewModel.padSettingsMap.value[padIdToClear]?.sampleId)
 
         // Clear
-        viewModel.clearSampleFromPad(padToClear)
-        drumTrack = viewModel.drumTrack.first()
-        val targetPad = drumTrack.pads.find { it.id == padToClear }
-        assertNotNull(targetPad)
-        assertNull(targetPad?.sampleId)
-        assertNull(targetPad?.sampleName)
-        assertEquals("Sample cleared from Pad $padToClear.", viewModel.userMessage.first())
+        viewModel.clearSampleFromPad(padIdToClear)
+        val clearedPadSettings = viewModel.padSettingsMap.value[padIdToClear]
+        assertNotNull(clearedPadSettings)
+        assertNull(clearedPadSettings?.sampleId)
+        assertNull(clearedPadSettings?.sampleName)
     }
 
     @Test
-    fun `onPadTriggered with no sample assigned does not call audioEngine`() = runTest {
-        val padId = "Pad1"
-        // Ensure no sample is assigned (default state)
-        viewModel.onPadTriggered(padId)
+    fun `updatePadSetting_fullyUpdatesThePad`() = runTest {
+        val padId = 0
+        val initialSetting = viewModel.padSettingsMap.value[padId]!!
+        assertEquals(1.0f, initialSetting.volume) // Default volume
 
-        coVerify(exactly = 0) { mockAudioEngine.playPadSample(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
-        assertEquals("Pad $padId has no sample assigned.", viewModel.userMessage.first())
-    }
+        val newSetting = initialSetting.copy(
+            sampleId = "testSampleUri",
+            sampleName = "Test Name",
+            volume = 0.5f,
+            pan = 0.25f,
+            tuning = 1.5f
+        )
+        viewModel.updatePadSetting(padId, newSetting)
 
-    @Test
-    fun `onPadTriggered with assigned sample calls audioEngine playPadSample`() = runTest {
-        val padId = "Pad1"
-        val trackId = viewModel.drumTrack.first().id
-
-        // Assign sample
-        viewModel.assignSampleToPad(padId, testSample1)
-        // Capture the PadSettings after assignment to check parameters
-        val assignedPadSettings = viewModel.drumTrack.first().pads.find { it.id == padId }!!
-
-        coEvery { mockAudioEngine.playPadSample(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns true
-
-        viewModel.onPadTriggered(padId)
-
-        coVerify {
-            mockAudioEngine.playPadSample(
-                noteInstanceId = any(), // Can't easily predict System.currentTimeMillis
-                trackId = trackId,
-                padId = padId,
-                sampleId = testSample1.id,
-                sliceId = null,
-                velocity = 1.0f,
-                playbackMode = com.example.theone.features.sampler.PlaybackMode.ONE_SHOT, // Expected mapped value
-                coarseTune = assignedPadSettings.tuningCoarse,
-                fineTune = assignedPadSettings.tuningFine,
-                pan = assignedPadSettings.pan,
-                volume = assignedPadSettings.volume,
-                ampEnv = any<SamplerViewModel.EnvelopeSettings>(), // Check type, specific values if necessary
-                filterEnv = null,
-                pitchEnv = null,
-                lfos = emptyList()
-            )
-        }
-        // Message will be "Playing Pad..."
-        assertTrue(viewModel.userMessage.first()?.startsWith("Playing Pad $padId") ?: false)
-    }
-
-    @Test
-    fun `onPadTriggered with assigned sample and audioEngine fails sets error message`() = runTest {
-        val padId = "Pad1"
-        viewModel.assignSampleToPad(padId, testSample1)
-
-        coEvery { mockAudioEngine.playPadSample(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns false // Simulate playback failure
-
-        viewModel.onPadTriggered(padId)
-
-        assertEquals("Playback failed for Pad $padId.", viewModel.userMessage.first())
-    }
-
-    @Test
-    fun `onPadTriggered with non-existent padId sets error message`() = runTest {
-        val nonExistentPadId = "Pad99"
-        viewModel.onPadTriggered(nonExistentPadId)
-        assertEquals("Error: Pad $nonExistentPadId not found.", viewModel.userMessage.first())
-        coVerify(exactly = 0) { mockAudioEngine.playPadSample(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        val updatedSetting = viewModel.padSettingsMap.value[padId]!!
+        assertEquals("testSampleUri", updatedSetting.sampleId)
+        assertEquals("Test Name", updatedSetting.sampleName)
+        assertEquals(0.5f, updatedSetting.volume)
+        assertEquals(0.25f, updatedSetting.pan)
+        assertEquals(1.5f, updatedSetting.tuning)
     }
 }
 
-// Helper class for managing CoroutineDispatchers in tests
-// Ensure this is defined or accessible. Copied from SamplerViewModelTest for completeness if run standalone.
 @ExperimentalCoroutinesApi
-class MainCoroutineRule(
-    private val testDispatcher: TestCoroutineDispatcher = TestCoroutineDispatcher()
-) : TestWatcher() { // TestWatcher is from JUnit
-
-    override fun starting(description: org.junit.runner.Description?) {
+class MainCoroutineRule(private val testDispatcher: TestCoroutineDispatcher = TestCoroutineDispatcher()) : TestWatcher() {
+    override fun starting(description: Description?) {
         super.starting(description)
         Dispatchers.setMain(testDispatcher)
     }
 
-    override fun finished(description: org.junit.runner.Description?) {
+    override fun finished(description: Description?) {
         super.finished(description)
         Dispatchers.resetMain()
         testDispatcher.cleanupTestCoroutines()

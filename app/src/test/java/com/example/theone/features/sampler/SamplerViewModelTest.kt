@@ -1,208 +1,321 @@
 package com.example.theone.features.sampler
 
-import io.mockk.*
+import com.example.theone.audio.AudioEngine
+import com.example.theone.domain.ProjectManager
+import com.example.theone.model.AudioInputSource
+import com.example.theone.model.SampleMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TestWatcher // Explicit import for TestWatcher
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
+
+// --- Test Doubles ---
+
+class FakeAudioEngine : AudioEngine() {
+    var startAudioRecordingCalledWith: Pair<AudioInputSource, String>? = null
+    var stopCurrentRecordingCalled = false
+    var playSampleSliceCalledWith: Triple<String, Long, Long>? = null
+
+    var nextSampleMetadataToReturn: SampleMetadata = SampleMetadata("default_uri", 1000L, "Default Sample")
+
+    override fun startAudioRecording(audioInputSource: AudioInputSource, tempFilePath: String): SampleMetadata {
+        startAudioRecordingCalledWith = Pair(audioInputSource, tempFilePath)
+        // Simulate some delay or processing if needed by tests, but for now, direct return
+        return nextSampleMetadataToReturn
+    }
+
+    override fun stopCurrentRecording() {
+        stopCurrentRecordingCalled = true
+    }
+
+    override fun playSampleSlice(audioUri: String, startMs: Long, endMs: Long) {
+        playSampleSliceCalledWith = Triple(audioUri, startMs, endMs)
+    }
+    // Other methods can be overridden if needed by tests, returning default/empty values.
+}
+
+class FakeProjectManager : ProjectManager {
+    val samples = mutableListOf<SampleMetadata>()
+    var addSampleToPoolCalledWith: SampleMetadata? = null
+    var updateSampleMetadataCalledWith: SampleMetadata? = null
+
+    override fun addSampleToPool(sampleMetadata: SampleMetadata) {
+        addSampleToPoolCalledWith = sampleMetadata
+        // Simulate actual add/replace logic for getSamplesFromPool testing
+        val existingIndex = samples.indexOfFirst { it.uri == sampleMetadata.uri }
+        if (existingIndex != -1) {
+            samples[existingIndex] = sampleMetadata
+        } else {
+            samples.add(sampleMetadata)
+        }
+    }
+
+    override fun getSamplesFromPool(): List<SampleMetadata> {
+        return samples.toList()
+    }
+
+    // This is the non-suspend version used by SampleEditViewModel
+    fun updateSampleMetadataNonSuspend(updatedSampleMetadata: SampleMetadata) {
+        updateSampleMetadataCalledWith = updatedSampleMetadata
+        val index = samples.indexOfFirst { it.uri == updatedSampleMetadata.uri }
+        if (index != -1) {
+            samples[index] = updatedSampleMetadata
+        }
+    }
+
+    // Interface methods that need to be implemented
+    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
+        val sample = SampleMetadata(uri = sourceFileUri, duration = 0L, name = name)
+        addSampleToPool(sample) // Call the other version
+        return sample
+    }
+    override suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean {
+        updateSampleMetadataNonSuspend(sample)
+        return true
+    }
+    override suspend fun getSampleById(sampleId: String): SampleMetadata? {
+        return samples.find { it.uri == sampleId || it.name == sampleId }
+    }
+}
+
 
 @ExperimentalCoroutinesApi
 class SamplerViewModelTest {
 
-    // Rule for JUnit to use TestCoroutineDispatcher
-    // This helps in controlling the execution of coroutines in tests
     @get:Rule
-    val mainCoroutineRule = MainCoroutineRule() // See MainCoroutineRule definition below
+    val mainCoroutineRule = MainCoroutineRule()
 
     private lateinit var viewModel: SamplerViewModel
-    private lateinit var mockAudioEngine: AudioEngineControl
-    private lateinit var mockProjectManager: ProjectManager
+    private lateinit var fakeAudioEngine: FakeAudioEngine
+    private lateinit var fakeProjectManager: FakeProjectManager
 
-    // Mocked SampleMetadata for consistent testing
-    private val fakeSampleMetadata = SamplerViewModel.SampleMetadata(
-        id = "test_id",
-        name = "test_sample",
-        filePathUri = "fake/path/to/sample.wav"
-    )
+    private val testSample1 = SampleMetadata("uri1", 1000L, "Sample1")
+    private val testSample2 = SampleMetadata("uri2", 2000L, "Sample2")
+    private val testSample3 = SampleMetadata("uri3", 3000L, "Sample3")
+    private val testSample4 = SampleMetadata("uri4", 4000L, "Sample4")
+
 
     @Before
     fun setUp() {
-        // Create mocks for the dependencies
-        mockAudioEngine = mockk(relaxed = true) // relaxed = true allows skipping `every { ... } returns ...` for all methods
-        mockProjectManager = mockk(relaxed = true)
-
-        // Create an instance of the ViewModel with the mocked dependencies
-        viewModel = SamplerViewModel(mockAudioEngine, mockProjectManager)
+        fakeAudioEngine = FakeAudioEngine()
+        fakeProjectManager = FakeProjectManager()
+        viewModel = SamplerViewModel(fakeAudioEngine, fakeProjectManager)
     }
 
     @After
     fun tearDown() {
-        unmockkAll() // Clear all mocks after each test
+        // Nothing specific to tear down with fakes unless they hold global state
     }
 
     @Test
-    fun `initial state is IDLE`() = runTest {
-        assertEquals(RecordingState.IDLE, viewModel.recordingState.first())
+    fun `initialState_isIdleAndQueueEmpty`() = runTest {
+        assertEquals(RecordingState.IDLE, viewModel.recordingState.value)
+        assertTrue(viewModel.recordedSamplesQueue.value.isEmpty())
     }
 
     @Test
-    fun `startRecordingPressed without threshold success`() = runTest {
-        coEvery { mockAudioEngine.startAudioRecording(any(), any()) } returns true
+    fun `armSampler_clearsQueueAndSetsStateToArmed`() = runTest {
+        // Set initial state with some samples in queue
+        viewModel.onRecordingFinished(testSample1) // Manually add to queue for test setup
+        assertEquals(1, viewModel.recordedSamplesQueue.value.size)
 
-        viewModel.startRecordingPressed()
+        viewModel.armSampler()
 
-        assertEquals(RecordingState.RECORDING, viewModel.recordingState.first())
-        coVerify { mockAudioEngine.startAudioRecording(any(), null) }
+        assertTrue(viewModel.recordedSamplesQueue.value.isEmpty())
+        assertEquals(RecordingState.ARMED, viewModel.recordingState.value)
     }
 
     @Test
-    fun `startRecordingPressed without threshold failure`() = runTest {
-        coEvery { mockAudioEngine.startAudioRecording(any(), any()) } returns false
+    fun `startRecording_fromArmed_transitionsToRecordingAndCallsAudioEngine`() = runTest {
+        fakeAudioEngine.nextSampleMetadataToReturn = testSample1
 
-        viewModel.startRecordingPressed()
+        viewModel.armSampler() // State is ARMED
+        assertEquals(RecordingState.ARMED, viewModel.recordingState.value)
 
-        assertEquals(RecordingState.IDLE, viewModel.recordingState.first())
-        assertEquals("Failed to start recording.", viewModel.userMessage.first())
-    }
+        viewModel.startRecording(AudioInputSource.MICROPHONE) // This is suspend due to viewModelScope.launch
 
-    @Test
-    fun `startRecordingPressed with threshold enabled arms the viewModel`() = runTest {
-        viewModel.toggleThresholdRecording(true)
-        viewModel.startRecordingPressed()
-        assertEquals(RecordingState.ARMED, viewModel.recordingState.first())
-        assertEquals("Armed for threshold recording. Make some noise!", viewModel.userMessage.first())
-    }
+        // viewModelScope.launch is async. We need to wait for it.
+        // Since startAudioRecording is not suspend in Fake, and onRecordingFinished is not suspend,
+        // the state changes should happen quickly within the launch block.
+        // However, runTest should handle this by advancing the dispatcher.
 
-    @Test
-    fun `stopRecordingPressed while recording success`() = runTest {
-        // Start recording first
-        coEvery { mockAudioEngine.startAudioRecording(any(), any()) } returns true
-        viewModel.startRecordingPressed() // Puts state to RECORDING
+        assertEquals(RecordingState.RECORDING, viewModel.recordingState.value) // Check intermediate state
 
-        coEvery { mockAudioEngine.stopAudioRecording() } returns fakeSampleMetadata
+        // Advance dispatcher to ensure coroutine in startRecording completes
+        advanceUntilIdle()
 
-        viewModel.stopRecordingPressed()
-
-        assertEquals(RecordingState.REVIEWING, viewModel.recordingState.first())
-        assertEquals("Recording stopped. Review your sample.", viewModel.userMessage.first())
-        coVerify { mockAudioEngine.stopAudioRecording() }
-    }
-
-    @Test
-    fun `stopRecordingPressed while recording but no metadata returned`() = runTest {
-        coEvery { mockAudioEngine.startAudioRecording(any(), any()) } returns true
-        viewModel.startRecordingPressed()
-
-        coEvery { mockAudioEngine.stopAudioRecording() } returns null // Simulate failure or no data
-
-        viewModel.stopRecordingPressed()
-
-        assertEquals(RecordingState.IDLE, viewModel.recordingState.first())
-        assertEquals("Recording stopped or no audio data.", viewModel.userMessage.first())
+        assertEquals(AudioInputSource.MICROPHONE, fakeAudioEngine.startAudioRecordingCalledWith?.first)
+        assertEquals(testSample1, viewModel.recordedSamplesQueue.value.first())
+        assertEquals(RecordingState.ARMED, viewModel.recordingState.value) // After onRecordingFinished
     }
 
 
     @Test
-    fun `saveRecording success`() = runTest {
-        // Go to REVIEWING state first
-        coEvery { mockAudioEngine.startAudioRecording(any(), any()) } returns true
-        viewModel.startRecordingPressed()
-        coEvery { mockAudioEngine.stopAudioRecording() } returns fakeSampleMetadata
-        viewModel.stopRecordingPressed() // Now in REVIEWING with lastRecordedSampleMetadata set
+    fun `onRecordingFinished_addsToQueueAndManagesMaxSize`() = runTest {
+        viewModel.armSampler()
 
-        val newSampleName = "My New Sample"
-        val expectedSavedMetadata = fakeSampleMetadata.copy(name = newSampleName)
-        coEvery { mockProjectManager.addSampleToPool(newSampleName, fakeSampleMetadata.filePathUri, true) } returns expectedSavedMetadata
+        viewModel.onRecordingFinished(testSample1)
+        assertEquals(listOf(testSample1), viewModel.recordedSamplesQueue.value)
+        assertEquals(RecordingState.ARMED, viewModel.recordingState.value)
 
-        viewModel.saveRecording(newSampleName, null)
+        viewModel.onRecordingFinished(testSample2)
+        assertEquals(listOf(testSample1, testSample2), viewModel.recordedSamplesQueue.value)
 
-        assertEquals(RecordingState.IDLE, viewModel.recordingState.first())
-        assertEquals("Sample '${expectedSavedMetadata.name}' saved successfully!", viewModel.userMessage.first())
-        coVerify { mockProjectManager.addSampleToPool(newSampleName, fakeSampleMetadata.filePathUri, true) }
+        viewModel.onRecordingFinished(testSample3)
+        assertEquals(listOf(testSample1, testSample2, testSample3), viewModel.recordedSamplesQueue.value)
+        assertEquals(3, viewModel.recordedSamplesQueue.value.size) // MAX_RECORDINGS = 3
+
+        viewModel.onRecordingFinished(testSample4) // This should push out testSample1
+        assertEquals(listOf(testSample2, testSample3, testSample4), viewModel.recordedSamplesQueue.value)
+        assertEquals(3, viewModel.recordedSamplesQueue.value.size)
+        assertEquals(RecordingState.ARMED, viewModel.recordingState.value)
     }
 
     @Test
-    fun `saveRecording success with pad assignment (placeholder verification)`() = runTest {
-        coEvery { mockAudioEngine.startAudioRecording(any(), any()) } returns true
-        viewModel.startRecordingPressed()
-        coEvery { mockAudioEngine.stopAudioRecording() } returns fakeSampleMetadata
-        viewModel.stopRecordingPressed()
+    fun `onRecordingFinished_updatesQueueCorrectly`() = runTest {
+         viewModel.armSampler() // Ensure state is ARMED and queue is empty
 
-        val newSampleName = "My Sample For Pad"
-        val padToAssign = "Pad5"
-        val expectedSavedMetadata = fakeSampleMetadata.copy(name = newSampleName)
-        coEvery { mockProjectManager.addSampleToPool(newSampleName, fakeSampleMetadata.filePathUri, true) } returns expectedSavedMetadata
+        // Add first sample
+        viewModel.onRecordingFinished(testSample1)
+        assertEquals(listOf(testSample1), viewModel.recordedSamplesQueue.value)
 
-        viewModel.saveRecording(newSampleName, padToAssign)
+        // Add second sample
+        viewModel.onRecordingFinished(testSample2)
+        assertEquals(listOf(testSample1, testSample2), viewModel.recordedSamplesQueue.value)
 
-        assertEquals(RecordingState.IDLE, viewModel.recordingState.first())
-        assertEquals("Sample '${expectedSavedMetadata.name}' saved and assigned to $padToAssign (Placeholder).", viewModel.userMessage.first())
+        // Add third sample
+        viewModel.onRecordingFinished(testSample3)
+        assertEquals(listOf(testSample1, testSample2, testSample3), viewModel.recordedSamplesQueue.value)
+
+        // Add fourth sample (should evict testSample1 as MAX_RECORDINGS = 3)
+        viewModel.onRecordingFinished(testSample4)
+        assertEquals(listOf(testSample2, testSample3, testSample4), viewModel.recordedSamplesQueue.value)
     }
 
 
     @Test
-    fun `saveRecording failure`() = runTest {
-        coEvery { mockAudioEngine.startAudioRecording(any(), any()) } returns true
-        viewModel.startRecordingPressed()
-        coEvery { mockAudioEngine.stopAudioRecording() } returns fakeSampleMetadata
-        viewModel.stopRecordingPressed()
+    fun `disarmOrFinishSession_fromArmed_whenQueueNotEmpty_transitionsToReviewing`() = runTest {
+        viewModel.armSampler()
+        viewModel.onRecordingFinished(testSample1) // Add a sample to queue
 
-        val newSampleName = "Failed Sample"
-        coEvery { mockProjectManager.addSampleToPool(any(), any(), any()) } returns null // Simulate failure
-
-        viewModel.saveRecording(newSampleName, null)
-
-        assertEquals(RecordingState.REVIEWING, viewModel.recordingState.first()) // Should remain in reviewing
-        assertEquals("Failed to save sample.", viewModel.userMessage.first())
+        viewModel.disarmOrFinishSession()
+        assertEquals(RecordingState.REVIEWING, viewModel.recordingState.value)
     }
 
     @Test
-    fun `discardRecording success`() = runTest {
-        coEvery { mockAudioEngine.startAudioRecording(any(), any()) } returns true
-        viewModel.startRecordingPressed()
-        coEvery { mockAudioEngine.stopAudioRecording() } returns fakeSampleMetadata
-        viewModel.stopRecordingPressed() // State is REVIEWING
+    fun `disarmOrFinishSession_fromArmed_whenQueueEmpty_transitionsToIdle`() = runTest {
+        viewModel.armSampler() // Queue is empty
 
-        viewModel.discardRecording()
+        viewModel.disarmOrFinishSession()
+        assertEquals(RecordingState.IDLE, viewModel.recordingState.value)
+    }
 
-        assertEquals(RecordingState.IDLE, viewModel.recordingState.first())
-        assertEquals("Recording discarded.", viewModel.userMessage.first())
+    @Test
+    fun `disarmOrFinishSession_fromReviewing_transitionsToIdleAndClearsQueue`() = runTest {
+        // Setup: ARMED -> add sample -> REVIEWING
+        viewModel.armSampler()
+        viewModel.onRecordingFinished(testSample1)
+        viewModel.disarmOrFinishSession() // Now in REVIEWING
+        assertEquals(RecordingState.REVIEWING, viewModel.recordingState.value)
+        assertFalse(viewModel.recordedSamplesQueue.value.isEmpty())
+
+        viewModel.disarmOrFinishSession() // Call again from REVIEWING
+
+        assertEquals(RecordingState.IDLE, viewModel.recordingState.value)
+        assertTrue(viewModel.recordedSamplesQueue.value.isEmpty())
+    }
+
+    @Test
+    fun `saveSample_callsProjectManagerAndRemovesFromQueue`() = runTest {
+        // Setup: ARMED -> add sample -> REVIEWING
+        viewModel.armSampler()
+        viewModel.onRecordingFinished(testSample1)
+        viewModel.disarmOrFinishSession() // Now in REVIEWING
+        assertEquals(RecordingState.REVIEWING, viewModel.recordingState.value)
+        assertTrue(viewModel.recordedSamplesQueue.value.contains(testSample1))
+
+        val sampleToSave = viewModel.recordedSamplesQueue.value.first()
+        viewModel.saveSample(sampleToSave, "Saved ${sampleToSave.name}")
+
+        assertEquals(sampleToSave.copy(name = "Saved ${sampleToSave.name}"), fakeProjectManager.addSampleToPoolCalledWith)
+        assertFalse(viewModel.recordedSamplesQueue.value.contains(sampleToSave))
+    }
+
+    @Test
+    fun `saveSample_transitionsToIdleIfQueueBecomesEmpty`() = runTest {
+        viewModel.armSampler()
+        viewModel.onRecordingFinished(testSample1)
+        viewModel.disarmOrFinishSession() // REVIEWING with 1 sample
+
+        val sampleToSave = viewModel.recordedSamplesQueue.value.first()
+        viewModel.saveSample(sampleToSave, "Saved Sample")
+
+        assertTrue(viewModel.recordedSamplesQueue.value.isEmpty())
+        assertEquals(RecordingState.IDLE, viewModel.recordingState.value)
+    }
+
+    @Test
+    fun `discardSample_removesFromQueue`() = runTest {
+        viewModel.armSampler()
+        viewModel.onRecordingFinished(testSample1)
+        viewModel.onRecordingFinished(testSample2)
+        viewModel.disarmOrFinishSession() // REVIEWING with 2 samples
+
+        assertTrue(viewModel.recordedSamplesQueue.value.contains(testSample1))
+        val initialQueueSize = viewModel.recordedSamplesQueue.value.size
+
+        viewModel.discardSample(testSample1)
+
+        assertFalse(viewModel.recordedSamplesQueue.value.contains(testSample1))
+        assertEquals(initialQueueSize - 1, viewModel.recordedSamplesQueue.value.size)
+    }
+
+    @Test
+    fun `discardSample_transitionsToIdleIfQueueBecomesEmpty`() = runTest {
+        viewModel.armSampler()
+        viewModel.onRecordingFinished(testSample1)
+        viewModel.disarmOrFinishSession() // REVIEWING with 1 sample
+
+        viewModel.discardSample(testSample1)
+
+        assertTrue(viewModel.recordedSamplesQueue.value.isEmpty())
+        assertEquals(RecordingState.IDLE, viewModel.recordingState.value)
+    }
+
+    @Test
+    fun `auditionSample_callsAudioEnginePlaySampleSlice`() = runTest {
+        val sampleToAudition = testSample1.copy(trimStartMs = 100, trimEndMs = 500)
+        // No specific state needed for auditionSample itself, just that a sample is passed
+
+        viewModel.auditionSample(sampleToAudition)
+
+        assertNotNull(fakeAudioEngine.playSampleSliceCalledWith)
+        assertEquals(sampleToAudition.uri, fakeAudioEngine.playSampleSliceCalledWith!!.first)
+        assertEquals(sampleToAudition.trimStartMs, fakeAudioEngine.playSampleSliceCalledWith!!.second)
+        assertEquals(sampleToAudition.trimEndMs, fakeAudioEngine.playSampleSliceCalledWith!!.third)
     }
 }
 
-// Helper class for managing CoroutineDispatchers in tests
-// Standard MainCoroutineRule from kotlinx-coroutines-test documentation
-@ExperimentalCoroutinesApi
-class MainCoroutineRule(
-    private val testDispatcher: TestCoroutineDispatcher = TestCoroutineDispatcher()
-) : TestWatcher() { // TestWatcher is from JUnit
 
-    override fun starting(description: org.junit.runner.Description?) {
+@ExperimentalCoroutinesApi
+class MainCoroutineRule(private val testDispatcher: TestCoroutineDispatcher = TestCoroutineDispatcher()) : TestWatcher() {
+    override fun starting(description: Description?) {
         super.starting(description)
         Dispatchers.setMain(testDispatcher)
     }
 
-    override fun finished(description: org.junit.runner.Description?) {
+    override fun finished(description: Description?) {
         super.finished(description)
         Dispatchers.resetMain()
         testDispatcher.cleanupTestCoroutines()
     }
 }
-
-// If TestCoroutineDispatcher is not available (older kotlinx-coroutines-test)
-// you might need a slightly different setup for MainCoroutineRule, or use runTest directly.
-// For example, with kotlinx-coroutines-test >= 1.6.0, TestCoroutineDispatcher is deprecated.
-// You'd use something like:
-// val testDispatcher = StandardTestDispatcher()
-// or
-// val testDispatcher = UnconfinedTestDispatcher()
-
-// For simplicity with the current environment, the provided MainCoroutineRule with TestCoroutineDispatcher is common.
-// If issues arise, it might be due to library versions. The subtask should still create the file.
-// The key is that `runTest` from kotlinx-coroutines-test is used for coroutine tests.
