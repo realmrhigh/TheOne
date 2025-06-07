@@ -19,6 +19,12 @@
 #include <mutex>    // For std::mutex
 #include <cmath>    // For cosf, sinf for panning
 #include <cstdint>  // For uint types
+#include <memory>   // For std::unique_ptr, std::make_unique (used by audio_sample.h)
+#include <random>   // For std::mt19937, std::random_device
+
+#include "EnvelopeGenerator.h"
+#include "LfoGenerator.h"
+
 
 #ifndef M_PI // Define M_PI if not defined by cmath (common on some compilers)
 #define M_PI (3.14159265358979323846f)
@@ -80,6 +86,84 @@ using SampleMap = std::map<SampleId, theone::audio::LoadedSample>;
 
 // Declare a global instance of the sample map
 static SampleMap gSampleMap;
+
+// --- C++ Data Structures Mirroring Kotlin Models (for JNI transfer) ---
+// These will be populated from Kotlin objects passed via JNI.
+
+struct SampleLayerCpp {
+    std::string id;
+    std::string sampleId; // ID of the sample from the SamplePool
+    bool enabled = true;
+    int velocityRangeMin = 0;
+    int velocityRangeMax = 127;
+    int tuningCoarseOffset = 0; // Semitones
+    int tuningFineOffset = 0;   // Cents
+    float volumeOffsetDb = 0.0f; // in Decibels
+    float panOffset = 0.0f;     // -1.0 to 1.0
+
+    // Default constructor
+    SampleLayerCpp() = default;
+
+    // Basic constructor for easier testing/setup later
+    SampleLayerCpp(std::string sid, std::string sampId, int velMin, int velMax)
+        : id(std::move(sid)), sampleId(std::move(sampId)),
+          velocityRangeMin(velMin), velocityRangeMax(velMax) {}
+};
+
+enum class LayerTriggerRuleCpp {
+    VELOCITY,
+    CYCLE,
+    RANDOM
+};
+
+// PlaybackModeCpp might also be needed if it affects C++ logic directly
+enum class PlaybackModeCpp {
+    ONE_SHOT,
+    LOOP, // Assuming LOOP is for the whole pad, not individual sample looping here
+    GATE
+};
+
+
+struct PadSettingsCpp {
+    std::string id; // e.g., "Pad1"
+
+    std::vector<SampleLayerCpp> layers;
+    LayerTriggerRuleCpp layerTriggerRule = LayerTriggerRuleCpp::VELOCITY;
+    int currentCycleLayerIndex = 0; // State for CYCLE trigger rule
+
+    PlaybackModeCpp playbackMode = PlaybackModeCpp::ONE_SHOT;
+    int tuningCoarse = 0;
+    int tuningFine = 0;
+    float volume = 1.0f; // Base volume
+    float pan = 0.0f;    // Base pan
+    int muteGroup = 0;
+    int polyphony = 16; // Max active sounds for this pad
+
+    // Envelope and LFO settings (using the Cpp versions defined in their respective headers)
+    theone::audio::EnvelopeSettingsCpp ampEnvelope;
+    // Optional envelopes: use a flag or a different approach if std::optional is not used
+    bool hasFilterEnvelope = false;
+    theone::audio::EnvelopeSettingsCpp filterEnvelope;
+    bool hasPitchEnvelope = false;
+    theone::audio::EnvelopeSettingsCpp pitchEnvelope;
+    std::vector<theone::audio::LfoSettingsCpp> lfos;
+
+    // Default constructor to initialize with some sensible defaults
+    PadSettingsCpp() {
+        // Example: Initialize ampEnvelope with default constructor of EnvelopeSettingsCpp
+        ampEnvelope = theone::audio::EnvelopeSettingsCpp();
+        // layers might be empty by default or pre-populated for testing
+    }
+};
+
+// Map to store PadSettingsCpp for each pad, keyed by a string (e.g., "Track1_Pad1")
+// This will be populated by a JNI function.
+static std::map<std::string, PadSettingsCpp> gPadSettingsMap;
+static std::mutex gPadSettingsMutex; // Mutex for gPadSettingsMap
+
+// Random number generator for layer selection
+static std::mt19937 gRandomEngine{std::random_device{}()};
+
 
 // Placeholder for logging
 //const char* APP_NAME = "TheOneNative";
@@ -181,6 +265,37 @@ public:
             int channels = oboeStream->getChannelCount();
             int sampleChannels = loadedSample->format.channels;
 
+            // --- Envelope and LFO Processing (per sound, before per-frame loop) ---
+            float ampEnvValue = 1.0f;
+            if (sound.ampEnvelopeGen) {
+                ampEnvValue = sound.ampEnvelopeGen->process();
+                if (!sound.ampEnvelopeGen->isActive() && ampEnvValue < 0.001f) { // Envelope finished and value is negligible
+                    sound.isActive.store(false);
+                }
+            }
+
+            float lfoPanMod = 0.0f;
+            if (!sound.lfoGens.empty()) {
+                for (auto& lfoGen : sound.lfoGens) {
+                    if (lfoGen) {
+                        float lfoValue = lfoGen->process();
+                        // Example: First LFO modulates Pan. Real routing would be more complex.
+                        if (&lfoGen == &sound.lfoGens.front()) {
+                            lfoPanMod = lfoValue * 0.5f; // LFO swings pan by +/- 0.5
+                        }
+                    }
+                }
+            }
+
+            float currentPan = sound.initialPan + lfoPanMod;
+            currentPan = std::max(-1.0f, std::min(1.0f, currentPan));
+            float panRad = (currentPan * 0.5f + 0.5f) * (static_cast<float>(M_PI) / 2.0f);
+
+            float overallGain = sound.initialVolume * ampEnvValue;
+            float finalGainL = overallGain * cosf(panRad);
+            float finalGainR = overallGain * sinf(panRad);
+            // --- End Envelope and LFO Processing ---
+
             for (int i = 0; i < numFrames; ++i) {
                 if (!sound.isActive.load()) {
                     break;
@@ -189,47 +304,39 @@ public:
                 // === START NEW SLICING/LOOPING LOGIC ===
                 if (sound.useSlicing) {
                     if (sound.currentFrame >= sound.endFrame) {
-                        if (sound.isLooping && sound.loopStartFrame < sound.loopEndFrame && sound.loopEndFrame <= sound.endFrame && sound.loopStartFrame < sound.endFrame) { // Ensure loop points are valid and within trim
+                        if (sound.isLooping && sound.loopStartFrame < sound.loopEndFrame && sound.loopEndFrame <= sound.endFrame && sound.loopStartFrame < sound.endFrame) {
                             sound.currentFrame = sound.loopStartFrame;
                         } else {
                             sound.isActive.store(false);
-                            // No more break here, let the outer check handle it or it completes the current buffer chunk if already past endFrame
                         }
                     }
                 } else { // Original logic for non-sliced sounds
                     if (sound.currentFrame >= loadedSample->frameCount) {
                         sound.isActive.store(false);
-                        // No more break here
                     }
                 }
 
-                if (!sound.isActive.load()) { // Check again after potential deactivation
-                     break; // Break from processing frames for *this sound* for *this buffer chunk*
+                if (!sound.isActive.load()) {
+                     break;
                 }
-                // At this point, sound.currentFrame should be valid for reading if sound is active
-
-                // Ensure currentFrame is still valid after potential looping/deactivation,
-                // especially if endFrame itself was beyond loadedSample->frameCount (constructor should prevent this for endFrame, but loopEndFrame is less strict initially)
                 if (sound.currentFrame >= loadedSample->frameCount) {
                      sound.isActive.store(false);
-                     break; // Safety break: currentFrame is out of actual sample bounds
+                     break;
                 }
                 // === END NEW SLICING/LOOPING LOGIC ===
 
-
-                // Existing sample reading logic:
                 float leftSampleValue = 0.0f;
                 float rightSampleValue = 0.0f;
 
                 if (sampleChannels == 1) { // Mono sample
-                    float sampleValue = loadedSample->audioData[sound.currentFrame]; // Corrected
-                    leftSampleValue = sampleValue * sound.gainLeft;
-                    rightSampleValue = sampleValue * sound.gainRight;
+                    float sampleValue = loadedSample->audioData[sound.currentFrame];
+                    leftSampleValue = sampleValue * finalGainL; // Apply final calculated gain
+                    rightSampleValue = sampleValue * finalGainR;
                 } else { // Stereo sample
-                    float L = loadedSample->audioData[sound.currentFrame * sampleChannels]; // Corrected
-                    float R = loadedSample->audioData[sound.currentFrame * sampleChannels + 1]; // Corrected
-                    leftSampleValue = L * sound.gainLeft;
-                    rightSampleValue = R * sound.gainRight;
+                    float L = loadedSample->audioData[sound.currentFrame * sampleChannels];
+                    float R = loadedSample->audioData[sound.currentFrame * sampleChannels + 1];
+                    leftSampleValue = L * finalGainL; // Apply final calculated gain
+                    rightSampleValue = R * finalGainR;
                 }
 
                 if (channels == 2) { // Stereo output
@@ -592,52 +699,195 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
         jstring jNoteInstanceId,
         jstring jTrackId,
         jstring jPadId,
-        jstring jSampleId,
-        jstring jSliceId, // Can be null
-        jfloat velocity,
-        // How to map PlaybackMode, EnvelopeSettings, LFOSettings?
-        // For now, let's assume basic playback and ignore complex params from JNI side.
-        // These would require complex jobject conversions.
-        jint coarseTune,
-        jint fineTune,
-        jfloat pan,
-        jfloat volume
-        // jobject ampEnv, // EnvelopeSettings
-        // jobject filterEnv, // EnvelopeSettings?
-        // jobject pitchEnv, // EnvelopeSettings?
-        // jobjectArray lfos // List<LFOSettings>
+        jstring jSampleId, // Fallback if PadSettings not found or layer has no sampleId
+        jstring jSliceId, // Can be null, currently not used with full PadSettings path
+        jfloat velocity,  // Note velocity (0.0 to 1.0)
+        jint coarseTune,  // Fallback
+        jint fineTune,    // Fallback
+        jfloat pan,       // Fallback
+        jfloat volume     // Fallback
 ) {
-
-    const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
-    SampleId sampleIdStr(nativeSampleId);
-    env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
-
     const char *nativeNoteInstanceId = env->GetStringUTFChars(jNoteInstanceId, nullptr);
     std::string noteInstanceIdStr(nativeNoteInstanceId);
     env->ReleaseStringUTFChars(jNoteInstanceId, nativeNoteInstanceId);
 
-    // For this simplified JNI, we use the simpler play logic.
-    // The full parameter list would require extensive JNI work to map complex Kotlin objects.
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
-                        "native_playPadSample (simplified) called: sampleID='%s', instanceID='%s', vol=%.2f, pan=%.2f",
-                        sampleIdStr.c_str(), noteInstanceIdStr.c_str(), volume, pan);
+    const char *nativeTrackId = env->GetStringUTFChars(jTrackId, nullptr);
+    const char *nativePadId = env->GetStringUTFChars(jPadId, nullptr);
+    std::string padKey = std::string(nativeTrackId) + "_" + std::string(nativePadId);
+    env->ReleaseStringUTFChars(jTrackId, nativeTrackId);
+    env->ReleaseStringUTFChars(jPadId, nativePadId);
 
+    std::shared_ptr<PadSettingsCpp> padSettingsPtr;
+    {
+        std::lock_guard<std::mutex> lock(gPadSettingsMutex);
+        auto it = gPadSettingsMap.find(padKey);
+        if (it != gPadSettingsMap.end()) {
+            padSettingsPtr = std::make_shared<PadSettingsCpp>(it->second);
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "playPadSample: PadSettings not found for key %s. Playing direct sample (if provided) or failing.", padKey.c_str());
+            // Fallback to direct sample playback if jSampleId is valid
+            // This part can be removed if strict PadSettings usage is enforced.
+            const char *fallbackSampleIdChars = env->GetStringUTFChars(jSampleId, nullptr);
+            if (!fallbackSampleIdChars || strlen(fallbackSampleIdChars) == 0) {
+                 env->ReleaseStringUTFChars(jSampleId, fallbackSampleIdChars);
+                 return JNI_FALSE; // No settings, no fallback sample ID
+            }
+            SampleId fallbackSampleIdStr(fallbackSampleIdChars);
+            env->ReleaseStringUTFChars(jSampleId, fallbackSampleIdChars);
 
-    auto mapIt = gSampleMap.find(sampleIdStr);
+            auto mapIt = gSampleMap.find(fallbackSampleIdStr);
+            if (mapIt == gSampleMap.end()) {
+                __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample (fallback): Sample ID '%s' not found.", fallbackSampleIdStr.c_str());
+                return JNI_FALSE;
+            }
+            const theone::audio::LoadedSample* loadedSample = &(mapIt->second);
+            if (loadedSample->audioData.empty() || loadedSample->frameCount == 0) {
+                __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample (fallback): Sample ID '%s' has no audio data.", fallbackSampleIdStr.c_str());
+                return JNI_FALSE;
+            }
+            std::lock_guard<std::mutex> activeSoundsLock(gActiveSoundsMutex);
+            gActiveSounds.emplace_back(loadedSample, noteInstanceIdStr, volume, pan); // Using JNI params for vol/pan
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sample '%s' (fallback) added. Active sounds: %zu", fallbackSampleIdStr.c_str(), gActiveSounds.size());
+            return JNI_TRUE;
+        }
+    }
+
+    // If padSettingsPtr is valid, proceed with layer logic.
+    if (!padSettingsPtr) {
+         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: padSettingsPtr is null after lock, should not happen if logic is correct.");
+         return JNI_FALSE; // Should have been handled by return JNI_FALSE in the map lookup.
+    }
+
+    const SampleLayerCpp* selectedLayer = nullptr;
+    if (padSettingsPtr->layers.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Pad %s has no layers defined.", padKey.c_str());
+        return JNI_FALSE;
+    }
+
+    std::vector<const SampleLayerCpp*> enabledLayers;
+    for (const auto& layer : padSettingsPtr->layers) {
+        if (layer.enabled) {
+            enabledLayers.push_back(&layer);
+        }
+    }
+
+    if (enabledLayers.empty()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "playPadSample: Pad %s has no ENABLED layers.", padKey.c_str());
+        return JNI_FALSE;
+    }
+
+    float noteVelocity = velocity; // from JNI parameter (0.0 to 1.0)
+
+    switch (padSettingsPtr->layerTriggerRule) {
+        case LayerTriggerRuleCpp::VELOCITY: {
+            int intVelocity = static_cast<int>(noteVelocity * 127.0f);
+            for (const auto& layerPtr : enabledLayers) {
+                if (intVelocity >= layerPtr->velocityRangeMin && intVelocity <= layerPtr->velocityRangeMax) {
+                    selectedLayer = layerPtr;
+                    break;
+                }
+            }
+            if (!selectedLayer && !enabledLayers.empty()) {
+                selectedLayer = enabledLayers.front();
+                __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Velocity fallback: no layer matched velocity %d, picked first enabled.", intVelocity);
+            }
+            break;
+        }
+        case LayerTriggerRuleCpp::CYCLE: {
+            std::lock_guard<std::mutex> cycleLock(gPadSettingsMutex);
+            auto mapEntryIt = gPadSettingsMap.find(padKey);
+            if (mapEntryIt != gPadSettingsMap.end()) {
+                PadSettingsCpp& originalPadSettings = mapEntryIt->second;
+                // Re-filter enabled layers from originalPadSettings in case they changed.
+                // This is a bit complex; for now, assume enabledLayers from the shared_ptr copy is sufficient for indexing.
+                // A truly robust solution might need to re-evaluate enabledLayers based on originalPadSettings.layers here.
+                if (!enabledLayers.empty()) { // Use the previously filtered list from padSettingsPtr for selection.
+                                              // The index is applied to this list.
+                    originalPadSettings.currentCycleLayerIndex %= enabledLayers.size();
+                    selectedLayer = enabledLayers[originalPadSettings.currentCycleLayerIndex];
+                    originalPadSettings.currentCycleLayerIndex = (originalPadSettings.currentCycleLayerIndex + 1) % enabledLayers.size();
+                }
+            }
+            break;
+        }
+        case LayerTriggerRuleCpp::RANDOM: {
+            if (!enabledLayers.empty()) {
+                std::uniform_int_distribution<> distrib(0, static_cast<int>(enabledLayers.size() - 1));
+                selectedLayer = enabledLayers[distrib(gRandomEngine)];
+            }
+            break;
+        }
+    }
+
+    if (!selectedLayer) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Could not select a layer for pad %s.", padKey.c_str());
+        return JNI_FALSE;
+    }
+
+    SampleId resolvedSampleIdStr = selectedLayer->sampleId;
+    if (resolvedSampleIdStr.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Selected layer for pad %s has an empty sampleId.", padKey.c_str());
+        return JNI_FALSE;
+    }
+
+    auto mapIt = gSampleMap.find(resolvedSampleIdStr);
     if (mapIt == gSampleMap.end()) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Sample ID '%s' not found.", sampleIdStr.c_str());
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Sample ID '%s' (from layer) not found.", resolvedSampleIdStr.c_str());
         return JNI_FALSE;
     }
     const theone::audio::LoadedSample* loadedSample = &(mapIt->second);
 
     if (loadedSample->audioData.empty() || loadedSample->frameCount == 0) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Sample ID '%s' has no audio data.", sampleIdStr.c_str());
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Sample ID '%s' (from layer) has no audio data.", resolvedSampleIdStr.c_str());
         return JNI_FALSE;
     }
 
-    std::lock_guard<std::mutex> lock(gActiveSoundsMutex);
-    gActiveSounds.emplace_back(loadedSample, noteInstanceIdStr, volume, pan);
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sample '%s' added. Active sounds: %zu", sampleIdStr.c_str(), gActiveSounds.size());
+    float baseVolume = padSettingsPtr->volume;
+    float basePan = padSettingsPtr->pan;
+    float volumeOffsetGain = powf(10.0f, selectedLayer->volumeOffsetDb / 20.0f);
+    float finalVolume = baseVolume * volumeOffsetGain;
+    float finalPan = basePan + selectedLayer->panOffset;
+    finalPan = std::max(-1.0f, std::min(1.0f, finalPan));
+
+    // TODO: Apply coarse/fine tuning (padSettingsPtr->tuningCoarse/Fine + selectedLayer->tuningCoarse/FineOffset)
+    // This is complex and involves changing playback speed or resampling. Deferred for now.
+
+    theone::audio::PlayingSound soundToMove(loadedSample, noteInstanceIdStr, finalVolume, finalPan);
+
+    float sr = outStream ? static_cast<float>(outStream->getSampleRate()) : 48000.0f;
+    if (sr <= 0) sr = 48000.0f; // Safety net for sample rate
+
+    soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+    soundToMove.ampEnvelopeGen->configure(padSettingsPtr->ampEnvelope, sr, noteVelocity);
+    soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
+
+    // TODO: Configure filterEnvelopeGen and pitchEnvelopeGen if padSettingsPtr->hasFilterEnvelope etc.
+
+    for (const auto& lfoConfig : padSettingsPtr->lfos) {
+        auto lfo = std::make_unique<theone::audio::LfoGenerator>();
+        float tempo = 120.0f; // Default tempo
+        // Lock gMetronomeStateMutex only if accessing gMetronomeState directly
+        // Better to pass tempo as a parameter if possible, or have a shared tempo provider
+        {
+            std::lock_guard<std::mutex> metroLock(gMetronomeStateMutex); // Assuming direct access for now
+            tempo = gMetronomeState.bpm.load();
+        }
+        if (tempo <= 0) tempo = 120.0f; // Safety net for tempo
+
+        lfo->configure(lfoConfig, sr, tempo);
+        lfo->retrigger();
+        soundToMove.lfoGens.push_back(std::move(lfo));
+    }
+
+    // Slicing parameters (currently not set by PadSettings, but PlayingSound supports them)
+    // If PadSettings were to include slice points for the selected layer's sample, they'd be applied here.
+    // For now, it will play the full sample as per LoadedSample.
+    // soundToMove.startFrame = ...; soundToMove.endFrame = ...; soundToMove.isLooping = ...; etc.
+
+    std::lock_guard<std::mutex> activeSoundsLock(gActiveSoundsMutex);
+    gActiveSounds.push_back(std::move(soundToMove));
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sample '%s' (Pad: %s, Layer: %s) added. Active sounds: %zu",
+                        resolvedSampleIdStr.c_str(), padKey.c_str(), selectedLayer->id.c_str(), gActiveSounds.size());
 
     return JNI_TRUE;
 }
@@ -945,3 +1195,40 @@ Java_com_example_theone_audio_AudioEngine_native_1getSampleRate(
 }
 
 // ... Any other JNI functions needed ...
+
+// Prototype for new JNI function (implementation deferred to Task 2.5)
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
+        JNIEnv *env,
+        jobject /* thiz */,
+        jstring jTrackId,
+        jstring jPadId,
+        jobject /* PadSettings Kotlin object */ jPadSettings) {
+    // TODO: Implement JNI conversion from jPadSettings (Kotlin PadSettings object)
+    //       to PadSettingsCpp, then update gPadSettingsMap.
+    // Example structure:
+    // const char *nativeTrackId = env->GetStringUTFChars(jTrackId, nullptr);
+    // const char *nativePadId = env->GetStringUTFChars(jPadId, nullptr);
+    // if (!nativeTrackId || !nativePadId) { /* error handling */ return; }
+    // std::string key = std::string(nativeTrackId) + "_" + std::string(nativePadId);
+    // env->ReleaseStringUTFChars(jTrackId, nativeTrackId);
+    // env->ReleaseStringUTFChars(jPadId, nativePadId);
+    //
+    // PadSettingsCpp cppSettings;
+    // // --- Populate cppSettings by calling JNI methods on jPadSettings ---
+    // // This is the complex part that requires mapping each field.
+    // // e.g., get layers, trigger rule, envelopes, LFOs from jPadSettings.
+    // // This will involve:
+    // //   env->GetObjectClass(jPadSettings)
+    // //   env->GetFieldID(...) for various fields
+    // //   env->GetObjectField(...) for nested objects (layers, envelopes, LFOs)
+    // //   Iterating over Java Lists (for layers, LFOs) and converting each element.
+    //
+    // {
+    //     std::lock_guard<std::mutex> lock(gPadSettingsMutex);
+    //     gPadSettingsMap[key] = cppSettings; // Or use std::move if cppSettings is built efficiently
+    //     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Updated PadSettings for key: %s", key.c_str());
+    // }
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings called (STUBBED) for %s_%s",
+                        env->GetStringUTFChars(jTrackId, nullptr), env->GetStringUTFChars(jPadId, nullptr));
+}

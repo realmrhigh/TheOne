@@ -5,6 +5,7 @@
 #include <vector>
 #include <atomic>   // For std::atomic<bool>
 #include <cstdint>  // For uint64_t etc.
+#include <memory>   // For std::unique_ptr
 
 // Ensure cmath is included for M_PI, cosf, sinf
 #ifndef M_PI
@@ -15,6 +16,10 @@
 
 namespace theone {
 namespace audio {
+
+// Forward declarations
+class EnvelopeGenerator;
+class LfoGenerator;
 
 struct SampleFormat {
     uint16_t channels;       // Number of channels (e.g., 1 for mono, 2 for stereo)
@@ -45,6 +50,16 @@ struct PlayingSound {
     std::atomic<bool> isActive;
     std::string noteInstanceId;
 
+    float initialVolume; // Base volume before envelope and LFOs
+    float initialPan;    // Base pan before LFOs
+
+    // --- NEW: Envelopes and LFOs ---
+    std::unique_ptr<EnvelopeGenerator> ampEnvelopeGen;
+    std::unique_ptr<EnvelopeGenerator> filterEnvelopeGen; // Optional, might be nullptr
+    std::unique_ptr<EnvelopeGenerator> pitchEnvelopeGen;  // Optional, might be nullptr
+    std::vector<std::unique_ptr<LfoGenerator>> lfoGens;
+    // --- END NEW ---
+
     // New members for slicing and looping
     size_t startFrame;
     size_t endFrame; // Relative to the start of the sample data. 0 means effective end of sample.
@@ -56,6 +71,8 @@ struct PlayingSound {
     // Default constructor
     PlayingSound() : loadedSamplePtr(nullptr), currentFrame(0),
                      gainLeft(1.0f), gainRight(1.0f), isActive(false),
+                     initialVolume(1.0f), initialPan(0.0f), // Initialize new members
+                     ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
                      startFrame(0), endFrame(0),
                      loopStartFrame(0), loopEndFrame(0),
                      isLooping(false), useSlicing(false) {}
@@ -66,6 +83,8 @@ struct PlayingSound {
           currentFrame(0), // For non-sliced, always start at 0
           isActive(true),
           noteInstanceId(std::move(id)),
+          initialVolume(volume), initialPan(pan), // Initialize new members
+          ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
           startFrame(0),
           endFrame(sample ? sample->frameCount : 0), // Default to full sample length
           loopStartFrame(0),
@@ -84,6 +103,8 @@ struct PlayingSound {
           currentFrame(sf), // Start playback at startFrame
           isActive(true),
           noteInstanceId(std::move(id)),
+          initialVolume(volume), initialPan(pan), // Initialize new members
+          ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
           startFrame(sf),
           endFrame(ef == 0 && sample ? sample->frameCount : ef), // If 0, use sample's frameCount
           loopStartFrame(lsf),
@@ -108,22 +129,36 @@ struct PlayingSound {
     }
 
     // Copy Constructor (ensure all members are copied)
-    PlayingSound(const PlayingSound& other)
+    PlayingSound(const PlayingSound&) = delete;
+    PlayingSound& operator=(const PlayingSound&) = delete;
+
+    PlayingSound(PlayingSound&& other) noexcept
         : loadedSamplePtr(other.loadedSamplePtr),
           currentFrame(other.currentFrame),
           gainLeft(other.gainLeft),
           gainRight(other.gainRight),
-          isActive(other.isActive.load()),
-          noteInstanceId(other.noteInstanceId),
+          isActive(other.isActive.load()), // std::atomic needs load()
+          noteInstanceId(std::move(other.noteInstanceId)),
+          initialVolume(other.initialVolume), // Move new members
+          initialPan(other.initialPan),       // Move new members
+          ampEnvelopeGen(std::move(other.ampEnvelopeGen)),
+          filterEnvelopeGen(std::move(other.filterEnvelopeGen)),
+          pitchEnvelopeGen(std::move(other.pitchEnvelopeGen)),
+          lfoGens(std::move(other.lfoGens)),
           startFrame(other.startFrame),
           endFrame(other.endFrame),
           loopStartFrame(other.loopStartFrame),
           loopEndFrame(other.loopEndFrame),
           isLooping(other.isLooping),
-          useSlicing(other.useSlicing) {}
+          useSlicing(other.useSlicing) {
+        other.loadedSamplePtr = nullptr; // Null out moved-from raw pointer
+        other.currentFrame = 0;
+        other.isActive.store(false);
+        other.initialVolume = 1.0f; // Reset moved-from object's values
+        other.initialPan = 0.0f;
+    }
 
-    // Copy Assignment Operator (ensure all members are assigned)
-    PlayingSound& operator=(const PlayingSound& other) {
+    PlayingSound& operator=(PlayingSound&& other) noexcept {
         if (this == &other) {
             return *this;
         }
@@ -131,14 +166,26 @@ struct PlayingSound {
         currentFrame = other.currentFrame;
         gainLeft = other.gainLeft;
         gainRight = other.gainRight;
-        isActive.store(other.isActive.load());
-        noteInstanceId = other.noteInstanceId;
+        isActive.store(other.isActive.load()); // std::atomic needs load() then store()
+        noteInstanceId = std::move(other.noteInstanceId);
+        initialVolume = other.initialVolume; // Assign new members
+        initialPan = other.initialPan;       // Assign new members
+        ampEnvelopeGen = std::move(other.ampEnvelopeGen);
+        filterEnvelopeGen = std::move(other.filterEnvelopeGen);
+        pitchEnvelopeGen = std::move(other.pitchEnvelopeGen);
+        lfoGens = std::move(other.lfoGens);
         startFrame = other.startFrame;
         endFrame = other.endFrame;
         loopStartFrame = other.loopStartFrame;
         loopEndFrame = other.loopEndFrame;
         isLooping = other.isLooping;
         useSlicing = other.useSlicing;
+
+        other.loadedSamplePtr = nullptr; // Null out moved-from raw pointer
+        other.currentFrame = 0;
+        other.isActive.store(false);
+        other.initialVolume = 1.0f; // Reset moved-from object's values
+        other.initialPan = 0.0f;
         return *this;
     }
 };

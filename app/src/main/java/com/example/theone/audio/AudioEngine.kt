@@ -50,9 +50,17 @@ class AudioEngine : AudioEngineControl {
     // JNI declarations for recording
     private external fun native_startAudioRecording(fd: Int, storagePathForMetadata: String, sampleRate: Int, channels: Int): Boolean
     private external fun native_stopAudioRecording(): Array<Any>? // Returns [String_filePath, Long_totalFrames] or null
-    // This Array<Any>? needs to be processed to create SampleMetadata for the new startAudioRecording
     private external fun native_isRecordingActive(): Boolean
     private external fun native_getRecordingLevelPeak(): Float
+
+    // --- NEW JNI DECLARATION FOR UPDATING PAD SETTINGS ---
+    external fun native_updatePadSettings(
+        trackId: String,
+        padId: String, // This is the PadSettings.id, used as a key component
+        padSettings: PadSettings // The complex PadSettings object from Kotlin
+    ): Unit
+    // --- END NEW JNI DECLARATION ---
+
 
     // Store recording parameters for SampleMetadata creation
     private var mRecordingParams: Pair<Int, Int>? = null // Pair<SampleRate, Channels>
@@ -92,19 +100,20 @@ class AudioEngine : AudioEngineControl {
                         Log.e("AudioEngine", "Failed to get valid FileDescriptor for URI: $filePathUri (FD is -1)")
                         return@withContext false
                     }
+                    // Using 0L for Long literals, which is valid Kotlin.
                     native_loadSampleToMemory(sampleId, fd, 0L, statSize)
                 } ?: run {
                     Log.e("AudioEngine", "Failed to open ParcelFileDescriptor for URI: $filePathUri")
                     false
                 }
             } catch (e: IOException) {
-                Log.e("AudioEngine", "IOException during sample loading for $sampleId: ${e.message}", e)
+                Log.e("AudioEngine", "IOException during sample loading for $sampleId: ${'$'}{e.message}", e)
                 false
             } catch (e: SecurityException) {
-                Log.e("AudioEngine", "SecurityException during sample loading for $sampleId: ${e.message}", e)
+                Log.e("AudioEngine", "SecurityException during sample loading for $sampleId: ${'$'}{e.message}", e)
                 false
             } catch (e: Exception) {
-                Log.e("AudioEngine", "Unexpected exception during sample loading for $sampleId: ${e.message}", e)
+                Log.e("AudioEngine", "Unexpected exception during sample loading for $sampleId: ${'$'}{e.message}", e)
                 false
             }
         }
@@ -170,14 +179,14 @@ class AudioEngine : AudioEngineControl {
         ampEnv: com.example.theone.model.EnvelopeSettings,
         filterEnv: com.example.theone.model.EnvelopeSettings?,
         pitchEnv: com.example.theone.model.EnvelopeSettings?,
-        lfos: List<Any>
+        lfos: List<Any> // This was List<Any> in the original file content
     ): Boolean {
         if (!initialized) {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot play pad sample.")
             return false
         }
         Log.d("AudioEngine", "playPadSample called: sampleID='$sampleId', padID='$padId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
-        // Note: playbackMode, ampEnv, filterEnv, pitchEnv, lfos are not used in the native call yet as per new signature
+        // The C++ native_playPadSample now uses trackId and padId to look up the full settings from gPadSettingsMap
         return native_playPadSample(noteInstanceId, trackId, padId, sampleId, sliceId, velocity, coarseTune, fineTune, pan, volume)
     }
 
@@ -202,8 +211,6 @@ class AudioEngine : AudioEngineControl {
             Log.e("AudioEngine", "playSampleSlice: Failed to get valid sample rate for sample ID '$sampleId'. Received: $actualSampleRate. Aborting playback.")
             return false
         }
-        // For debugging, you can add:
-        // Log.d("AudioEngine", "playSampleSlice: Using actual sample rate $actualSampleRate for sample ID '$sampleId'")
 
         Log.d("AudioEngine", "playSampleSlice called: sampleID='$sampleId', instanceID='$noteInstanceId', vol=$volume, pan=$pan, SR=$actualSampleRate, trimStart=$trimStartMs, trimEnd=$trimEndMs, loopStart=${loopStartMs ?: 0L}, loopEnd=${loopEndMs ?: 0L}, looping=$isLooping")
         return native_playSampleSlice(
@@ -211,11 +218,11 @@ class AudioEngine : AudioEngineControl {
             noteInstanceId,
             volume,
             pan,
-            actualSampleRate, // Pass the fetched actual sample rate
+            actualSampleRate,
             trimStartMs,
             trimEndMs,
-            loopStartMs ?: 0L, // Pass 0 if null
-            loopEndMs ?: 0L,   // Pass 0 if null
+            loopStartMs ?: 0L,
+            loopEndMs ?: 0L,
             isLooping
         )
     }
@@ -250,7 +257,7 @@ class AudioEngine : AudioEngineControl {
     }
 
     override suspend fun startAudioRecording(
-        context: Context, // Added context here for Uri handling
+        context: Context,
         filePathUri: String,
         sampleRate: Int,
         channels: Int,
@@ -281,7 +288,7 @@ class AudioEngine : AudioEngineControl {
                     false
                 }
             } catch (e: Exception) {
-                Log.e("AudioEngine", "Exception during startAudioRecording for $filePathUri: ${e.message}", e)
+                Log.e("AudioEngine", "Exception during startAudioRecording for $filePathUri: ${'$'}{e.message}", e)
                 false
             }
         }
@@ -360,87 +367,51 @@ class AudioEngine : AudioEngineControl {
         }
     }
 
-    // New methods for SamplerViewModel as per subtask
+    // New methods for SamplerViewModel as per subtask (These seem like they belong in a higher level class or ViewModel)
+    // For now, keeping them here as per the file content.
 
     fun startAudioRecording(audioInputSource: AudioInputSource, tempFilePath: String): SampleMetadata {
-        // TODO: Implement actual audio recording logic using Android APIs (e.g., MediaRecorder or AudioRecord)
-        // TODO: Handle different audioInputSource types (MICROPHONE, INTERNAL_LOOPBACK, EXTERNAL_USB)
-        // This would involve calling native_startAudioRecording with appropriate parameters (FD from tempFilePath, SR, Ch)
-        // and then processing the result from native_stopAudioRecording.
-        println("AudioEngine: Starting recording from ${audioInputSource} to $tempFilePath")
-
-        // TODO: Implement 2-minute (120,000 ms) recording limit. If reached, stop recording automatically.
-        // For now, simulate a fixed duration, e.g., 2 seconds
-        // In a real scenario, native_startAudioRecording would be called here (perhaps with a context for FD)
-        // and native_stopAudioRecording would be called after duration or by stopCurrentRecording().
-        // The result of native_stopAudioRecording would then be used to create SampleMetadata.
-
-        Thread.sleep(2000) // Simulate recording time
-        println("AudioEngine: Recording finished for $tempFilePath")
-
+        println("AudioEngine: Starting recording from ${'$'}{audioInputSource} to ${'$'}tempFilePath")
+        Thread.sleep(2000)
+        println("AudioEngine: Recording finished for ${'$'}tempFilePath")
         val file = File(tempFilePath)
         try {
-            file.createNewFile() // Create a dummy file
-            // Simulate writing some data if necessary for other parts to read metadata like duration
-            // For example, write a dummy WAV header if other tools expect it.
+            file.createNewFile()
         } catch (e: Exception) {
-            Log.e("AudioEngine", "Error creating dummy file $tempFilePath", e)
-            // Fallback or rethrow, for now just print stack trace via Log.e
+            Log.e("AudioEngine", "Error creating dummy file ${'$'}tempFilePath", e)
         }
-
-        // TODO: Get actual duration from the recording (e.g. from native_stopAudioRecording's result)
-        val durationMs = 2000L // Simulated duration
-
-        // The SampleMetadata should have trimEndMs set to durationMs by default in its constructor
+        val durationMs = 2000L
         return SampleMetadata(
             uri = file.toURI().toString(),
             duration = durationMs,
-            name = file.nameWithoutExtension, // Or null as per original spec
+            name = file.nameWithoutExtension,
             trimStartMs = 0,
-            trimEndMs = durationMs // Explicitly set, though constructor should handle it
+            trimEndMs = durationMs
         )
     }
 
     fun stopCurrentRecording() {
-        // TODO: Implement logic to stop the ongoing recording initiated by startAudioRecording.
-        // This method would signal the recording process to finalize the file.
-        // It should ideally trigger the finalization part of the new startAudioRecording method,
-        // possibly by setting a flag that the recording loop checks, or by directly calling native_stopAudioRecording().
         println("AudioEngine: stopCurrentRecording called.")
-        // val recordingInfo = native_stopAudioRecording() // This would be called
-        // And the result (filePath, duration) would be used by startAudioRecording's logic or a callback.
-        // For now, this is a stub. The SamplerViewModel expects startAudioRecording to eventually return metadata.
     }
 
     fun playSampleSlice(audioUri: String, startMs: Long, endMs: Long) {
-        // TODO: Implement actual audio playback logic for a slice of an audio file
-        // This might involve using the existing native_playSampleSlice.
-        // The existing native_playSampleSlice requires a sampleId. If audioUri is a file path,
-        // it might need to be "loaded" temporarily to get a temporary ID, or native code needs to handle direct URI.
-        // For now, simulate.
-        println("AudioEngine: Playing slice of $audioUri from $startMs ms to $endMs ms")
+        println("AudioEngine: Playing slice of ${'$'}audioUri from ${'$'}startMs ms to ${'$'}endMs ms")
         if (startMs < endMs) {
             try {
                 Thread.sleep(endMs - startMs)
             } catch (ie: InterruptedException) {
-                Thread.currentThread().interrupt() // Restore interrupt status
-                Log.w("AudioEngine", "Playback simulation interrupted for $audioUri")
+                Thread.currentThread().interrupt()
+                Log.w("AudioEngine", "Playback simulation interrupted for ${'$'}audioUri")
             }
         }
-        println("AudioEngine: Finished playing slice of $audioUri")
+        println("AudioEngine: Finished playing slice of ${'$'}audioUri")
     }
 
     fun playPadSample(padSettings: PadSettings) {
-        // TODO: Full implementation in M1.2. This will involve fetching sample by padSettings.sampleId
-        // and applying volume, pan, tuning etc., likely using the more detailed native_playPadSample.
-        println("AudioEngine: playPadSample called for sampleId ${padSettings.sampleId}. Placeholder - full implementation later.")
+        println("AudioEngine: playPadSample called for sampleId ${'$'}{padSettings.sampleId}. Placeholder - full implementation later.")
         if (padSettings.sampleId != null) {
-            // Simulate playback of a short sound.
-            // Assuming padSettings.sampleId could be a URI or an ID that native layer understands.
-            // If it's a URI and native layer needs ID, it would need to be loaded first.
-            // For placeholder, directly use it in playSampleSlice simulation.
-            Log.d("AudioEngine", "Simulating pad sample playback for ${padSettings.sampleId}")
-            playSampleSlice(padSettings.sampleId!!, 0, 500) // Using the new simpler playSampleSlice for simulation
+            Log.d("AudioEngine", "Simulating pad sample playback for ${'$'}{padSettings.sampleId}")
+            playSampleSlice(padSettings.sampleId!!, 0, 500)
         }
     }
 

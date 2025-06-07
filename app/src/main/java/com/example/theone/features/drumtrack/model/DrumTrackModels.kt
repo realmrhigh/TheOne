@@ -1,10 +1,11 @@
 package com.example.theone.features.drumtrack.model
 
-import com.example.theone.model.PlaybackMode // Added import for shared model
+// Removed: import com.example.theone.model.PlaybackMode
+import com.example.theone.features.drumtrack.model.PadSettings // Added
 
 // --- Enums and Basic Types ---
 
-// PlaybackMode is now defined in com.example.theone.model.SharedModels
+// PlaybackMode is now defined in com.example.theone.model.PadSettings.kt (implicitly via PadSettings import)
 
 // --- Sample Related Data ---
 // Placeholder - This should ideally come from a shared 'core.model' module.
@@ -25,27 +26,7 @@ data class SampleMetadata(
 
 // --- Pad and Track Specific Data ---
 
-data class PadSettings(
-    val id: String, // e.g., "Pad1", "Pad2", ... "Pad16"
-    var sampleId: String? = null, // ID of the sample assigned from SamplePool (C3)
-    var sampleName: String? = null, // Convenience to store name of assigned sample
-    var playbackMode: PlaybackMode = PlaybackMode.ONE_SHOT,
-
-    // Basic parameters for M1.2, more advanced in M3.1
-    var volume: Float = 1.0f, // 0.0f to 2.0f (double gain)
-    var pan: Float = 0.0f,    // -1.0f (Left) to 1.0f (Right)
-
-    // Future M3.1 features (placeholders for now, not used in M1.2 logic)
-    var tuningCoarse: Int = 0, // Semitones
-    var tuningFine: Int = 0,   // Cents
-    // var ampEnvelope: EnvelopeSettings? = null,
-    // var filterEnvelope: EnvelopeSettings? = null,
-    // var pitchEnvelope: EnvelopeSettings? = null,
-    // var lfos: MutableList<Any /* LFOSettings */> = mutableListOf(),
-    // var insertEffects: MutableList<Any /* EffectInstance */> = mutableListOf(),
-    var muteGroup: Int = 0, // 0 = none
-    var polyphony: Int = 16 // Max simultaneous notes for this pad (more relevant for NOTE_ON_OFF)
-)
+// PadSettings data class was removed from here. It's now imported.
 
 data class DrumTrack(
     val id: String, // Unique ID for this drum track instance
