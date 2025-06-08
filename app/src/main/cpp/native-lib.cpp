@@ -363,126 +363,151 @@ public:
 
 
         // --- C++ Sequencer Processing ---
-        if (gAudioStreamSampleRate > 0 && gCurrentTickDurationMs > 0) {
-            // Lock gSequencerMutex to access gCurrentSequence and its members
-            std::lock_guard<std::mutex> sequencerLock(gSequencerMutex);
+        // Check if sequencer is initialized and has a valid tick duration
+        if (gAudioStreamSampleRate > 0 && gCurrentTickDurationMs > 0.0) {
+            std::lock_guard<std::mutex> sequencerLock(gSequencerMutex); // Lock for gCurrentSequence access
+
             if (gCurrentSequence && gCurrentSequence->isPlaying) {
                 double frameDurationMs = 1000.0 / static_cast<double>(gAudioStreamSampleRate);
                 gTimeAccumulatedForTick += static_cast<double>(numFrames) * frameDurationMs;
 
-                // Process all ticks that have occurred in this audio buffer
-                while (gTimeAccumulatedForTick >= gCurrentTickDurationMs && gCurrentTickDurationMs > 0) {
+                // Process all ticks that should have occurred in this audio buffer
+                while (gTimeAccumulatedForTick >= gCurrentTickDurationMs && gCurrentTickDurationMs > 0.0) {
                     gTimeAccumulatedForTick -= gCurrentTickDurationMs;
                     gCurrentSequence->currentPlayheadTicks++;
 
-                    // Check for looping
-                    long ticksPerBeat = gCurrentSequence->ppqn;
-                    // timeSignatureNumerator defines beats per bar for looping calculation.
-                    long totalBeatsInSequence = gCurrentSequence->barLength * gCurrentSequence->timeSignatureNumerator;
-                    long totalTicksInSequence = totalBeatsInSequence * ticksPerBeat;
+                    // --- Handle Sequence Looping ---
+                    // Assuming PPQN is based on quarter notes. Denominator adjustment needed for other bases.
+                    long beatsPerBar = gCurrentSequence->timeSignatureNumerator;
+                    // If timeSignatureDenominator is 8, a "beat" (quarter note) is half as long in ticks.
+                    // This basic calculation assumes denominator is 4. A more robust solution would use it.
+                    long ticksPerBar = beatsPerBar * gCurrentSequence->ppqn;
+                    long totalTicksInSequence = gCurrentSequence->barLength * ticksPerBar;
 
                     if (totalTicksInSequence > 0 && gCurrentSequence->currentPlayheadTicks >= totalTicksInSequence) {
-                        gCurrentSequence->currentPlayheadTicks = 0; // Loop back to the beginning
-                        // __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Sequencer looped. Playhead reset to 0. Total ticks in sequence: %ld", totalTicksInSequence);
+                        gCurrentSequence->currentPlayheadTicks = 0; // Loop back
+                        __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Sequencer looped. Playhead reset. Total ticks: %ld", totalTicksInSequence);
                     }
 
-                    // Iterate through tracks and their events to find events starting at currentPlayheadTicks
+                    // --- Trigger Events ---
                     for (auto const& [trackId, track] : gCurrentSequence->tracks) {
                         for (const auto& event : track.events) {
                             if (event.startTimeTicks == gCurrentSequence->currentPlayheadTicks) {
                                 if (event.type == EventTriggerTypeCpp::PAD_TRIGGER) {
-                                    // --- Event Triggering Logic ---
                                     std::string padKey = event.trackId + "_" + event.padTrigger.padId;
-
                                     std::shared_ptr<PadSettingsCpp> padSettingsPtr;
-                                    { // Scope for padSettingsLock
-                                        std::lock_guard<std::mutex> padSettingsLock(gPadSettingsMutex);
+
+                                    { // Scope for gPadSettingsMutex
+                                        std::lock_guard<std::mutex> padSettingsLocker(gPadSettingsMutex);
                                         auto it = gPadSettingsMap.find(padKey);
                                         if (it != gPadSettingsMap.end()) {
-                                            padSettingsPtr = std::make_shared<PadSettingsCpp>(it->second); // Make a copy for thread safety
+                                            // Create a shared_ptr to the found settings.
+                                            // Copying (it->second) ensures thread safety if PadSettingsCpp is complex,
+                                            // or if PlayingSound needs its own lifecycle for it.
+                                            padSettingsPtr = std::make_shared<PadSettingsCpp>(it->second);
                                         }
                                     }
 
                                     if (padSettingsPtr) {
                                         const SampleLayerCpp* selectedLayer = nullptr;
-                                        // Simplified layer selection: use the first enabled layer.
-                                        for(const auto& layer : padSettingsPtr->layers) {
-                                            if (layer.enabled) {
+                                        // Simplified layer selection: first enabled layer
+                                        for (const auto& layer : padSettingsPtr->layers) {
+                                            if (layer.enabled && !layer.sampleId.empty()) {
                                                 selectedLayer = &layer;
                                                 break;
                                             }
                                         }
 
-                                        if (selectedLayer && !selectedLayer->sampleId.empty()) {
+                                        if (selectedLayer) {
                                             auto sampleIt = gSampleMap.find(selectedLayer->sampleId);
                                             if (sampleIt != gSampleMap.end()) {
                                                 const theone::audio::LoadedSample* loadedSample = &(sampleIt->second);
                                                 if (loadedSample && !loadedSample->audioData.empty()) {
-                                                    // Create a unique ID for this sound instance
-                                                    std::string noteInstanceId = "seq_event_" + event.id + "_" + std::to_string(gCurrentSequence->currentPlayheadTicks) + "_" + std::to_string(std::rand());
-                                                    float velocityFloat = static_cast<float>(event.padTrigger.velocity) / 127.0f;
+                                                    std::string noteInstanceId = "seq_" + event.id + "_" + std::to_string(gCurrentSequence->currentPlayheadTicks) + "_" + std::to_string(std::rand());
+                                                    float velocityNormalized = static_cast<float>(event.padTrigger.velocity) / 127.0f;
 
+                                                    // Calculate volume and pan from pad, layer, and event velocity
                                                     float baseVolume = padSettingsPtr->volume;
                                                     float basePan = padSettingsPtr->pan;
-                                                    float volumeOffsetGain = 1.0f;
-                                                    if (selectedLayer->volumeOffsetDb > -90.0f) { // Prevent powf with large negative
-                                                       volumeOffsetGain = powf(10.0f, selectedLayer->volumeOffsetDb / 20.0f);
+                                                    float layerVolumeOffsetGain = 1.0f;
+                                                    if (selectedLayer->volumeOffsetDb > -90.0f) { // Avoid large negative for powf
+                                                        layerVolumeOffsetGain = powf(10.0f, selectedLayer->volumeOffsetDb / 20.0f);
                                                     } else {
-                                                       volumeOffsetGain = 0.0f; // Effectively silence
+                                                        layerVolumeOffsetGain = 0.0f; // Effective silence
                                                     }
-                                                    float finalVolume = baseVolume * volumeOffsetGain * velocityFloat; // Apply velocity to volume
+                                                    // Apply velocity to the gain derived from base and layer offset
+                                                    float finalVolume = baseVolume * layerVolumeOffsetGain * velocityNormalized;
                                                     float finalPan = basePan + selectedLayer->panOffset;
                                                     finalPan = std::max(-1.0f, std::min(1.0f, finalPan)); // Clamp pan
 
                                                     theone::audio::PlayingSound soundToPlay(loadedSample, noteInstanceId, finalVolume, finalPan);
+                                                    soundToPlay.padSettings = padSettingsPtr; // Assign the settings
 
-                                                    float sr = static_cast<float>(gAudioStreamSampleRate);
-                                                    if (sr <= 0) sr = 48000.0f; // Safety net
+                                                    float sr = static_cast<float>(gAudioStreamSampleRate); // Already checked gAudioStreamSampleRate > 0
+                                                                                                        // but good to have a local copy for safety if sr calculation is complex
 
-                                                    // Configure Amp Envelope
-                                                    soundToPlay.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-                                                    soundToPlay.ampEnvelopeGen->configure(padSettingsPtr->ampEnvelope, sr, velocityFloat);
-                                                    soundToPlay.ampEnvelopeGen->triggerOn(velocityFloat);
+                                                    // Configure audio modules based on padSettings
+                                                    if (soundToPlay.padSettings) {
+                                                        // Amp Envelope
+                                                        soundToPlay.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+                                                        soundToPlay.ampEnvelopeGen->configure(soundToPlay.padSettings->ampEnvelope, sr, velocityNormalized);
+                                                        soundToPlay.ampEnvelopeGen->triggerOn(velocityNormalized);
 
-                                                    // Configure LFOs (example, if needed)
-                                                    /*
-                                                    float currentTempo = gCurrentSequence ? gCurrentSequence->bpm : 120.0f;
-                                                    for (const auto& lfoConfig : padSettingsPtr->lfos) {
-                                                        if (lfoConfig.isEnabled) {
-                                                            auto lfo = std::make_unique<theone::audio::LfoGenerator>();
-                                                            lfo->configure(lfoConfig, sr, currentTempo);
-                                                            lfo->retrigger(); // Or handle retrigger based on LFO config
-                                                            soundToPlay.lfoGens.push_back(std::move(lfo));
+                                                        // Pitch Envelope
+                                                        if (soundToPlay.padSettings->hasPitchEnvelope) {
+                                                            soundToPlay.pitchEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+                                                            soundToPlay.pitchEnvelopeGen->configure(soundToPlay.padSettings->pitchEnvelope, sr, velocityNormalized);
+                                                            soundToPlay.pitchEnvelopeGen->triggerOn(velocityNormalized);
+                                                        }
+
+                                                        // Filter Envelope
+                                                        if (soundToPlay.padSettings->hasFilterEnvelope) {
+                                                            soundToPlay.filterEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+                                                            soundToPlay.filterEnvelopeGen->configure(soundToPlay.padSettings->filterEnvelope, sr, velocityNormalized);
+                                                            soundToPlay.filterEnvelopeGen->triggerOn(velocityNormalized);
+                                                        }
+
+                                                        // LFOs
+                                                        soundToPlay.lfoGens.clear();
+                                                        float currentTempo = gCurrentSequence->bpm; // Use sequence's BPM
+                                                        if (currentTempo <= 0) currentTempo = 120.0f; // Safety
+
+                                                        for (const auto& lfoConfig : soundToPlay.padSettings->lfos) {
+                                                            if (lfoConfig.isEnabled) {
+                                                                auto lfo = std::make_unique<theone::audio::LfoGenerator>();
+                                                                lfo->configure(lfoConfig, sr, currentTempo);
+                                                                lfo->retrigger();
+                                                                soundToPlay.lfoGens.push_back(std::move(lfo));
+                                                            }
                                                         }
                                                     }
-                                                    */
 
-                                                    // Add to active sounds list (requires gActiveSoundsMutex)
+                                                    // Add to active sounds
                                                     {
                                                         std::lock_guard<std::mutex> activeSoundsLocker(gActiveSoundsMutex);
                                                         gActiveSounds.push_back(std::move(soundToPlay));
                                                     }
-                                                    // __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Sequencer triggered sound for event %s (pad %s), vel %d",
-                                                    // event.id.c_str(), padKey.c_str(), event.padTrigger.velocity);
+                                                     __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Sequencer triggered sound for event %s (pad %s), sample %s, vel %d at tick %ld",
+                                                                         event.id.c_str(), padKey.c_str(), selectedLayer->sampleId.c_str(), event.padTrigger.velocity, gCurrentSequence->currentPlayheadTicks);
                                                 }
                                             } else {
-                                                // __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Sequencer: Sample '%s' for layer in pad '%s' not found.", selectedLayer->sampleId.c_str(), padKey.c_str());
+                                                 __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Sequencer: Sample '%s' for layer in pad '%s' not found in gSampleMap.",
+                                                                     selectedLayer->sampleId.c_str(), padKey.c_str());
                                             }
                                         } else {
-                                             // __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Sequencer: No suitable enabled layer or sampleId for pad '%s'.", padKey.c_str());
+                                             __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Sequencer: No suitable (enabled with sampleId) layer found for pad '%s'.", padKey.c_str());
                                         }
                                     } else {
-                                         __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Sequencer: PadSettings not found for key '%s' (event: %s, tick: %ld)",
-                                                               padKey.c_str(), event.id.c_str(), gCurrentSequence->currentPlayheadTicks);
+                                         __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Sequencer: PadSettings not found for key '%s'.", padKey.c_str());
                                     }
-                                }
-                            }
-                        }
-                    }
-                    // TODO: Consider if playhead position needs to be reported back to Kotlin via a JNI callback here
-                }
-            }
-        }
+                                } // end if PAD_TRIGGER
+                            } // end if event.startTimeTicks == currentPlayheadTicks
+                        } // end for events
+                    } // end for tracks
+                    // TODO: Report playhead position back to Kotlin if needed (e.g., via a JNI callback)
+                } // end while ticks to process
+            } // end if gCurrentSequence && isPlaying
+        } // end if gAudioStreamSampleRate > 0 && gCurrentTickDurationMs > 0
         // --- End C++ Sequencer Processing ---
 
         // Mixing and main audio processing
@@ -513,31 +538,83 @@ public:
 
             // --- Envelope and LFO Processing (per sound, before per-frame loop) ---
             float ampEnvValue = 1.0f;
-            if (sound.ampEnvelopeGen) {
-                ampEnvValue = sound.ampEnvelopeGen->process();
-                if (!sound.ampEnvelopeGen->isActive() && ampEnvValue < 0.001f) { // Envelope finished and value is negligible
-                    sound.isActive.store(false);
-                }
-            }
+            float pitchEnvValue = 0.0f; // For pitch modulation in semitones or other units
+            float filterEnvValue = 1.0f; // For filter modulation (e.g. cutoff multiplier)
 
-            float lfoPanMod = 0.0f;
-            if (!sound.lfoGens.empty()) {
-                for (auto& lfoGen : sound.lfoGens) {
-                    if (lfoGen) {
-                        float lfoValue = lfoGen->process();
-                        // Example: First LFO modulates Pan. Real routing would be more complex.
-                        if (&lfoGen == &sound.lfoGens.front()) {
-                            lfoPanMod = lfoValue * 0.5f; // LFO swings pan by +/- 0.5
-                        }
+            if (sound.padSettings) { // Check if padSettings are available
+                if (sound.ampEnvelopeGen) {
+                    ampEnvValue = sound.ampEnvelopeGen->process();
+                    if (!sound.ampEnvelopeGen->isActive() && ampEnvValue < 0.001f) {
+                        sound.isActive.store(false);
+                    }
+                }
+                if (sound.pitchEnvelopeGen && sound.padSettings->hasPitchEnvelope) {
+                    pitchEnvValue = sound.pitchEnvelopeGen->process();
+                    // Actual application of pitchEnvValue would modify playback rate or resampling
+                }
+                if (sound.filterEnvelopeGen && sound.padSettings->hasFilterEnvelope) {
+                    filterEnvValue = sound.filterEnvelopeGen->process();
+                    // Actual application of filterEnvValue would modify filter parameters
+                }
+            } else { // Fallback for sounds without padSettings (e.g., metronome ticks)
+                 if (sound.ampEnvelopeGen) { // Metronome might have a simple amp envelope
+                    ampEnvValue = sound.ampEnvelopeGen->process();
+                    if (!sound.ampEnvelopeGen->isActive() && ampEnvValue < 0.001f) {
+                        sound.isActive.store(false);
                     }
                 }
             }
 
+            float lfoVolumeMod = 1.0f; // Multiplicative
+            float lfoPanMod = 0.0f;    // Additive
+            float lfoPitchMod = 0.0f;  // Additive (e.g. semitones)
+            float lfoFilterMod = 0.0f; // Additive or Multiplicative, depending on filter design
+
+            if (sound.padSettings && !sound.lfoGens.empty()) {
+                for (size_t i = 0; i < sound.lfoGens.size(); ++i) {
+                    auto& lfoGen = sound.lfoGens[i];
+                    if (lfoGen && i < sound.padSettings->lfos.size()) {
+                        float lfoValue = lfoGen->process();
+                        const auto& lfoConfig = sound.padSettings->lfos[i];
+
+                        switch (lfoConfig.primaryDestination) {
+                            case theone::audio::LfoDestinationCpp::VOLUME:
+                                // Assuming LFO outputs -1 to 1, map to e.g. 0.5 to 1.5 for volume modulation
+                                lfoVolumeMod *= (1.0f + lfoValue * lfoConfig.depth * 0.5f);
+                                break;
+                            case theone::audio::LfoDestinationCpp::PAN:
+                                lfoPanMod += lfoValue * lfoConfig.depth; // Depth could be max pan swing
+                                break;
+                            case theone::audio::LfoDestinationCpp::PITCH:
+                                lfoPitchMod += lfoValue * lfoConfig.depth; // Depth in semitones
+                                break;
+                            case theone::audio::LfoDestinationCpp::FILTER_CUTOFF:
+                                lfoFilterMod += lfoValue * lfoConfig.depth; // Depth for filter cutoff
+                                break;
+                            case theone::audio::LfoDestinationCpp::NONE:
+                            default:
+                                break;
+                        }
+                    }
+                }
+            }
+            // Clamp LFO modulations if necessary
+            lfoPanMod = std::max(-1.0f, std::min(1.0f, lfoPanMod));
+            lfoVolumeMod = std::max(0.0f, lfoVolumeMod); // Ensure volume doesn't go negative
+
+            // Apply pitch modulation (conceptual - actual implementation is complex)
+            // float effectivePitchMod = pitchEnvValue + lfoPitchMod;
+            // Resampling or playback rate adjustment would happen based on effectivePitchMod
+
+            // Apply filter modulation (conceptual - actual implementation is complex)
+            // float effectiveFilterCutoffMod = filterEnvValue * (or +) lfoFilterMod;
+            // Filter parameters would be updated here
+
             float currentPan = sound.initialPan + lfoPanMod;
-            currentPan = std::max(-1.0f, std::min(1.0f, currentPan));
+            currentPan = std::max(-1.0f, std::min(1.0f, currentPan)); // Clamp final pan
             float panRad = (currentPan * 0.5f + 0.5f) * (static_cast<float>(M_PI) / 2.0f);
 
-            float overallGain = sound.initialVolume * ampEnvValue;
+            float overallGain = sound.initialVolume * ampEnvValue * lfoVolumeMod; // Apply LFO volume mod
             float finalGainL = overallGain * cosf(panRad);
             float finalGainR = overallGain * sinf(panRad);
             // --- End Envelope and LFO Processing ---
@@ -1113,41 +1190,78 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
 
     theone::audio::PlayingSound soundToMove(loadedSample, noteInstanceIdStr, finalVolume, finalPan);
 
+    // Assign the retrieved padSettingsPtr to the sound
+    soundToMove.padSettings = padSettingsPtr;
+
     float sr = outStream ? static_cast<float>(outStream->getSampleRate()) : 48000.0f;
     if (sr <= 0) sr = 48000.0f; // Safety net for sample rate
 
-    // Construct ampEnvelopeFromParams using new JNI arguments
-    theone::audio::EnvelopeSettingsCpp ampEnvelopeFromParams;
-    // Preserve type and holdMs from PadSettings for now, as they are not passed via JNI yet.
-    // If PadSettingsCpp is not found, these would need default values or be part of JNI args.
-    // This path assumes padSettingsPtr is valid.
-    ampEnvelopeFromParams.type = padSettingsPtr->ampEnvelope.type;
-    ampEnvelopeFromParams.attackMs = jAmpEnvAttackMs;
-    ampEnvelopeFromParams.holdMs = padSettingsPtr->ampEnvelope.holdMs;
-    ampEnvelopeFromParams.decayMs = jAmpEnvDecayMs;
-    ampEnvelopeFromParams.sustainLevel = jAmpEnvSustainLevel;
-    ampEnvelopeFromParams.releaseMs = jAmpEnvReleaseMs;
+    // Prioritize PadSettingsCpp for envelope configuration
+    if (soundToMove.padSettings) {
+        // Amp Envelope
+        soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+        soundToMove.ampEnvelopeGen->configure(soundToMove.padSettings->ampEnvelope, sr, noteVelocity);
+        soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
 
-    soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-    soundToMove.ampEnvelopeGen->configure(ampEnvelopeFromParams, sr, noteVelocity); // Use ampEnvelopeFromParams
-    soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
-
-    // TODO: Configure filterEnvelopeGen and pitchEnvelopeGen if padSettingsPtr->hasFilterEnvelope etc.
-
-    for (const auto& lfoConfig : padSettingsPtr->lfos) {
-        auto lfo = std::make_unique<theone::audio::LfoGenerator>();
-        float tempo = 120.0f; // Default tempo
-        // Lock gMetronomeStateMutex only if accessing gMetronomeState directly
-        // Better to pass tempo as a parameter if possible, or have a shared tempo provider
-        {
-            std::lock_guard<std::mutex> metroLock(gMetronomeStateMutex); // Assuming direct access for now
-            tempo = gMetronomeState.bpm.load();
+        // Pitch Envelope
+        if (soundToMove.padSettings->hasPitchEnvelope) {
+            soundToMove.pitchEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+            soundToMove.pitchEnvelopeGen->configure(soundToMove.padSettings->pitchEnvelope, sr, noteVelocity);
+            soundToMove.pitchEnvelopeGen->triggerOn(noteVelocity);
         }
-        if (tempo <= 0) tempo = 120.0f; // Safety net for tempo
 
-        lfo->configure(lfoConfig, sr, tempo);
-        lfo->retrigger();
-        soundToMove.lfoGens.push_back(std::move(lfo));
+        // Filter Envelope
+        if (soundToMove.padSettings->hasFilterEnvelope) {
+            soundToMove.filterEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+            soundToMove.filterEnvelopeGen->configure(soundToMove.padSettings->filterEnvelope, sr, noteVelocity);
+            soundToMove.filterEnvelopeGen->triggerOn(noteVelocity);
+        }
+
+        // LFOs
+        soundToMove.lfoGens.clear(); // Clear any prior LFOs
+        float tempo = 120.0f; // Default tempo
+        // Consider getting tempo from a more reliable source if sequencer is active
+        // For now, use metronome BPM as a proxy if available
+        {
+            std::lock_guard<std::mutex> metroLock(gMetronomeStateMutex);
+            if (gMetronomeState.bpm.load() > 0) { // Check if BPM is valid
+                tempo = gMetronomeState.bpm.load();
+            }
+        }
+         if (gCurrentSequence) { // Prefer sequencer tempo if available
+            std::lock_guard<std::mutex> seqLock(gSequencerMutex);
+            if (gCurrentSequence && gCurrentSequence->bpm > 0) {
+                tempo = gCurrentSequence->bpm;
+            }
+        }
+
+
+        for (const auto& lfoConfig : soundToMove.padSettings->lfos) {
+            if (lfoConfig.isEnabled) {
+                auto lfo = std::make_unique<theone::audio::LfoGenerator>();
+                lfo->configure(lfoConfig, sr, tempo);
+                lfo->retrigger(); // Retrigger based on LFO config (e.g. if note-on retrigger is set)
+                soundToMove.lfoGens.push_back(std::move(lfo));
+            }
+        }
+
+    } else {
+        // Fallback to JNI parameters if padSettingsPtr was not available (though current logic implies it should be)
+        // This block would typically be hit if the initial gPadSettingsMap.find() failed AND a fallback path was taken,
+        // but the current structure ensures padSettingsPtr is valid if we reach here, or returns early.
+        // For robustness, or if the JNI params are meant as an override/alternative path:
+        theone::audio::EnvelopeSettingsCpp ampEnvelopeFromParams;
+        ampEnvelopeFromParams.type = theone::audio::ModelEnvelopeTypeInternalCpp::ADSR; // Default type
+        ampEnvelopeFromParams.attackMs = jAmpEnvAttackMs;
+        ampEnvelopeFromParams.holdMs = 0; // JNI doesn't pass hold for amp
+        ampEnvelopeFromParams.decayMs = jAmpEnvDecayMs;
+        ampEnvelopeFromParams.sustainLevel = jAmpEnvSustainLevel;
+        ampEnvelopeFromParams.releaseMs = jAmpEnvReleaseMs;
+
+        soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+        soundToMove.ampEnvelopeGen->configure(ampEnvelopeFromParams, sr, noteVelocity);
+        soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
+        // No LFOs or other envelopes in this fallback path from JNI params
     }
 
     // Slicing parameters (currently not set by PadSettings, but PlayingSound supports them)
@@ -1942,6 +2056,326 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
 
     // JNI resources like jTrackId, jPadId, jPadSettings are managed by JNI (caller releases them or they are arguments)
     // Local refs created inside this function (GetObjectClass, GetObjectField, FindClass etc.) have been deleted.
+}
+
+// --- JNI Functions for Sequencer ---
+
+// Forward declaration
+EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent);
+TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrackObject);
+
+
+EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent) {
+    EventCpp cppEvent;
+    if (kotlinEvent == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinEvent: kotlinEvent is null");
+        return cppEvent; // Return default-constructed event
+    }
+
+    jclass eventClass = env->GetObjectClass(kotlinEvent);
+    if (!eventClass) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinEvent: GetObjectClass failed for Event");
+        env->ExceptionClear();
+        return cppEvent;
+    }
+
+    // Get common fields
+    jfieldID idFid = env->GetFieldID(eventClass, "id", "Ljava/lang/String;");
+    jfieldID trackIdFid = env->GetFieldID(eventClass, "trackId", "Ljava/lang/String;");
+    jfieldID startTimeTicksFid = env->GetFieldID(eventClass, "startTimeTicks", "J");
+    jfieldID typeFid = env->GetFieldID(eventClass, "type", "Lcom/example/theone/model/EventType;");
+
+    if (!idFid || !trackIdFid || !startTimeTicksFid || !typeFid) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinEvent: Failed to get common field IDs for Event");
+        env->DeleteLocalRef(eventClass);
+        env->ExceptionClear();
+        return cppEvent;
+    }
+
+    jstring jId = (jstring)env->GetObjectField(kotlinEvent, idFid);
+    cppEvent.id = JStringToString(env, jId);
+    env->DeleteLocalRef(jId);
+
+    jstring jTrackId = (jstring)env->GetObjectField(kotlinEvent, trackIdFid);
+    cppEvent.trackId = JStringToString(env, jTrackId); // This is event's own trackId, usually same as parent Track's ID.
+    env->DeleteLocalRef(jTrackId);
+
+    cppEvent.startTimeTicks = env->GetLongField(kotlinEvent, startTimeTicksFid);
+
+    // Determine EventType
+    jobject eventTypeObj = env->GetObjectField(kotlinEvent, typeFid);
+    if (eventTypeObj) {
+        jclass eventTypeClass = env->GetObjectClass(eventTypeObj);
+        // Assuming EventType.PadTrigger is "com/example/theone/model/EventType$PadTrigger"
+        // This needs to be exact. A safer way might be to have an int/enum field in EventType itself.
+        jclass padTriggerEventTypeClass = env->FindClass("com/example/theone/model/EventType$PadTrigger");
+
+        if (padTriggerEventTypeClass && env->IsInstanceOf(eventTypeObj, padTriggerEventTypeClass)) {
+            cppEvent.type = EventTriggerTypeCpp::PAD_TRIGGER;
+            jfieldID padIdFid = env->GetFieldID(padTriggerEventTypeClass, "padId", "Ljava/lang/String;");
+            jfieldID velocityFid = env->GetFieldID(padTriggerEventTypeClass, "velocity", "I");
+            jfieldID durationTicksFid = env->GetFieldID(padTriggerEventTypeClass, "durationTicks", "J");
+
+            if (padIdFid && velocityFid && durationTicksFid) {
+                jstring jPadId = (jstring)env->GetObjectField(eventTypeObj, padIdFid);
+                cppEvent.padTrigger.padId = JStringToString(env, jPadId);
+                env->DeleteLocalRef(jPadId);
+                cppEvent.padTrigger.velocity = env->GetIntField(eventTypeObj, velocityFid);
+                cppEvent.padTrigger.durationTicks = env->GetLongField(eventTypeObj, durationTicksFid);
+            } else {
+                __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinEvent: Failed to get field IDs for EventType.PadTrigger");
+                env->ExceptionClear();
+            }
+        } else {
+            // Handle other event types or log unknown
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "ConvertKotlinEvent: Unknown or unhandled EventType instance");
+        }
+        if (padTriggerEventTypeClass) env->DeleteLocalRef(padTriggerEventTypeClass);
+        if (eventTypeClass) env->DeleteLocalRef(eventTypeClass);
+        env->DeleteLocalRef(eventTypeObj);
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinEvent: Event 'type' field is null");
+    }
+
+    env->DeleteLocalRef(eventClass);
+    return cppEvent;
+}
+
+TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrackObject) {
+    TrackCpp cppTrack;
+    if (kotlinTrackObject == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: kotlinTrackObject is null");
+        return cppTrack;
+    }
+
+    jclass trackClass = env->GetObjectClass(kotlinTrackObject);
+    if (!trackClass) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: GetObjectClass failed for Track");
+        env->ExceptionClear();
+        return cppTrack;
+    }
+
+    jfieldID idFid = env->GetFieldID(trackClass, "id", "Ljava/lang/String;");
+    jfieldID eventsListFid = env->GetFieldID(trackClass, "events", "Ljava/util/List;");
+
+    if (!idFid || !eventsListFid) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: Failed to get field IDs for Track (id or events)");
+        env->DeleteLocalRef(trackClass);
+        env->ExceptionClear();
+        return cppTrack;
+    }
+
+    jstring jId = (jstring)env->GetObjectField(kotlinTrackObject, idFid);
+    cppTrack.id = JStringToString(env, jId);
+    env->DeleteLocalRef(jId);
+
+    jobject eventsListObj = env->GetObjectField(kotlinTrackObject, eventsListFid);
+    if (eventsListObj) {
+        jclass listClass = env->FindClass("java/util/List");
+        jmethodID listSizeMid = env->GetMethodID(listClass, "size", "()I");
+        jmethodID listGetMid = env->GetMethodID(listClass, "get", "(I)Ljava/lang/Object;");
+
+        if (listClass && listSizeMid && listGetMid) {
+            int listSize = env->CallIntMethod(eventsListObj, listSizeMid);
+            for (int i = 0; i < listSize; ++i) {
+                jobject kotlinEventObj = env->CallObjectMethod(eventsListObj, listGetMid, i);
+                if (kotlinEventObj) {
+                    cppTrack.events.push_back(ConvertKotlinEvent(env, kotlinEventObj));
+                    env->DeleteLocalRef(kotlinEventObj);
+                }
+            }
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: Failed to get List methods.");
+            env->ExceptionClear();
+        }
+        if (listClass) env->DeleteLocalRef(listClass);
+        env->DeleteLocalRef(eventsListObj);
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "ConvertKotlinTrack: Track '%s' has null events list", cppTrack.id.c_str());
+    }
+
+    env->DeleteLocalRef(trackClass);
+    return cppTrack;
+}
+
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1loadSequenceData(
+        JNIEnv *env,
+        jobject /* thiz */,
+        jobject jSequence) { // jSequence is the Kotlin Sequence object
+    std::lock_guard<std::mutex> lock(gSequencerMutex);
+
+    if (jSequence == nullptr) {
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_loadSequenceData: jSequence object is null. Clearing current sequence.");
+        gCurrentSequence.reset(); // Clear current sequence if new one is null
+        gCurrentTickDurationMs = 0.0; // Stop processing
+        return;
+    }
+
+    gCurrentSequence = std::make_unique<SequenceCpp>();
+
+    jclass sequenceClass = env->GetObjectClass(jSequence);
+    if (!sequenceClass) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_loadSequenceData: GetObjectClass failed for Sequence.");
+        gCurrentSequence.reset(); // Ensure consistent state
+        env->ExceptionClear();
+        return;
+    }
+
+    // Get field IDs for Sequence
+    jfieldID idFid = env->GetFieldID(sequenceClass, "id", "Ljava/lang/String;");
+    jfieldID nameFid = env->GetFieldID(sequenceClass, "name", "Ljava/lang/String;");
+    jfieldID bpmFid = env->GetFieldID(sequenceClass, "bpm", "F");
+    jfieldID timeSigNumFid = env->GetFieldID(sequenceClass, "timeSignatureNumerator", "I");
+    jfieldID timeSigDenFid = env->GetFieldID(sequenceClass, "timeSignatureDenominator", "I");
+    jfieldID barLengthFid = env->GetFieldID(sequenceClass, "barLength", "J");
+    jfieldID ppqnFid = env->GetFieldID(sequenceClass, "ppqn", "J");
+    jfieldID tracksMapFid = env->GetFieldID(sequenceClass, "tracks", "Ljava/util/Map;");
+
+    if (!idFid || !nameFid || !bpmFid || !timeSigNumFid || !timeSigDenFid || !barLengthFid || !ppqnFid || !tracksMapFid) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_loadSequenceData: Failed to get one or more field IDs for Sequence.");
+        env->DeleteLocalRef(sequenceClass);
+        gCurrentSequence.reset();
+        env->ExceptionClear();
+        return;
+    }
+
+    // Populate gCurrentSequence fields
+    jstring jId = (jstring)env->GetObjectField(jSequence, idFid);
+    gCurrentSequence->id = JStringToString(env, jId);
+    env->DeleteLocalRef(jId);
+
+    jstring jName = (jstring)env->GetObjectField(jSequence, nameFid);
+    gCurrentSequence->name = JStringToString(env, jName);
+    env->DeleteLocalRef(jName);
+
+    gCurrentSequence->bpm = env->GetFloatField(jSequence, bpmFid);
+    gCurrentSequence->timeSignatureNumerator = env->GetIntField(jSequence, timeSigNumFid);
+    gCurrentSequence->timeSignatureDenominator = env->GetIntField(jSequence, timeSigDenFid);
+    gCurrentSequence->barLength = env->GetLongField(jSequence, barLengthFid);
+    gCurrentSequence->ppqn = env->GetLongField(jSequence, ppqnFid);
+
+    // Process tracks map
+    jobject tracksMapObj = env->GetObjectField(jSequence, tracksMapFid);
+    if (tracksMapObj) {
+        jclass mapClass = env->FindClass("java/util/Map");
+        jmethodID entrySetMid = env->GetMethodID(mapClass, "entrySet", "()Ljava/util/Set;");
+        jobject entrySetObj = env->CallObjectMethod(tracksMapObj, entrySetMid);
+
+        jclass setClass = env->FindClass("java/util/Set");
+        jmethodID iteratorMid = env->GetMethodID(setClass, "iterator", "()Ljava/util/Iterator;");
+        jobject iteratorObj = env->CallObjectMethod(entrySetObj, iteratorMid);
+
+        jclass iteratorClass = env->FindClass("java/util/Iterator");
+        jmethodID hasNextMid = env->GetMethodID(iteratorClass, "hasNext", "()Z");
+        jmethodID nextMid = env->GetMethodID(iteratorClass, "next", "()Ljava/lang/Object;");
+
+        jclass entryClass = env->FindClass("java/util/Map$Entry");
+        jmethodID getKeyMid = env->GetMethodID(entryClass, "getKey", "()Ljava/lang/Object;");
+        jmethodID getValueMid = env->GetMethodID(entryClass, "getValue", "()Ljava/lang/Object;");
+
+        gCurrentSequence->tracks.clear(); // Clear previous tracks
+
+        if (mapClass && entrySetMid && entrySetObj && setClass && iteratorMid && iteratorObj && iteratorClass && hasNextMid && nextMid && entryClass && getKeyMid && getValueMid) {
+            while (env->CallBooleanMethod(iteratorObj, hasNextMid)) {
+                jobject entryObj = env->CallObjectMethod(iteratorObj, nextMid);
+                jstring jTrackMapKey = (jstring)env->CallObjectMethod(entryObj, getKeyMid); // Track ID (String)
+                jobject kotlinTrackObj = env->CallObjectMethod(entryObj, getValueMid);   // Track object
+
+                std::string trackIdCpp = JStringToString(env, jTrackMapKey);
+                gCurrentSequence->tracks[trackIdCpp] = ConvertKotlinTrack(env, kotlinTrackObj);
+
+                env->DeleteLocalRef(jTrackMapKey);
+                env->DeleteLocalRef(kotlinTrackObj);
+                env->DeleteLocalRef(entryObj);
+            }
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_loadSequenceData: Failed to get Map/Set/Iterator/Entry methods.");
+            env->ExceptionClear();
+        }
+
+        if(mapClass) env->DeleteLocalRef(mapClass);
+        if(entrySetObj) env->DeleteLocalRef(entrySetObj);
+        if(setClass) env->DeleteLocalRef(setClass);
+        if(iteratorObj) env->DeleteLocalRef(iteratorObj);
+        if(iteratorClass) env->DeleteLocalRef(iteratorClass);
+        if(entryClass) env->DeleteLocalRef(entryClass);
+        env->DeleteLocalRef(tracksMapObj);
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_loadSequenceData: Sequence '%s' has null tracks map.", gCurrentSequence->id.c_str());
+    }
+
+    env->DeleteLocalRef(sequenceClass);
+
+    gCurrentSequence->currentPlayheadTicks = 0;
+    gCurrentSequence->isPlaying = false;
+    gTimeAccumulatedForTick = 0.0;
+    RecalculateTickDuration();
+
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+        "native_loadSequenceData: Loaded sequence ID: %s, Name: %s, BPM: %.2f, PPQN: %ld. Tracks: %zu",
+        gCurrentSequence->id.c_str(), gCurrentSequence->name.c_str(), gCurrentSequence->bpm, gCurrentSequence->ppqn, gCurrentSequence->tracks.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1playSequence(
+        JNIEnv *env,
+        jobject /* thiz */) {
+    std::lock_guard<std::mutex> lock(gSequencerMutex);
+    if (gCurrentSequence) {
+        gCurrentSequence->isPlaying = true;
+        gCurrentSequence->currentPlayheadTicks = 0;
+        gTimeAccumulatedForTick = 0.0; // Reset accumulator for immediate start
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_playSequence: Playback started for sequence ID '%s'. Playhead reset.", gCurrentSequence->id.c_str());
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_playSequence: No sequence loaded.");
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1stopSequence(
+        JNIEnv *env,
+        jobject /* thiz */) {
+    std::lock_guard<std::mutex> lock(gSequencerMutex);
+    if (gCurrentSequence) {
+        gCurrentSequence->isPlaying = false;
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_stopSequence: Playback stopped for sequence ID '%s'.", gCurrentSequence->id.c_str());
+        // Playhead position is maintained, reset on play.
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_stopSequence: No sequence loaded.");
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1setSequencerBpm(
+        JNIEnv *env,
+        jobject /* thiz */,
+        jfloat bpm) {
+    std::lock_guard<std::mutex> lock(gSequencerMutex);
+    if (gCurrentSequence) {
+        if (bpm > 0.0f) {
+            gCurrentSequence->bpm = bpm;
+            RecalculateTickDuration();
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_setSequencerBpm: BPM for sequence ID '%s' updated to %f. New tick duration: %f ms",
+                                gCurrentSequence->id.c_str(), gCurrentSequence->bpm, gCurrentTickDurationMs);
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_setSequencerBpm: Invalid BPM value %f provided.", bpm);
+        }
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_setSequencerBpm: No sequence loaded. Cannot set BPM.");
+    }
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1getSequencerPlayheadPosition(
+        JNIEnv *env,
+        jobject /* thiz */) {
+    std::lock_guard<std::mutex> lock(gSequencerMutex);
+    if (gCurrentSequence) {
+        return static_cast<jlong>(gCurrentSequence->currentPlayheadTicks);
+    }
+    return 0L;
 }
 
 // --- JNI Functions for Sequencer ---

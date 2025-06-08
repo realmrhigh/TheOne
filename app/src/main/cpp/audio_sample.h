@@ -20,6 +20,7 @@ namespace audio {
 // Forward declarations
 class EnvelopeGenerator;
 class LfoGenerator;
+struct PadSettingsCpp; // Forward declaration for PadSettingsCpp
 
 struct SampleFormat {
     uint16_t channels;       // Number of channels (e.g., 1 for mono, 2 for stereo)
@@ -60,6 +61,8 @@ struct PlayingSound {
     std::vector<std::unique_ptr<LfoGenerator>> lfoGens;
     // --- END NEW ---
 
+    std::shared_ptr<PadSettingsCpp> padSettings; // Pad settings for this sound
+
     // New members for slicing and looping
     size_t startFrame;
     size_t endFrame; // Relative to the start of the sample data. 0 means effective end of sample.
@@ -73,6 +76,7 @@ struct PlayingSound {
                      gainLeft(1.0f), gainRight(1.0f), isActive(false),
                      initialVolume(1.0f), initialPan(0.0f), // Initialize new members
                      ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
+                     padSettings(nullptr), // Initialize padSettings
                      startFrame(0), endFrame(0),
                      loopStartFrame(0), loopEndFrame(0),
                      isLooping(false), useSlicing(false) {}
@@ -85,6 +89,7 @@ struct PlayingSound {
           noteInstanceId(std::move(id)),
           initialVolume(volume), initialPan(pan), // Initialize new members
           ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
+          padSettings(nullptr), // Initialize padSettings
           startFrame(0),
           endFrame(sample ? sample->frameCount : 0), // Default to full sample length
           loopStartFrame(0),
@@ -105,6 +110,7 @@ struct PlayingSound {
           noteInstanceId(std::move(id)),
           initialVolume(volume), initialPan(pan), // Initialize new members
           ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
+          padSettings(nullptr), // Initialize padSettings
           startFrame(sf),
           endFrame(ef == 0 && sample ? sample->frameCount : ef), // If 0, use sample's frameCount
           loopStartFrame(lsf),
@@ -145,6 +151,7 @@ struct PlayingSound {
           filterEnvelopeGen(std::move(other.filterEnvelopeGen)),
           pitchEnvelopeGen(std::move(other.pitchEnvelopeGen)),
           lfoGens(std::move(other.lfoGens)),
+          padSettings(std::move(other.padSettings)), // Move padSettings
           startFrame(other.startFrame),
           endFrame(other.endFrame),
           loopStartFrame(other.loopStartFrame),
@@ -156,6 +163,7 @@ struct PlayingSound {
         other.isActive.store(false);
         other.initialVolume = 1.0f; // Reset moved-from object's values
         other.initialPan = 0.0f;
+        // other.padSettings is already moved and will be nullptr
     }
 
     PlayingSound& operator=(PlayingSound&& other) noexcept {
@@ -174,6 +182,7 @@ struct PlayingSound {
         filterEnvelopeGen = std::move(other.filterEnvelopeGen);
         pitchEnvelopeGen = std::move(other.pitchEnvelopeGen);
         lfoGens = std::move(other.lfoGens);
+        padSettings = std::move(other.padSettings); // Assign padSettings
         startFrame = other.startFrame;
         endFrame = other.endFrame;
         loopStartFrame = other.loopStartFrame;
@@ -186,6 +195,7 @@ struct PlayingSound {
         other.isActive.store(false);
         other.initialVolume = 1.0f; // Reset moved-from object's values
         other.initialPan = 0.0f;
+        // other.padSettings is already moved and will be nullptr
         return *this;
     }
 };

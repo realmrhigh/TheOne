@@ -240,25 +240,46 @@ class SequencerViewModel @Inject constructor(
     }
 
     fun play() {
-        if (playbackJob?.isActive == true) {
-            return
-        }
+        // Ensure sequence is loaded before playing.
+        // setCurrentSequenceInternal handles loading, so if currentSequence is set, it should be loaded.
+        // If events were added via recordPadTrigger, setCurrentSequenceInternal or explicit load is needed.
         currentSequence?.let { seq ->
-            if (seq.bpm <= 0) { // PPQN is now handled by C++ side after load
+            if (seq.bpm <= 0) {
                 Log.e("SequencerViewModel", "Cannot play, BPM is invalid (${seq.bpm}).")
-                return
+                return@play // Use qualified return
+            }
+            if (_isPlayingState.value && playbackJob?.isActive == true) {
+                 Log.d("SequencerViewModel", "Play called but already playing and polling job active.")
+                return@play
             }
 
             viewModelScope.launch {
-                audioEngine.playSequence() // Call native play
+                // Explicitly ensure latest version of current sequence is loaded before playing.
+                // This is important if events were added and not yet synced to native layer.
+                // However, if this is called frequently, it might be inefficient.
+                // For now, we assume that if `currentSequence` is set, it's the one to play.
+                // A more robust system might have a "dirty" flag for the sequence.
+                // audioEngine.loadSequenceData(seq) // Re-load to be absolutely sure, or rely on prior loads.
+                                                 // For now, relying on prior loads via setCurrentSequenceInternal.
+
+                audioEngine.playSequence()
                 _isPlayingState.value = true
                 Log.d("SequencerViewModel", "Playback started via native engine for sequence: ${seq.name}")
 
-                // Start polling for playhead position
+                // Cancel any existing polling job before starting a new one
+                playbackJob?.cancel()
                 playbackJob = viewModelScope.launch {
-                    while (isActive && _isPlayingState.value) { // Check _isPlayingState as well
-                        _playheadPositionTicks.value = audioEngine.getSequencerPlayheadPosition()
-                        delay(50) // Poll every 50ms
+                    try {
+                        while (isActive && _isPlayingState.value) { // Loop while coroutine is active and playing
+                            _playheadPositionTicks.value = audioEngine.getSequencerPlayheadPosition()
+                            delay(50) // Poll every 50ms
+                        }
+                    } finally {
+                        // This block executes when the polling loop is cancelled or completes
+                        if (!_isPlayingState.value) { // If stopped, ensure playhead is reset
+                            _playheadPositionTicks.value = 0L
+                        }
+                        Log.d("SequencerViewModel", "Playhead polling job ended. isActive: $isActive, isPlaying: ${_isPlayingState.value}")
                     }
                 }
             }
@@ -269,12 +290,21 @@ class SequencerViewModel @Inject constructor(
 
     fun stop() {
         viewModelScope.launch {
-            audioEngine.stopSequence() // Call native stop
-            _isPlayingState.value = false
-            playbackJob?.cancel() // Cancel the polling job
+            if (!_isPlayingState.value && playbackJob == null) {
+                Log.d("SequencerViewModel", "Stop called but already stopped or polling job null.")
+                // Ensure UI state is consistent even if called redundantly
+                _isPlayingState.value = false
+                _playheadPositionTicks.value = 0L
+                return@launch
+            }
+            audioEngine.stopSequence()
+            _isPlayingState.value = false // Set state before cancelling job to influence job's finally block
+            playbackJob?.cancel()
             playbackJob = null
-            _playheadPositionTicks.value = 0L // Reset playhead on UI
-            Log.d("SequencerViewModel", "Playback stopped via native engine.")
+            // _playheadPositionTicks.value = 0L // Reset in the polling job's finally or here. Redundant if also in finally.
+                                             // Set to 0L directly here to ensure it's immediate.
+            _playheadPositionTicks.value = 0L
+            Log.d("SequencerViewModel", "Playback stopped via native engine. Polling job cancelled.")
         }
     }
 
