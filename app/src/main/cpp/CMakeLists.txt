@@ -1,26 +1,23 @@
 cmake_minimum_required(VERSION 3.18.1)
 
-project(theone) # This project name might also need to change to native_lib or similar
+project(theone)
 
-# Add Oboe
-find_package(Oboe REQUIRED CONFIG) # Add this line
+# This command is all you need. It builds Oboe from the submodule.
+add_subdirectory(oboe)
 
-# Remove existing audioengine library
-# add_library(audioengine SHARED
-#             audioengine/audio_engine.cpp
-#             )
+# DELETE THE FOLLOWING LINE:
+# find_package(Oboe REQUIRED CONFIG)
 
-# Add new native_lib library
 add_library(theone SHARED
-            native-lib.cpp
-            EnvelopeGenerator.cpp
-            LfoGenerator.cpp
-            )
+        native-lib.cpp
+        EnvelopeGenerator.cpp
+        LfoGenerator.cpp
+)
 
 find_library(log-lib log)
 
-# Update target_link_libraries for native_lib
+# This works because add_subdirectory makes "Oboe::oboe" available.
 target_link_libraries(theone
-                      Oboe::oboe # Ensure Oboe is linked
-                      ${log-lib} # Ensure log is linked
-                      )
+        oboe
+        ${log-lib}
+)
