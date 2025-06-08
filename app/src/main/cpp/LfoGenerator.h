@@ -3,6 +3,11 @@
 
 #include <string>
 #include <vector>
+
+enum class LfoDestinationCpp {
+    NONE, PITCH, PAN, VOLUME, FILTER_CUTOFF, FILTER_RESONANCE,
+    NUM_LFO_DESTINATIONS
+};
 #include <map>
 #include <cstdint> // For float, uint32_t
 #include <cmath>   // For M_PI, sinf, etc.
@@ -23,7 +28,8 @@ enum class LfoWaveformCpp {
     SAW_UP, // Ramp up
     SAW_DOWN, // Ramp down
     RANDOM_STEP, // Stepped random values
-    RANDOM_SMOOTH // Smoothly interpolated random values (more complex, placeholder)
+    RANDOM_SMOOTH, // Smoothly interpolated random values (more complex, placeholder)
+    NUM_LFO_WAVEFORMS // FIX: Add this line
 };
 
 // Assuming TimeDivisionCpp is needed if syncToTempo is true.
@@ -33,16 +39,20 @@ enum class TimeDivisionCpp {
     DOTTED_HALF, DOTTED_QUARTER, DOTTED_EIGHTH, DOTTED_SIXTEENTH,
     TRIPLET_WHOLE, TRIPLET_HALF, TRIPLET_QUARTER, TRIPLET_EIGHTH, TRIPLET_SIXTEENTH,
     // Add more as needed based on the Kotlin definition
-    NONE // Default if not synced or applicable
+    NONE, // Default if not synced or applicable
+    NUM_TIME_DIVISIONS // FIX: Add this line
 };
 
 
 struct LfoSettingsCpp {
     std::string id; // Identifier for the LFO instance
+    bool isEnabled = false;                             // FIX: Add this line
     LfoWaveformCpp waveform = LfoWaveformCpp::SINE;
     float rateHz = 1.0f;
     bool syncToTempo = false;
     TimeDivisionCpp tempoDivision = TimeDivisionCpp::QUARTER; // e.g., LFO cycle = 1 quarter note
+    float depth = 0.5f;                                 // FIX: Add this line
+    LfoDestinationCpp primaryDestination = LfoDestinationCpp::NONE; // FIX: Add this line
     // Destinations are handled by the system using this LFO, not by the LFO generator itself.
     // The generator just outputs a value. The mapping (destinations, modDepth) is applied externally.
     // std::map<std::string, float> destinations; // ParamID -> ModDepth
