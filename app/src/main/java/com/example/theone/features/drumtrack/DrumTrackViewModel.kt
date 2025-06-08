@@ -4,17 +4,22 @@ import androidx.lifecycle.ViewModel
 import com.example.theone.audio.AudioEngine
 import com.example.theone.domain.ProjectManager
 import com.example.theone.features.drumtrack.model.PadSettings
+import com.example.theone.features.sequencer.SequencerViewModel // Added import
 import com.example.theone.model.SampleMetadata
+import dagger.hilt.android.lifecycle.HiltViewModel // Added import
+import javax.inject.Inject // Added import
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-// Removed viewModelScope and launch for now, will add back if projectManager.getSamplesFromPool() is suspend
-// import androidx.lifecycle.viewModelScope
-// import kotlinx.coroutines.launch
+import androidx.lifecycle.viewModelScope // Added import
+import kotlinx.coroutines.launch // Added import
+import java.util.UUID // Added import
 
-class DrumTrackViewModel(
+@HiltViewModel // Added annotation
+class DrumTrackViewModel @Inject constructor( // Added @Inject
     private val audioEngine: AudioEngine,
-    private val projectManager: ProjectManager
+    private val projectManager: ProjectManager,
+    private val sequencerViewModel: SequencerViewModel // Added parameter
 ) : ViewModel() {
 
     private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())
@@ -61,13 +66,37 @@ class DrumTrackViewModel(
 
     fun onPadTriggered(padId: String) {
         val padSetting = _padSettingsMap.value[padId]
-        if (padSetting != null && padSetting.sampleId != null) {
-            // Ensure the padSetting passed to audioEngine has the correct ID,
-            // though it should already if map consistency is maintained.
-            audioEngine.playPadSample(padSetting.copy(id = padId))
+        if (padSetting != null) {
+            val firstLayer = padSetting.layers.firstOrNull()
+            val sampleIdToPlay = firstLayer?.sampleId
+
+            if (sampleIdToPlay != null) {
+                viewModelScope.launch {
+                    audioEngine.playPadSample(
+                        noteInstanceId = UUID.randomUUID().toString(),
+                        trackId = "drumTrack_TODO", // Placeholder
+                        padId = padSetting.id,
+                        sampleId = sampleIdToPlay,
+                        sliceId = null, // Placeholder, needs mapping from firstLayer.activeSliceInfo if relevant
+                        velocity = 1.0f, // Default velocity for direct pad press from UI
+                        playbackMode = padSetting.playbackMode,
+                        coarseTune = padSetting.tuningCoarse,
+                        fineTune = padSetting.tuningFine,
+                        pan = padSetting.pan,
+                        volume = padSetting.volume,
+                        ampEnv = padSetting.ampEnvelope,
+                        filterEnv = padSetting.filterEnvelope,
+                        pitchEnv = padSetting.pitchEnvelope,
+                        lfos = padSetting.lfos // Directly pass List<LFOSettings>
+                    )
+                }
+                // Also call the sequencer recording logic
+                sequencerViewModel.recordPadTrigger(padId = padId, velocity = 127) // Using default MIDI velocity
+            } else {
+                println("DrumTrackViewModel: Pad $padId triggered, but no sample assigned to its first layer.")
+            }
         } else {
-            // Consider logging instead of println for production apps
-            println("DrumTrackViewModel: Pad $padId triggered, but no sample assigned.")
+            println("DrumTrackViewModel: Pad $padId triggered, but no settings found.")
         }
     }
 

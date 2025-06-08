@@ -69,6 +69,7 @@ dependencies {
     implementation(libs.androidx.material.icons.core)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation("androidx.navigation:navigation-compose:2.7.7") // Added Compose Navigation
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0") // Or the latest stable version
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.10.3")

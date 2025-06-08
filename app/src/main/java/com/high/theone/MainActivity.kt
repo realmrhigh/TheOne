@@ -8,13 +8,27 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button // Added
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment // Added
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import com.high.theone.ui.theme.TheOneTheme
+import androidx.compose.ui.unit.dp // Added
+import androidx.navigation.NavHostController // Added
+import androidx.navigation.compose.NavHost // Added
+import androidx.navigation.compose.composable // Added
+import androidx.navigation.compose.rememberNavController // Added
 import com.example.theone.audio.AudioEngine
+import com.example.theone.features.sequencer.StepSequencerScreen // Added
+import com.high.theone.ui.theme.TheOneTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -220,7 +234,17 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Greeting("Android", modifier = Modifier.padding(16.dp))
+                    // AppNavigation() // Call your new NavHost composable
+                    val navController = rememberNavController()
+                    NavHost(navController = navController, startDestination = "main_screen") {
+                        composable("main_screen") {
+                            MainScreen(navController = navController)
+                        }
+                        composable("step_sequencer_screen") {
+                            StepSequencerScreen() // Assuming StepSequencerScreen uses hiltViewModel()
+                        }
+                        // Add other destinations here if needed
+                    }
                 }
             }
         }
@@ -238,18 +262,28 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// New Composable for the main screen (can be in the same file or separate)
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    TheOneTheme {
-        Greeting("Android")
+fun MainScreen(navController: NavHostController, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Welcome to The One!", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(onClick = { navController.navigate("step_sequencer_screen") }) {
+            Text("Go to Step Sequencer")
+        }
+        // Add other navigation buttons here later
     }
 }
+
+// Remove or comment out Greeting and GreetingPreview
+/*
+@Composable
+fun Greeting(name: String, modifier: Modifier = Modifier) { ... }
+@Preview(showBackground = true)
+@Composable
+fun GreetingPreview() { ... }
+*/

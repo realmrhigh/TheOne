@@ -705,7 +705,14 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
         jint coarseTune,  // Fallback
         jint fineTune,    // Fallback
         jfloat pan,       // Fallback
-        jfloat volume     // Fallback
+        jfloat volume,    // Fallback
+        // New parameters matching AudioEngine.kt
+        jint jPlaybackModeOrdinal,
+        jfloat jAmpEnvAttackMs,
+        jfloat jAmpEnvDecayMs,
+        jfloat jAmpEnvSustainLevel,
+        jfloat jAmpEnvReleaseMs
+        // TODO: Add JNI params for filterEnv, pitchEnv, LFOs later
 ) {
     const char *nativeNoteInstanceId = env->GetStringUTFChars(jNoteInstanceId, nullptr);
     std::string noteInstanceIdStr(nativeNoteInstanceId);
@@ -857,8 +864,20 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
     float sr = outStream ? static_cast<float>(outStream->getSampleRate()) : 48000.0f;
     if (sr <= 0) sr = 48000.0f; // Safety net for sample rate
 
+    // Construct ampEnvelopeFromParams using new JNI arguments
+    theone::audio::EnvelopeSettingsCpp ampEnvelopeFromParams;
+    // Preserve type and holdMs from PadSettings for now, as they are not passed via JNI yet.
+    // If PadSettingsCpp is not found, these would need default values or be part of JNI args.
+    // This path assumes padSettingsPtr is valid.
+    ampEnvelopeFromParams.type = padSettingsPtr->ampEnvelope.type;
+    ampEnvelopeFromParams.attackMs = jAmpEnvAttackMs;
+    ampEnvelopeFromParams.holdMs = padSettingsPtr->ampEnvelope.holdMs;
+    ampEnvelopeFromParams.decayMs = jAmpEnvDecayMs;
+    ampEnvelopeFromParams.sustainLevel = jAmpEnvSustainLevel;
+    ampEnvelopeFromParams.releaseMs = jAmpEnvReleaseMs;
+
     soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-    soundToMove.ampEnvelopeGen->configure(padSettingsPtr->ampEnvelope, sr, noteVelocity);
+    soundToMove.ampEnvelopeGen->configure(ampEnvelopeFromParams, sr, noteVelocity); // Use ampEnvelopeFromParams
     soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
 
     // TODO: Configure filterEnvelopeGen and pitchEnvelopeGen if padSettingsPtr->hasFilterEnvelope etc.
