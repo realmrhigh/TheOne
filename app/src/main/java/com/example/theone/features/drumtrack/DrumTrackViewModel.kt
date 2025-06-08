@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import com.example.theone.audio.AudioEngine
 import com.example.theone.domain.ProjectManager
 import com.example.theone.features.drumtrack.model.PadSettings
-import com.example.theone.features.sequencer.SequencerViewModel // Added import
+// import com.example.theone.features.sequencer.SequencerViewModel // Removed import
+import com.example.theone.features.sequencer.SequencerEventBus // Added import
+import com.example.theone.features.sequencer.PadTriggerEvent // Added import
 import com.example.theone.model.SampleMetadata
-import dagger.hilt.android.lifecycle.HiltViewModel // Added import
-import javax.inject.Inject // Added import
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,11 +17,11 @@ import androidx.lifecycle.viewModelScope // Added import
 import kotlinx.coroutines.launch // Added import
 import java.util.UUID // Added import
 
-@HiltViewModel // Added annotation
-class DrumTrackViewModel @Inject constructor( // Added @Inject
-    private val audioEngine: AudioEngine,
-    private val projectManager: ProjectManager,
-    private val sequencerViewModel: SequencerViewModel // Added parameter
+@HiltViewModel
+class DrumTrackViewModel @Inject constructor(
+    val audioEngine: com.example.theone.audio.AudioEngineControl, // Changed to interface
+    val projectManager: ProjectManager,
+    private val sequencerEventBus: SequencerEventBus
 ) : ViewModel() {
 
     private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())
@@ -53,14 +55,55 @@ class DrumTrackViewModel @Inject constructor( // Added @Inject
         val existingPadSetting = currentPads[padId] ?: PadSettings(id = padId) // Ensure PadSettings has an ID
         // Assuming sample.uri can serve as a unique identifier for the sample, as per plan.
         // If SampleMetadata has a persistent `id` from ProjectManager, that should be preferred.
-        currentPads[padId] = existingPadSetting.copy(sampleId = sample.uri, sampleName = sample.name)
+        // MODIFIED: Update first layer or create one. This is a simplified assignment logic.
+        // A more complete implementation might involve selecting a target layer if multiple exist.
+        val layers = existingPadSetting.layers.toMutableList()
+        if (layers.isEmpty()) {
+            layers.add(com.example.theone.model.LayerModels.SampleLayer(id = "layer_0", sampleId = sample.id, sampleNameCache = sample.name))
+        } else {
+            // For simplicity, assign to the first layer.
+            // Consider resetting other layer params if a new sample implies a "fresh start" for the layer.
+            layers[0] = layers[0].copy(
+                sampleId = sample.id,
+                sampleNameCache = sample.name,
+                // Resetting other relevant parameters for the new sample
+                startPoint = 0f,
+                endPoint = 1f,
+                loopPoint = 0f,
+                loopEnabled = false,
+                reverse = false,
+                tuningSemi = 0,
+                tuningFine = 0
+                // volume and pan might be kept or reset based on desired behavior
+            )
+        }
+        currentPads[padId] = existingPadSetting.copy(layers = layers)
         _padSettingsMap.value = currentPads
     }
 
     fun clearSampleFromPad(padId: String) {
         val currentPads = _padSettingsMap.value.toMutableMap()
-        val existingPadSetting = currentPads[padId] ?: PadSettings(id = padId) // Ensure PadSettings has an ID
-        currentPads[padId] = existingPadSetting.copy(sampleId = null, sampleName = null)
+        val existingPadSetting = currentPads[padId] ?: PadSettings(id = padId)
+        // MODIFIED: Clear sample and related parameters from the first layer.
+        // This is a simplified approach. A full implementation might allow clearing specific layers.
+        val layers = existingPadSetting.layers.toMutableList()
+        if (layers.isNotEmpty()) {
+            layers[0] = layers[0].copy(
+                sampleId = "", // Or null if your model.SampleLayer.sampleId is nullable
+                sampleNameCache = "Empty",
+                // Reset other parameters to a default state when sample is cleared
+                startPoint = 0f,
+                endPoint = 1f,
+                loopPoint = 0f,
+                loopEnabled = false,
+                reverse = false,
+                tuningSemi = 0,
+                tuningFine = 0,
+                volume = 1.0f, // Reset to default volume
+                pan = 0.0f     // Reset to center pan
+            )
+        }
+        currentPads[padId] = existingPadSetting.copy(layers = layers)
         _padSettingsMap.value = currentPads
     }
 
@@ -90,8 +133,10 @@ class DrumTrackViewModel @Inject constructor( // Added @Inject
                         lfos = padSetting.lfos // Directly pass List<LFOSettings>
                     )
                 }
-                // Also call the sequencer recording logic
-                sequencerViewModel.recordPadTrigger(padId = padId, velocity = 127) // Using default MIDI velocity
+                // Also call the sequencer recording logic via event bus
+                viewModelScope.launch { // Launch a coroutine to emit the event
+                    sequencerEventBus.emitPadTriggerEvent(PadTriggerEvent(padId = padId, velocity = 127))
+                }
             } else {
                 println("DrumTrackViewModel: Pad $padId triggered, but no sample assigned to its first layer.")
             }
@@ -116,6 +161,22 @@ class DrumTrackViewModel @Inject constructor( // Added @Inject
         // then just putting it is fine. If it's partial, the ViewModel needs a more complex update strategy.
         // For now, assuming newSettings is intended to be a complete setting for the pad,
         // but we ensure its 'id' field is correct.
-        _padSettingsMap.value = currentPads
+        _padSettingsMap.value = currentPads.toMap() // Ensure immutable map is set back
+
+        viewModelScope.launch {
+            try {
+                projectManager.savePadSettings(padId, newSettings).let { result ->
+                    if (result.isSuccess) {
+                        android.util.Log.d("DrumTrackViewModel", "Pad settings persistence successful for $padId.")
+                    } else {
+                        android.util.Log.e("DrumTrackViewModel", "Pad settings persistence failed for $padId: ${result.exceptionOrNull()?.message}")
+                        // Handle error appropriately, e.g., show a message to the user via a StateFlow<UserMessage?>
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DrumTrackViewModel", "Error saving pad settings for $padId", e)
+                // Handle error appropriately
+            }
+        }
     }
 }

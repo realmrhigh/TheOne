@@ -10,7 +10,7 @@ import android.content.Context
 import com.example.theone.model.PlaybackMode
 import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
 import com.example.theone.model.SampleMetadata // Added import
-// Potentially add import for a specific LFO settings type if defined later
+import com.example.theone.model.SynthModels.LFOSettings // Added LFO Settings import
 
 interface AudioEngineControl {
     // Initialization & Config
@@ -86,7 +86,7 @@ interface AudioEngineControl {
         ampEnv: EnvelopeSettings,
         filterEnv: EnvelopeSettings?,
         pitchEnv: EnvelopeSettings?,
-        lfos: List<Any> // TODO: Replace Any with a more specific LFO settings type if defined
+        lfos: List<LFOSettings> // Changed from List<Any>
     ): Boolean
 
     suspend fun playSampleSlice(

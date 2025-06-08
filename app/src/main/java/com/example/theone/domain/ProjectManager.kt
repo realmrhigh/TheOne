@@ -27,6 +27,9 @@ interface ProjectManager {
     // --- New methods for WAV I/O ---
     suspend fun loadWavFile(fileUri: String): Result<Sample, Error> // Using Kotlin's Result
     suspend fun saveWavFile(sample: Sample, fileUri: String): Result<Unit, Error> // Using Kotlin's Result
+
+    // --- Method for saving PadSettings ---
+    suspend fun savePadSettings(padId: String, settings: com.example.theone.features.drumtrack.model.PadSettings): Result<Unit, Error>
 }
 
 class ProjectManagerImpl : ProjectManager {
@@ -148,5 +151,17 @@ class ProjectManagerImpl : ProjectManager {
         return Result.success(Unit)
         // Simulate failure:
         // return Result.failure(Error("Failed to save WAV: Not implemented"))
+    }
+
+    override suspend fun savePadSettings(padId: String, settings: com.example.theone.features.drumtrack.model.PadSettings): Result<Unit, Error> {
+        android.util.Log.d("ProjectManagerImpl", "Saving PadSettings for padId: $padId, Settings: $settings")
+        // TODO: Implement actual serialization and file writing logic here.
+        // This would involve:
+        // 1. Loading the current project/drum track data structure.
+        // 2. Finding the pad with 'padId' and replacing its settings with the new 'settings'.
+        // 3. Serializing the entire project/drum track to JSON (or other format).
+        // 4. Writing to a persistent file.
+        // For now, this is a placeholder.
+        return Result.success(Unit) // Simulate success
     }
 }

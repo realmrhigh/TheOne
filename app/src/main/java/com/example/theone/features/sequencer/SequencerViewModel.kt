@@ -15,10 +15,11 @@ import com.example.theone.model.Sequence // This was the problematic import befo
 import com.example.theone.model.SynthModels.EnvelopeSettings // Added import
 import com.example.theone.model.SynthModels.EnvelopeType // Added import
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.util.UUID // Added import (already present but good to confirm)
+import java.util.UUID
 // import com.example.theone.model.Project // Not using Project directly for now
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
+import com.example.theone.features.sequencer.SequencerEventBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,11 +28,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-// import kotlinx.coroutines.GlobalScope // Not needed if using println
+import android.content.Context
+import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import android.Manifest
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+
 
 @HiltViewModel
 class SequencerViewModel @Inject constructor(
-    private val audioEngine: AudioEngine // Added AudioEngine
+    @ApplicationContext private val applicationContext: Context, // Injected context
+    private val audioEngine: com.example.theone.audio.AudioEngineControl, // Changed to interface
+    private val sequencerEventBus: SequencerEventBus
 ) : ViewModel() {
 
     private val _playheadPositionTicks = MutableStateFlow(0L)
@@ -78,6 +90,13 @@ class SequencerViewModel @Inject constructor(
 
         // Initialize recording state flow based on the initial isRecording value
         _isRecordingState.value = isRecording // isRecording is a var Boolean
+
+        // Collect pad trigger events from the event bus
+        viewModelScope.launch {
+            sequencerEventBus.padTriggerEvents.collect { event ->
+                recordPadTrigger(event.padId, event.velocity)
+            }
+        }
     }
 
     // Method to internally set the current sequence and update related states
@@ -358,10 +377,121 @@ class SequencerViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         playbackJob?.cancel()
-        // viewModelScope.cancel() // Cancel the scope itself. It's good practice.
-        // However, the Job passed to CoroutineScope constructor will be cancelled if the ViewModel is cleared
-        // if this viewModelScope is tied to viewModelScope provided by androidx.lifecycle.viewModelScope
-        // Since we created a custom one `CoroutineScope(Dispatchers.Main + Job())`, we should cancel its Job.
-        viewModelScope.coroutineContext[Job]?.cancel() // Cancel the custom scope's job
+        viewModelScope.coroutineContext[Job]?.cancel()
+    }
+
+    // --- Test Logic Moved from MainActivity ---
+
+    private fun copyAssetToCache(context: Context, assetName: String, cacheFileName: String): String? {
+        val assetManager = context.assets
+        try {
+            val inputStream = assetManager.open(assetName)
+            val cacheDir = context.cacheDir
+            val outFile = File(cacheDir, cacheFileName)
+            val outputStream = FileOutputStream(outFile)
+            inputStream.copyTo(outputStream)
+            inputStream.close()
+            outputStream.close()
+            Log.i("SequencerViewModel_Test", "Copied asset '$assetName' to '${outFile.absolutePath}'")
+            return outFile.absolutePath
+        } catch (e: IOException) {
+            Log.e("SequencerViewModel_Test", "Failed to copy asset $assetName to cache: ${e.message}", e)
+            return null
+        }
+    }
+
+    fun testMetronomeFullSequence() {
+        viewModelScope.launch {
+            if (!audioEngine.isInitialized()) {
+                Log.e("SequencerViewModel_Test", "AudioEngine not initialized. Cannot run metronome test.")
+                return@launch
+            }
+            val primaryClickId = "__METRONOME_PRIMARY_TEST__"
+            val secondaryClickId = "__METRONOME_SECONDARY_TEST__"
+            val primaryAssetName = "click_primary.wav" // Assuming these assets exist
+            val secondaryAssetName = "click_secondary.wav"
+
+            val primaryCachedPath = copyAssetToCache(applicationContext, primaryAssetName, "cached_click_primary_test.wav")
+            if (primaryCachedPath != null) {
+                val primaryFileUri = "file://$primaryCachedPath"
+                audioEngine.loadSampleToMemory(applicationContext, primaryClickId, primaryFileUri)
+            }
+            val secondaryCachedPath = copyAssetToCache(applicationContext, secondaryAssetName, "cached_click_secondary_test.wav")
+            if (secondaryCachedPath != null) {
+                val secondaryFileUri = "file://$secondaryCachedPath"
+                audioEngine.loadSampleToMemory(applicationContext, secondaryClickId, secondaryFileUri)
+            }
+
+            audioEngine.setMetronomeVolume(0.8f)
+            Log.i("SequencerViewModel_Test", "Enabling metronome at 120 BPM, 4/4.")
+            audioEngine.setMetronomeState( true, 120.0f, 4, 4, primaryClickId, secondaryClickId )
+            delay(3000) // Shortened delay
+            Log.i("SequencerViewModel_Test", "Changing metronome BPM to 180.")
+            audioEngine.setMetronomeState( true, 180.0f, 4, 4, primaryClickId, secondaryClickId )
+            delay(3000)
+            Log.i("SequencerViewModel_Test", "Disabling metronome.")
+            audioEngine.setMetronomeState( false, 180.0f, 4, 4, primaryClickId, secondaryClickId )
+            // Cleanup loaded test samples
+            audioEngine.unloadSample(primaryClickId)
+            audioEngine.unloadSample(secondaryClickId)
+        }
+    }
+
+    fun testAudioRecording() {
+        viewModelScope.launch {
+            if (!audioEngine.isInitialized()) {
+                Log.e("SequencerViewModel_Test", "AudioEngine not initialized. Cannot run recording test.")
+                return@launch
+            }
+            Log.i("SequencerViewModel_Test", "--- Starting Audio Recording Test ---")
+            if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                Log.e("SequencerViewModel_Test", "RECORD_AUDIO permission not granted. Skipping recording test.")
+                return@launch
+            }
+            val recordFileName = "vm_test_recording.wav"
+            val recordFile = File(applicationContext.cacheDir, recordFileName)
+            val recordFileUriString = "file://${recordFile.absolutePath}"
+            val recordingSampleRate = 48000
+            val recordingChannels = 1
+
+            Log.i("SequencerViewModel_Test", "Attempting to start recording to: $recordFileUriString")
+            val startSuccess = audioEngine.startAudioRecording( applicationContext, recordFileUriString, recordingSampleRate, recordingChannels )
+            Log.i("SequencerViewModel_Test", "startAudioRecording result: $startSuccess")
+
+            if (startSuccess) {
+                Log.i("SequencerViewModel_Test", "Recording started. Will record for ~3 seconds.")
+                delay(3000)
+                Log.i("SequencerViewModel_Test", "Stopping recording...")
+                val recordedSampleMetadata = audioEngine.stopAudioRecording()
+                if (recordedSampleMetadata != null) {
+                    Log.i("SequencerViewModel_Test", "stopAudioRecording successful. Metadata: $recordedSampleMetadata")
+                    // Optional: load, play, unload test as in MainActivity
+                } else { Log.e("SequencerViewModel_Test", "stopAudioRecording failed or returned null metadata.") }
+            } else { Log.e("SequencerViewModel_Test", "Failed to start recording.") }
+            Log.i("SequencerViewModel_Test", "--- Audio Recording Test Finished ---")
+        }
+    }
+
+    fun testLoadAndPlaySample(assetName: String, sampleId: String) {
+        viewModelScope.launch {
+            if (!audioEngine.isInitialized()) {
+                Log.e("SequencerViewModel_Test", "AudioEngine not initialized. Cannot run load/play test.")
+                return@launch
+            }
+            Log.i("SequencerViewModel_Test", "Testing general sample loading ($assetName).")
+            val cachedFilePath = copyAssetToCache(applicationContext, assetName, "cached_test_$sampleId.wav")
+            if (cachedFilePath != null) {
+                val fileUriString = "file://$cachedFilePath"
+                val loadSuccess = audioEngine.loadSampleToMemory(applicationContext, sampleId, fileUriString)
+                Log.i("SequencerViewModel_Test", "loadSampleToMemory($sampleId) result: $loadSuccess")
+                if (loadSuccess && audioEngine.isSampleLoaded(sampleId)) {
+                    Log.i("SequencerViewModel_Test", "Attempting to play sample $sampleId...")
+                    audioEngine.playSample(sampleId = sampleId, noteInstanceId = "test_instance_${sampleId}", volume = 0.8f, pan = 0.0f)
+                    delay(1000) // Play for a bit
+                    audioEngine.unloadSample(sampleId)
+                    Log.i("SequencerViewModel_Test", "Unloaded $sampleId")
+                } else { Log.e("SequencerViewModel_Test", "Failed to load $sampleId or sample not reported as loaded.") }
+            } else { Log.e("SequencerViewModel_Test", "Failed to copy asset $assetName to cache.") }
+        }
     }
 }

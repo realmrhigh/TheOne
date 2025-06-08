@@ -12,6 +12,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.IOException
+import android.util.Log
+import android.content.Context
+import com.example.theone.audio.AudioEngineControl
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 
 enum class RecordingState {
     IDLE,       // Not recording, sampler not armed
@@ -20,8 +27,10 @@ enum class RecordingState {
     REVIEWING   // Recording finished, user can review/save/discard
 }
 
-class SamplerViewModel(
-    private val audioEngine: AudioEngine,
+@HiltViewModel
+class SamplerViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val audioEngine: AudioEngineControl, // Use interface
     private val projectManager: ProjectManager
 ) : ViewModel() {
 
@@ -105,25 +114,64 @@ class SamplerViewModel(
         _recordingState.value = RecordingState.ARMED
     }
 
-    fun startRecording(audioInputSource: AudioInputSource) {
+    fun startRecording(audioInputSource: AudioInputSource) { // audioInputSource currently not used for path
         if (_recordingState.value == RecordingState.ARMED) {
             _recordingState.value = RecordingState.RECORDING
             viewModelScope.launch {
-                println("SamplerViewModel: startRecording called. (Actual recording logic might need review against AudioEngine interface)")
-                val tempFilePath = "path/to/temp/sample.wav"
-                val newSamplePlaceholder = SampleMetadata(uri=tempFilePath, duration=100L, name="Recorded Sample")
-                onRecordingFinished(newSamplePlaceholder)
+                val tempFile: File?
+                try {
+                    tempFile = File.createTempFile("temp_sampler_audio_", ".wav", context.cacheDir)
+                    val tempFilePath = tempFile.absolutePath
+                    Log.d("SamplerViewModel", "Recording to temporary file: $tempFilePath")
+
+                    // TODO: Define actual recording parameters
+                    val sampleRate = 48000
+                    val channels = 1 // Mono
+
+                    val success = audioEngine.startAudioRecording(
+                        context = context, // Pass application context
+                        filePathUri = tempFilePath,
+                        sampleRate = sampleRate,
+                        channels = channels
+                        // inputDeviceId can be null for default mic
+                    )
+
+                    if (success) {
+                        Log.i("SamplerViewModel", "AudioEngine recording started successfully.")
+                        // UI state already RECORDING. Actual stop and onRecordingFinished will be separate.
+                    } else {
+                        Log.e("SamplerViewModel", "Failed to start AudioEngine recording.")
+                        _recordingState.value = RecordingState.ARMED // Revert state if failed to start
+                    }
+
+                } catch (e: IOException) {
+                    Log.e("SamplerViewModel", "Error creating temporary file for recording", e)
+                    _recordingState.value = RecordingState.ARMED // Revert state
+                    return@launch
+                }
             }
         }
     }
 
     fun stopRecordingAndFinalize() {
         if (_recordingState.value == RecordingState.RECORDING) {
-            println("SamplerViewModel: stopRecordingAndFinalize called. (Actual stopping logic might need review)")
+            viewModelScope.launch {
+                Log.i("SamplerViewModel", "Attempting to stop recording.")
+                val recordedSampleMetadata = audioEngine.stopAudioRecording()
+                if (recordedSampleMetadata != null) {
+                    Log.i("SamplerViewModel", "Recording stopped. Metadata: $recordedSampleMetadata")
+                    onRecordingFinished(recordedSampleMetadata) // Pass the actual metadata
+                } else {
+                    Log.e("SamplerViewModel", "Stopping recording failed or returned null metadata.")
+                    _recordingState.value = RecordingState.ARMED // Revert or go to error state
+                }
+            }
+        } else {
+            Log.w("SamplerViewModel", "stopRecordingAndFinalize called when not in RECORDING state.")
         }
     }
 
-    fun onRecordingFinished(newSample: SampleMetadata) {
+    fun onRecordingFinished(newSample: SampleMetadata) { // This is now called by stopRecordingAndFinalize
         val currentQueue = _recordedSamplesQueue.value.toMutableList()
         if (currentQueue.size == MAX_RECORDINGS) {
             currentQueue.removeAt(0)

@@ -2,43 +2,64 @@ package com.example.theone.features.drumtrack.model
 
 import com.example.theone.model.SampleLayer // Added import
 import com.example.theone.model.LayerTriggerRule // Added import
-import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
-import com.example.theone.model.SynthModels.LFOSettings // Corrected import
-import com.example.theone.model.SynthModels.EnvelopeType // Corrected import
-import com.example.theone.model.PlaybackMode // Added import for consolidated PlaybackMode
+import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
+// import com.example.theone.model.SynthModels.EnvelopeType // This was ModelEnvelopeTypeInternal, not directly used by PadSettings itself
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.SynthModels.ModulationRouting // Added import
+import com.example.theone.model.SynthModels.EffectSetting // Added import
 
 // PlaybackMode is now defined in com.example.theone.model.SharedModels
 
 data class PadSettings(
-    val id: String, // e.g., "Pad1" - Assuming id is a new requirement, was not in the old file
+    val id: String,
+    var name: String = "Default Pad", // Added from edit version for Program Name
 
-    // --- NEW: Layering ---
-    val layers: MutableList<SampleLayer> = mutableListOf(),
+    // --- Layering ---
+    val layers: MutableList<SampleLayer> = mutableListOf(), // Using consolidated SampleLayer
     var layerTriggerRule: LayerTriggerRule = LayerTriggerRule.VELOCITY,
-    // --- REMOVED (or deprecated): var sampleId: String? ---
-    // val sampleName: String? = null, // Also removed as layer specific sample info will be used
 
-    // These now become the BASE settings, with layers providing offsets
-    var playbackMode: PlaybackMode = PlaybackMode.ONE_SHOT, // Added, assuming default
-    var tuningCoarse: Int = 0, // Replaces 'tuning: Float'
-    var tuningFine: Int = 0,   // New for fine tuning
-    var volume: Float = 1.0f, // Kept
-    var pan: Float = 0.0f,    // Kept
-    var muteGroup: Int = 0,   // Added, assuming default
-    var polyphony: Int = 16,  // Added, assuming default
+    // --- Global Pad Parameters (from edit version and existing model) ---
+    var playbackMode: PlaybackMode = PlaybackMode.ONE_SHOT,
+    var volume: Float = 1.0f, // Overall pad volume
+    var pan: Float = 0.0f,    // Overall pad pan
+    // tuningCoarse and tuningFine at global level are base values; layers have offsets or absolute values
+    var tuningCoarse: Int = 0, // Base coarse tuning for the pad
+    var tuningFine: Int = 0,   // Base fine tuning for the pad
+    var muteGroup: Int = 0,
+    var polyphony: Int = 16,
 
-    // --- NEW: Sound Design ---
-    // Default values for ampEnvelope need to be sensible.
-    // Example: ADSR with quick attack, medium decay, full sustain, medium release.
-    var ampEnvelope: EnvelopeSettings = EnvelopeSettings(
-        type = EnvelopeType.ADSR,
+    // --- Envelopes (non-nullable as per editor's expectation) ---
+    var ampEnvelope: EnvelopeSettings = EnvelopeSettings( // Using consolidated EnvelopeSettings
+        type = com.example.theone.model.ModelEnvelopeTypeInternal.ADSR, // Explicitly use model's enum
+        attackMs = 5f,
+        holdMs = 0f,
+        decayMs = 150f,
+        sustainLevel = 1.0f, // Now non-nullable in model
+        releaseMs = 100f
+    ),
+    var pitchEnvelope: EnvelopeSettings = EnvelopeSettings( // Non-nullable
+        type = com.example.theone.model.ModelEnvelopeTypeInternal.ADSR,
         attackMs = 5f,
         holdMs = 0f,
         decayMs = 150f,
         sustainLevel = 1.0f,
         releaseMs = 100f
     ),
-    var filterEnvelope: EnvelopeSettings? = null,
-    var pitchEnvelope: EnvelopeSettings? = null,
-    var lfos: MutableList<LFOSettings> = mutableListOf()
+    var filterEnvelope: EnvelopeSettings = EnvelopeSettings( // Non-nullable
+        type = com.example.theone.model.ModelEnvelopeTypeInternal.ADSR,
+        attackMs = 5f,
+        holdMs = 0f,
+        decayMs = 150f,
+        sustainLevel = 1.0f,
+        releaseMs = 100f
+    ),
+    // --- LFOs ---
+    var lfos: MutableList<LFOSettings> = mutableListOf(), // Using consolidated LFOSettings
+
+    // --- Modulation Routings ---
+    var modulations: MutableList<ModulationRouting> = mutableListOf(),
+
+    // --- Effects Chain ---
+    var effects: MutableList<EffectSetting> = mutableListOf()
 )
