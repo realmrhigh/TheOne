@@ -12,6 +12,7 @@ import androidx.core.net.toUri
 import com.example.theone.model.SampleMetadata // Added import
 import com.example.theone.model.AudioInputSource
 import com.example.theone.features.drumtrack.model.PadSettings
+import com.example.theone.model.SynthModels.LFOSettings // Added LFO Settings import
 import java.io.File
 import android.content.Context // Ensure Context is imported
 
@@ -187,7 +188,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         ampEnv: com.example.theone.model.SynthModels.EnvelopeSettings, // Corrected type
         filterEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
         pitchEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
-        lfos: List<Any> // This was List<Any> in the original file content
+        lfos: List<LFOSettings> // Changed from List<Any>
     ): Boolean {
         if (!initialized) {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot play pad sample.")

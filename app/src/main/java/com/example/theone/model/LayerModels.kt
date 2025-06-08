@@ -10,10 +10,22 @@ data class SampleLayer(
     var velocityRangeMax: Int = 127,
 
     // Tuning and Volume offsets from the main PadSettings
-    var tuningCoarseOffset: Int = 0, // Semitones
-    var tuningFineOffset: Int = 0,   // Cents
-    var volumeOffsetDb: Float = 0f, // in Decibels
-    var panOffset: Float = 0f // -1.0 to 1.0
+    var tuningCoarseOffset: Int = 0, // Semitones (original field for offsets)
+    var tuningFineOffset: Int = 0,   // Cents (original field for offsets)
+    var volumeOffsetDb: Float = 0f, // in Decibels (original field for offsets)
+    var panOffset: Float = 0f, // -1.0 to 1.0 (original field for offsets)
+
+    // --- Fields added for compatibility with DrumProgramEditViewModel/Screen ---
+    var sampleNameCache: String = "N/A", // For UI display
+    var tuningSemi: Int = 0,    // Absolute tuning in Semitones (editor uses this)
+    var tuningFine: Int = 0,    // Absolute tuning in Cents (editor uses this)
+    var volume: Float = 1.0f,   // Absolute volume 0.0 to 1.0 (editor uses this)
+    var pan: Float = 0.0f,      // Absolute pan -1.0 to 1.0 (editor uses this)
+    var startPoint: Float = 0.0f, // Sample start position 0.0 to 1.0
+    var endPoint: Float = 1.0f,   // Sample end position 0.0 to 1.0
+    var loopPoint: Float = 0.0f,  // Loop point 0.0 to 1.0
+    var loopEnabled: Boolean = false,
+    var reverse: Boolean = false
 )
 
 enum class LayerTriggerRule {

@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavController
 import com.example.theone.model.Event
 import com.example.theone.model.EventType
 
@@ -27,6 +28,7 @@ const val NUM_PADS_ROWS = 8 // Example, can be configured
 
 @Composable
 fun StepSequencerScreen(
+    navController: NavController, // Added NavController
     sequencerViewModel: SequencerViewModel = hiltViewModel()
 ) {
     // Observe events from the ViewModel (will be needed later for display)
@@ -102,8 +104,12 @@ fun StepSequencerScreen(
 
             // Placeholder for transport controls (Play, Stop, BPM, etc.) - M2.5
             Spacer(Modifier.height(16.dp))
-            // Text("Transport Controls (M2.5) will go here.") // Remove this line
-            TransportBar(sequencerViewModel = sequencerViewModel) // Add this line
+            TransportBar(sequencerViewModel = sequencerViewModel)
+
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = { navController.navigate("drum_pad_screen") }) {
+                Text("Edit Drum Sounds / Pads")
+            }
         }
     }
 }
