@@ -24,6 +24,7 @@
 
 #include "EnvelopeGenerator.h"
 #include "LfoGenerator.h"
+#include "PadSettings.h"
 
 
 #ifndef M_PI // Define M_PI if not defined by cmath (common on some compilers)
@@ -87,78 +88,10 @@ using SampleMap = std::map<SampleId, theone::audio::LoadedSample>;
 // Declare a global instance of the sample map
 static SampleMap gSampleMap;
 
-// --- C++ Data Structures Mirroring Kotlin Models (for JNI transfer) ---
-// These will be populated from Kotlin objects passed via JNI.
-
-struct SampleLayerCpp {
-    std::string id;
-    std::string sampleId; // ID of the sample from the SamplePool
-    bool enabled = true;
-    int velocityRangeMin = 0;
-    int velocityRangeMax = 127;
-    int tuningCoarseOffset = 0; // Semitones
-    int tuningFineOffset = 0;   // Cents
-    float volumeOffsetDb = 0.0f; // in Decibels
-    float panOffset = 0.0f;     // -1.0 to 1.0
-
-    // Default constructor
-    SampleLayerCpp() = default;
-
-    // Basic constructor for easier testing/setup later
-    SampleLayerCpp(std::string sid, std::string sampId, int velMin, int velMax)
-        : id(std::move(sid)), sampleId(std::move(sampId)),
-          velocityRangeMin(velMin), velocityRangeMax(velMax) {}
-};
-
-enum class LayerTriggerRuleCpp {
-    VELOCITY,
-    CYCLE,
-    RANDOM
-};
-
-// PlaybackModeCpp might also be needed if it affects C++ logic directly
-enum class PlaybackModeCpp {
-    ONE_SHOT,
-    LOOP, // Assuming LOOP is for the whole pad, not individual sample looping here
-    GATE
-};
-
-
-struct PadSettingsCpp {
-    std::string id; // e.g., "Pad1"
-
-    std::vector<SampleLayerCpp> layers;
-    LayerTriggerRuleCpp layerTriggerRule = LayerTriggerRuleCpp::VELOCITY;
-    int currentCycleLayerIndex = 0; // State for CYCLE trigger rule
-
-    PlaybackModeCpp playbackMode = PlaybackModeCpp::ONE_SHOT;
-    int tuningCoarse = 0;
-    int tuningFine = 0;
-    float volume = 1.0f; // Base volume
-    float pan = 0.0f;    // Base pan
-    int muteGroup = 0;
-    int polyphony = 16; // Max active sounds for this pad
-
-    // Envelope and LFO settings (using the Cpp versions defined in their respective headers)
-    theone::audio::EnvelopeSettingsCpp ampEnvelope;
-    // Optional envelopes: use a flag or a different approach if std::optional is not used
-    bool hasFilterEnvelope = false;
-    theone::audio::EnvelopeSettingsCpp filterEnvelope;
-    bool hasPitchEnvelope = false;
-    theone::audio::EnvelopeSettingsCpp pitchEnvelope;
-    std::vector<theone::audio::LfoSettingsCpp> lfos;
-
-    // Default constructor to initialize with some sensible defaults
-    PadSettingsCpp() {
-        // Example: Initialize ampEnvelope with default constructor of EnvelopeSettingsCpp
-        ampEnvelope = theone::audio::EnvelopeSettingsCpp();
-        // layers might be empty by default or pre-populated for testing
-    }
-};
-
 // Map to store PadSettingsCpp for each pad, keyed by a string (e.g., "Track1_Pad1")
 // This will be populated by a JNI function.
-static std::map<std::string, PadSettingsCpp> gPadSettingsMap;
+// The PadSettingsCpp struct is now defined in PadSettings.h
+static std::map<std::string, theone::audio::PadSettingsCpp> gPadSettingsMap;
 static std::mutex gPadSettingsMutex; // Mutex for gPadSettingsMap
 
 // Random number generator for layer selection
@@ -404,12 +337,12 @@ public:
                                             // Create a shared_ptr to the found settings.
                                             // Copying (it->second) ensures thread safety if PadSettingsCpp is complex,
                                             // or if PlayingSound needs its own lifecycle for it.
-                                            padSettingsPtr = std::make_shared<PadSettingsCpp>(it->second);
+                                            padSettingsPtr = std::make_shared<theone::audio::PadSettingsCpp>(it->second);
                                         }
                                     }
 
                                     if (padSettingsPtr) {
-                                        const SampleLayerCpp* selectedLayer = nullptr;
+                                        const theone::audio::SampleLayerCpp* selectedLayer = nullptr;
                                         // Simplified layer selection: first enabled layer
                                         for (const auto& layer : padSettingsPtr->layers) {
                                             if (layer.enabled && !layer.sampleId.empty()) {
@@ -1053,12 +986,12 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
     env->ReleaseStringUTFChars(jTrackId, nativeTrackId);
     env->ReleaseStringUTFChars(jPadId, nativePadId);
 
-    std::shared_ptr<PadSettingsCpp> padSettingsPtr;
+    std::shared_ptr<theone::audio::PadSettingsCpp> padSettingsPtr;
     {
         std::lock_guard<std::mutex> lock(gPadSettingsMutex);
         auto it = gPadSettingsMap.find(padKey);
         if (it != gPadSettingsMap.end()) {
-            padSettingsPtr = std::make_shared<PadSettingsCpp>(it->second);
+            padSettingsPtr = std::make_shared<theone::audio::PadSettingsCpp>(it->second);
         } else {
             __android_log_print(ANDROID_LOG_WARN, APP_NAME, "playPadSample: PadSettings not found for key %s. Playing direct sample (if provided) or failing.", padKey.c_str());
             // Fallback to direct sample playback if jSampleId is valid
@@ -1094,13 +1027,13 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
          return JNI_FALSE; // Should have been handled by return JNI_FALSE in the map lookup.
     }
 
-    const SampleLayerCpp* selectedLayer = nullptr;
+    const theone::audio::SampleLayerCpp* selectedLayer = nullptr;
     if (padSettingsPtr->layers.empty()) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Pad %s has no layers defined.", padKey.c_str());
         return JNI_FALSE;
     }
 
-    std::vector<const SampleLayerCpp*> enabledLayers;
+    std::vector<const theone::audio::SampleLayerCpp*> enabledLayers;
     for (const auto& layer : padSettingsPtr->layers) {
         if (layer.enabled) {
             enabledLayers.push_back(&layer);
@@ -1115,7 +1048,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
     float noteVelocity = velocity; // from JNI parameter (0.0 to 1.0)
 
     switch (padSettingsPtr->layerTriggerRule) {
-        case LayerTriggerRuleCpp::VELOCITY: {
+        case theone::audio::LayerTriggerRuleCpp::VELOCITY: {
             int intVelocity = static_cast<int>(noteVelocity * 127.0f);
             for (const auto& layerPtr : enabledLayers) {
                 if (intVelocity >= layerPtr->velocityRangeMin && intVelocity <= layerPtr->velocityRangeMax) {
@@ -1129,11 +1062,11 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
             }
             break;
         }
-        case LayerTriggerRuleCpp::CYCLE: {
+        case theone::audio::LayerTriggerRuleCpp::CYCLE: {
             std::lock_guard<std::mutex> cycleLock(gPadSettingsMutex);
             auto mapEntryIt = gPadSettingsMap.find(padKey);
             if (mapEntryIt != gPadSettingsMap.end()) {
-                PadSettingsCpp& originalPadSettings = mapEntryIt->second;
+                theone::audio::PadSettingsCpp& originalPadSettings = mapEntryIt->second;
                 // Re-filter enabled layers from originalPadSettings in case they changed.
                 // This is a bit complex; for now, assume enabledLayers from the shared_ptr copy is sufficient for indexing.
                 // A truly robust solution might need to re-evaluate enabledLayers based on originalPadSettings.layers here.
@@ -1146,7 +1079,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
             }
             break;
         }
-        case LayerTriggerRuleCpp::RANDOM: {
+        case theone::audio::LayerTriggerRuleCpp::RANDOM: {
             if (!enabledLayers.empty()) {
                 std::uniform_int_distribution<> distrib(0, static_cast<int>(enabledLayers.size() - 1));
                 selectedLayer = enabledLayers[distrib(gRandomEngine)];
@@ -1582,8 +1515,8 @@ Java_com_example_theone_audio_AudioEngine_native_1getSampleRate(
 // ... Any other JNI functions needed ...
 
 // Helper function to convert Kotlin SampleLayer to SampleLayerCpp
-SampleLayerCpp ConvertKotlinSampleLayer(JNIEnv* env, jobject kotlinLayer) {
-    SampleLayerCpp cppLayer;
+theone::audio::SampleLayerCpp ConvertKotlinSampleLayer(JNIEnv* env, jobject kotlinLayer) {
+    theone::audio::SampleLayerCpp cppLayer;
     if (kotlinLayer == nullptr) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinSampleLayer: kotlinLayer is null");
         return cppLayer; // Return default-constructed layer
@@ -1846,7 +1779,7 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
 
     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Called for padKey: %s", padKey.c_str());
 
-    PadSettingsCpp cppSettings; // Create a new C++ settings object
+    theone::audio::PadSettingsCpp cppSettings; // Create a new C++ settings object
 
     // Get PadSettings Kotlin class and field IDs
     jclass padSettingsClass = env->GetObjectClass(jPadSettings);
@@ -1906,9 +1839,9 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
         jobject kotlinLayerTriggerRuleEnum = env->GetObjectField(jPadSettings, layerTriggerRuleFid);
         if (kotlinLayerTriggerRuleEnum != nullptr) {
             int ordinal = getEnumOrdinal(env, kotlinLayerTriggerRuleEnum);
-            if (ordinal == 0) cppSettings.layerTriggerRule = LayerTriggerRuleCpp::VELOCITY;
-            else if (ordinal == 1) cppSettings.layerTriggerRule = LayerTriggerRuleCpp::CYCLE;
-            else if (ordinal == 2) cppSettings.layerTriggerRule = LayerTriggerRuleCpp::RANDOM;
+            if (ordinal == 0) cppSettings.layerTriggerRule = theone::audio::LayerTriggerRuleCpp::VELOCITY;
+            else if (ordinal == 1) cppSettings.layerTriggerRule = theone::audio::LayerTriggerRuleCpp::CYCLE;
+            else if (ordinal == 2) cppSettings.layerTriggerRule = theone::audio::LayerTriggerRuleCpp::RANDOM;
             else __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_updatePadSettings: Unknown LayerTriggerRule ordinal: %d", ordinal);
             env->DeleteLocalRef(kotlinLayerTriggerRuleEnum);
         } else {
@@ -1926,9 +1859,9 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
         jobject kotlinPlaybackModeEnum = env->GetObjectField(jPadSettings, playbackModeFid);
         if (kotlinPlaybackModeEnum != nullptr) {
             int ordinal = getEnumOrdinal(env, kotlinPlaybackModeEnum);
-            if (ordinal == 0) cppSettings.playbackMode = PlaybackModeCpp::ONE_SHOT;
-            else if (ordinal == 1) cppSettings.playbackMode = PlaybackModeCpp::LOOP;
-            else if (ordinal == 2) cppSettings.playbackMode = PlaybackModeCpp::GATE;
+            if (ordinal == 0) cppSettings.playbackMode = theone::audio::PlaybackModeCpp::ONE_SHOT;
+            else if (ordinal == 1) cppSettings.playbackMode = theone::audio::PlaybackModeCpp::LOOP;
+            else if (ordinal == 2) cppSettings.playbackMode = theone::audio::PlaybackModeCpp::GATE;
             else __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_updatePadSettings: Unknown PlaybackMode ordinal: %d", ordinal);
             env->DeleteLocalRef(kotlinPlaybackModeEnum);
         } else {
