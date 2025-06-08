@@ -19,6 +19,14 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // The externalNativeBuild block for flags belongs INSIDE defaultConfig
+        externalNativeBuild {
+            cmake {
+                // This is the correct way to add the C++17 standard flag
+                cppFlags.add("-std=c++17")
+            }
+        }
     }
 
     buildTypes {
@@ -42,11 +50,11 @@ android {
         buildConfig = true
     }
 
+    // This block for the path stays at the root of the android block
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
-            arguments += "-std=c++17"
         }
     }
 
@@ -54,11 +62,10 @@ android {
 
     testOptions {
         unitTests {
-            isIncludeAndroidResources = true // Might be needed for Robolectric
+            isIncludeAndroidResources = true
         }
     }
 }
-
 dependencies {
 
     implementation(libs.androidx.core.ktx)
