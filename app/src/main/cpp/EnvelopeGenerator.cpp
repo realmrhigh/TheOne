@@ -52,11 +52,11 @@ void EnvelopeGenerator::calculateRates(float triggerVelocity) {
         // Release from current value (or sustainLevel if not AD) to 0
         // For ADSR/AHDS, releaseRate is based on sustainLevel typically, but can be from current value.
         // Here, using sustainLevel for ADSR/AHDS, currentValue for AD.
-        float releaseFromLevel = (settings.type == EnvelopeTypeCpp::AD) ? currentValue : settings.sustainLevel;
-        if (settings.type == EnvelopeTypeCpp::AD && currentStage == EnvelopeStage::ATTACK) {
+        float releaseFromLevel = (settings.type == ModelEnvelopeTypeInternalCpp::AD) ? currentValue : settings.sustainLevel;
+        if (settings.type == ModelEnvelopeTypeInternalCpp::AD && currentStage == EnvelopeStage::ATTACK) {
              // If AD and still in attack, release from current value
              releaseFromLevel = currentValue;
-        } else if (settings.type == EnvelopeTypeCpp::AD && currentStage == EnvelopeStage::DECAY) {
+        } else if (settings.type == ModelEnvelopeTypeInternalCpp::AD && currentStage == EnvelopeStage::DECAY) {
             // AD envelope has no sustain, decay goes to 0. Release is from current value if triggered early.
              releaseFromLevel = currentValue;
         }
@@ -88,12 +88,12 @@ void EnvelopeGenerator::triggerOn(float triggerVelocity) {
     currentStage = EnvelopeStage::ATTACK;
     holdSamplesRemaining = holdTimeSamples;
 
-    if (settings.type == EnvelopeTypeCpp::AD && settings.attackMs <= 0.0f) { // AD type, zero attack time
+    if (settings.type == ModelEnvelopeTypeInternalCpp::AD && settings.attackMs <= 0.0f) { // AD type, zero attack time
         currentValue = 1.0f; // Go straight to peak
         currentStage = EnvelopeStage::DECAY; // Then start decaying
     } else if (settings.attackMs <= 0.0f) { // Non-AD type, zero attack time
         currentValue = 1.0f;
-        if (settings.type == EnvelopeTypeCpp::AHDS || settings.type == EnvelopeTypeCpp::ADSR) {
+        if (settings.type == ModelEnvelopeTypeInternalCpp::AHDS || settings.type == ModelEnvelopeTypeInternalCpp::ADSR) {
             if (holdTimeSamples > 0) {
                 currentStage = EnvelopeStage::HOLD;
             } else {
@@ -135,7 +135,7 @@ float EnvelopeGenerator::process() {
             currentValue += attackRate;
             if (currentValue >= 1.0f) {
                 currentValue = 1.0f;
-                if (settings.type == EnvelopeTypeCpp::AHDS || (settings.type == EnvelopeTypeCpp::ADSR && settings.holdMs > 0.0f)) {
+                if (settings.type == ModelEnvelopeTypeInternalCpp::AHDS || (settings.type == ModelEnvelopeTypeInternalCpp::ADSR && settings.holdMs > 0.0f)) {
                     if (holdTimeSamples > 0) {
                         currentStage = EnvelopeStage::HOLD;
                         holdSamplesRemaining = holdTimeSamples; // Reset for this new hold phase
@@ -155,7 +155,7 @@ float EnvelopeGenerator::process() {
             }
             break;
         case EnvelopeStage::DECAY:
-            if (settings.type == EnvelopeTypeCpp::AD) { // AD envelope decays to zero
+            if (settings.type == ModelEnvelopeTypeInternalCpp::AD) { // AD envelope decays to zero
                 // For AD, sustainLevel is effectively 0. decayRate should be calculated towards 0.
                 // This recalculation should ideally be more robustly handled in calculateRates or by
                 // ensuring settings.sustainLevel is treated as 0 for AD type during rate calculation.
@@ -173,10 +173,10 @@ float EnvelopeGenerator::process() {
                 currentValue -= decayRate;
             }
 
-            if (settings.type != EnvelopeTypeCpp::AD && currentValue <= settings.sustainLevel) {
+            if (settings.type != ModelEnvelopeTypeInternalCpp::AD && currentValue <= settings.sustainLevel) {
                 currentValue = settings.sustainLevel;
                 currentStage = EnvelopeStage::SUSTAIN;
-            } else if (settings.type == EnvelopeTypeCpp::AD && currentValue <= 0.0f) {
+            } else if (settings.type == ModelEnvelopeTypeInternalCpp::AD && currentValue <= 0.0f) {
                 currentValue = 0.0f;
                 currentStage = EnvelopeStage::IDLE; // AD envelope finishes after decay
             }
@@ -184,7 +184,7 @@ float EnvelopeGenerator::process() {
         case EnvelopeStage::SUSTAIN:
             // For ADSR/AHDS, sustainLevel is held. AD shouldn't reach here.
             currentValue = settings.sustainLevel;
-            if (settings.sustainLevel <= 0.0f && settings.type != EnvelopeTypeCpp::AD) { // If sustain is zero (for ADSR/AHDS), effectively ends
+            if (settings.sustainLevel <= 0.0f && settings.type != ModelEnvelopeTypeInternalCpp::AD) { // If sustain is zero (for ADSR/AHDS), effectively ends
                 currentStage = EnvelopeStage::IDLE;
             }
             break;

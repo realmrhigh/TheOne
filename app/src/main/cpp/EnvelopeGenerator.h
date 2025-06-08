@@ -17,14 +17,14 @@ enum class EnvelopeStage {
     RELEASE
 };
 
-enum class EnvelopeTypeCpp { // Renamed to avoid conflict if Kotlin enum is bridged directly
+enum class ModelEnvelopeTypeInternalCpp { // Renamed to avoid conflict if Kotlin enum is bridged directly
     AD,
     AHDS,
     ADSR
 };
 
 struct EnvelopeSettingsCpp {
-    EnvelopeTypeCpp type = EnvelopeTypeCpp::ADSR;
+    ModelEnvelopeTypeInternalCpp type = ModelEnvelopeTypeInternalCpp::ADSR;
     float attackMs = 5.0f;
     float holdMs = 0.0f;    // Relevant for AHDS, ADSR (though ADSR sustain level makes hold phase brief)
     float decayMs = 150.0f;
@@ -41,7 +41,7 @@ struct EnvelopeSettingsCpp {
     EnvelopeSettingsCpp() = default;
 
     // Parameterized constructor (useful for JNI mapping)
-    EnvelopeSettingsCpp(EnvelopeTypeCpp t, float atk, float hld, float dec, float sus, float rel, float velAtk, float velLvl)
+    EnvelopeSettingsCpp(ModelEnvelopeTypeInternalCpp t, float atk, float hld, float dec, float sus, float rel, float velAtk, float velLvl)
         : type(t), attackMs(atk), holdMs(hld), decayMs(dec), sustainLevel(sus), releaseMs(rel),
           velocityToAttack(velAtk), velocityToLevel(velLvl) {}
 };
