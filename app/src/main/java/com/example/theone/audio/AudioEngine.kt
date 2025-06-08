@@ -37,7 +37,13 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         noteInstanceId: String, trackId: String, padId: String, sampleId: String, sliceId: String?,
         velocity: Float, coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
         playbackModeOrdinal: Int,
-        ampEnvAttackMs: Float, ampEnvDecayMs: Float, ampEnvSustainLevel: Float, ampEnvReleaseMs: Float
+        // Amp Envelope
+        ampEnvTypeOrdinal: Int, ampEnvAttackMs: Float, ampEnvHoldMs: Float, ampEnvDecayMs: Float, ampEnvSustainLevel: Float, ampEnvReleaseMs: Float, ampEnvVelocityToAttack: Float, ampEnvVelocityToLevel: Float,
+        // Filter Envelope
+        hasFilterEnv: Boolean, filterEnvTypeOrdinal: Int, filterEnvAttackMs: Float, filterEnvHoldMs: Float, filterEnvDecayMs: Float, filterEnvSustainLevel: Float, filterEnvReleaseMs: Float, filterEnvVelocityToAttack: Float, filterEnvVelocityToLevel: Float,
+        // Pitch Envelope
+        hasPitchEnv: Boolean, pitchEnvTypeOrdinal: Int, pitchEnvAttackMs: Float, pitchEnvHoldMs: Float, pitchEnvDecayMs: Float, pitchEnvSustainLevel: Float, pitchEnvReleaseMs: Float, pitchEnvVelocityToAttack: Float, pitchEnvVelocityToLevel: Float
+        // TODO: LFOs
     ): Boolean
 
     // JNI declaration for sample playback (Slice related)
@@ -71,6 +77,11 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     private external fun native_setSequencerBpm(bpm: Float): Unit
     private external fun native_getSequencerPlayheadPosition(): Long
     // --- End New Sequencer JNI Declarations ---
+
+    // --- Pad Mixer JNI Declarations ---
+    private external fun nativeSetPadVolume(trackId: String, padId: String, volume: Float)
+    private external fun nativeSetPadPan(trackId: String, padId: String, pan: Float)
+    // --- End Pad Mixer JNI Declarations ---
 
     private var mRecordingParams: Pair<Int, Int>? = null
 
@@ -160,22 +171,31 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         }
         Log.d("AudioEngine", "playSample called: sampleID='$sampleId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
         // Default values for parameters not present in this simplified call
-        return native_playPadSample(
+        // This call to native_playPadSample will need to be updated if its signature changes significantly,
+        // or this simplified playSample might need to be deprecated/removed.
+        // For now, assuming it might call an older version or needs adjustment.
+        // Given the new signature, this simplified version is hard to maintain without proper defaults.
+        // For this exercise, we'll focus on the main playPadSample.
+        // Consider this simplified one as needing a TODO for proper update or removal.
+        // TODO: Update this simplified playSample to align with new native_playPadSample signature or remove.
+        return native_playPadSample( // This will likely cause a compile error if not updated to match new signature.
             noteInstanceId = noteInstanceId,
-            trackId = "general_track", // Default or derive if possible
-            padId = "general_pad",     // Default or derive if possible
+            trackId = "general_track",
+            padId = "general_pad",
             sampleId = sampleId,
             sliceId = null,
-            velocity = 1.0f,      // Default velocity
+            velocity = 1.0f,
             coarseTune = 0,
             fineTune = 0,
             pan = pan,
             volume = volume,
-            playbackModeOrdinal = PlaybackMode.ONE_SHOT.ordinal, // Default playback mode
-            ampEnvAttackMs = 5f,    // Default envelope settings
-            ampEnvDecayMs = 100f,
-            ampEnvSustainLevel = 1.0f,
-            ampEnvReleaseMs = 100f
+            playbackModeOrdinal = PlaybackMode.ONE_SHOT.ordinal,
+            // Amp Env
+            ampEnvTypeOrdinal = 0, ampEnvAttackMs = 5f, ampEnvHoldMs = 0f, ampEnvDecayMs = 100f, ampEnvSustainLevel = 1.0f, ampEnvReleaseMs = 100f, ampEnvVelocityToAttack = 0f, ampEnvVelocityToLevel = 0f,
+            // Filter Env
+            hasFilterEnv = false, filterEnvTypeOrdinal = 0, filterEnvAttackMs = 0f, filterEnvHoldMs = 0f, filterEnvDecayMs = 0f, filterEnvSustainLevel = 1f, filterEnvReleaseMs = 0f, filterEnvVelocityToAttack = 0f, filterEnvVelocityToLevel = 0f,
+            // Pitch Env
+            hasPitchEnv = false, pitchEnvTypeOrdinal = 0, pitchEnvAttackMs = 0f, pitchEnvHoldMs = 0f, pitchEnvDecayMs = 0f, pitchEnvSustainLevel = 1f, pitchEnvReleaseMs = 0f, pitchEnvVelocityToAttack = 0f, pitchEnvVelocityToLevel = 0f
         )
     }
 
@@ -213,11 +233,28 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             pan = pan,
             volume = volume,
             playbackModeOrdinal = playbackMode.ordinal,
-            ampEnvAttackMs = ampEnv.attackMs,
-            ampEnvDecayMs = ampEnv.decayMs,
-            ampEnvSustainLevel = ampEnv.sustainLevel,
-            ampEnvReleaseMs = ampEnv.releaseMs
-            // TODO: Pass filterEnv, pitchEnv, LFOs to native layer if native_playPadSample is extended
+            // Amp Envelope (non-null)
+            ampEnv.type.ordinal, ampEnv.attackMs, ampEnv.holdMs ?: 0f, ampEnv.decayMs, ampEnv.sustainLevel, ampEnv.releaseMs, ampEnv.velocityToAttack, ampEnv.velocityToLevel,
+            // Filter Envelope (nullable)
+            filterEnv != null,
+            filterEnv?.type?.ordinal ?: defaultTypeOrdinal,
+            filterEnv?.attackMs ?: defaultEnvAttack,
+            filterEnv?.holdMs ?: defaultEnvHold,
+            filterEnv?.decayMs ?: defaultEnvDecay,
+            filterEnv?.sustainLevel ?: defaultEnvSustain,
+            filterEnv?.releaseMs ?: defaultEnvRelease,
+            filterEnv?.velocityToAttack ?: defaultEnvVelToAttack,
+            filterEnv?.velocityToLevel ?: defaultEnvVelToLevel,
+            // Pitch Envelope (nullable)
+            pitchEnv != null,
+            pitchEnv?.type?.ordinal ?: defaultTypeOrdinal,
+            pitchEnv?.attackMs ?: defaultEnvAttack,
+            pitchEnv?.holdMs ?: defaultEnvHold,
+            pitchEnv?.decayMs ?: defaultEnvDecay,
+            pitchEnv?.sustainLevel ?: defaultEnvSustain,
+            pitchEnv?.releaseMs ?: defaultEnvRelease,
+            pitchEnv?.velocityToAttack ?: defaultEnvVelToAttack,
+            pitchEnv?.velocityToLevel ?: defaultEnvVelToLevel
         )
     }
 
@@ -420,6 +457,28 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         }
     }
     // --- End New Sequencer Kotlin Methods ---
+
+    // --- Pad Mixer Kotlin Methods ---
+    override suspend fun setPadVolume(trackId: String, padId: String, volume: Float) {
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set pad volume.")
+            return
+        }
+        withContext(Dispatchers.IO) {
+            nativeSetPadVolume(trackId, padId, volume)
+        }
+    }
+
+    override suspend fun setPadPan(trackId: String, padId: String, pan: Float) {
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set pad pan.")
+            return
+        }
+        withContext(Dispatchers.IO) {
+            nativeSetPadPan(trackId, padId, pan)
+        }
+    }
+    // --- End Pad Mixer Kotlin Methods ---
 
     // Other methods like startAudioRecording (simulated), playSampleSlice (simulated) etc.
     // from the original file should be here if they are still needed.
