@@ -23,7 +23,8 @@ enum class LfoWaveformCpp {
     SAW_UP, // Ramp up
     SAW_DOWN, // Ramp down
     RANDOM_STEP, // Stepped random values
-    RANDOM_SMOOTH // Smoothly interpolated random values (more complex, placeholder)
+    RANDOM_SMOOTH, // Smoothly interpolated random values (more complex, placeholder)
+    NUM_LFO_WAVEFORMS // Helper for iterating or sizing arrays
 };
 
 // Assuming TimeDivisionCpp is needed if syncToTempo is true.
@@ -33,9 +34,20 @@ enum class TimeDivisionCpp {
     DOTTED_HALF, DOTTED_QUARTER, DOTTED_EIGHTH, DOTTED_SIXTEENTH,
     TRIPLET_WHOLE, TRIPLET_HALF, TRIPLET_QUARTER, TRIPLET_EIGHTH, TRIPLET_SIXTEENTH,
     // Add more as needed based on the Kotlin definition
-    NONE // Default if not synced or applicable
+    NONE, // Default if not synced or applicable
+    NUM_TIME_DIVISIONS // Helper for iteration/bounds checking
 };
 
+// Define LfoDestinationCpp
+enum class LfoDestinationCpp {
+    NONE,
+    VOLUME,
+    PAN,
+    PITCH,
+    FILTER_CUTOFF,
+    // Add other potential destinations
+    NUM_LFO_DESTINATIONS // Helper for iterating or sizing arrays if needed
+};
 
 struct LfoSettingsCpp {
     std::string id; // Identifier for the LFO instance
@@ -43,6 +55,9 @@ struct LfoSettingsCpp {
     float rateHz = 1.0f;
     bool syncToTempo = false;
     TimeDivisionCpp tempoDivision = TimeDivisionCpp::QUARTER; // e.g., LFO cycle = 1 quarter note
+    bool isEnabled = false;
+    float depth = 1.0f;
+    LfoDestinationCpp primaryDestination = LfoDestinationCpp::NONE;
     // Destinations are handled by the system using this LFO, not by the LFO generator itself.
     // The generator just outputs a value. The mapping (destinations, modDepth) is applied externally.
     // std::map<std::string, float> destinations; // ParamID -> ModDepth
@@ -51,8 +66,10 @@ struct LfoSettingsCpp {
     LfoSettingsCpp() = default;
 
     // Parameterized constructor
-    LfoSettingsCpp(std::string lfoId, LfoWaveformCpp wf, float rate, bool sync, TimeDivisionCpp division)
-        : id(std::move(lfoId)), waveform(wf), rateHz(rate), syncToTempo(sync), tempoDivision(division) {}
+    LfoSettingsCpp(std::string lfoId, LfoWaveformCpp wf, float rate, bool sync, TimeDivisionCpp division,
+                   bool enabled, float lfoDepth, LfoDestinationCpp dest)
+        : id(std::move(lfoId)), waveform(wf), rateHz(rate), syncToTempo(sync), tempoDivision(division),
+          isEnabled(enabled), depth(lfoDepth), primaryDestination(dest) {}
 };
 
 class LfoGenerator {
