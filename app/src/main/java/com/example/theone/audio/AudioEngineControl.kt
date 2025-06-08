@@ -8,7 +8,7 @@ package com.example.theone.audio
 // enum class PlaybackMode { ONE_SHOT, NOTE_ON_OFF }
 import android.content.Context
 import com.example.theone.model.PlaybackMode
-import com.example.theone.model.EnvelopeSettings
+import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
 import com.example.theone.model.SampleMetadata // Added import
 // Potentially add import for a specific LFO settings type if defined later
 

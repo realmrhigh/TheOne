@@ -178,9 +178,9 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         fineTune: Int,
         pan: Float,
         volume: Float,
-        ampEnv: com.example.theone.model.EnvelopeSettings,
-        filterEnv: com.example.theone.model.EnvelopeSettings?,
-        pitchEnv: com.example.theone.model.EnvelopeSettings?,
+        ampEnv: com.example.theone.model.SynthModels.EnvelopeSettings, // Corrected type
+        filterEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
+        pitchEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
         lfos: List<Any> // This was List<Any> in the original file content
     ): Boolean {
         if (!initialized) {
@@ -320,10 +320,11 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
                     SampleMetadata(
                         id = id,
                         name = name,
-                        filePathUri = filePath,
-                        durationMs = durationMs,
+                        uri = filePath, // Changed from filePathUri
+                        duration = durationMs, // Changed from durationMs
                         sampleRate = recSampleRate,
                         channels = recChannels
+                        // Other fields will use defaults from the consolidated SampleMetadata
                     )
                 } else {
                     Log.e("AudioEngine", "Failed to get valid recording info from native layer. Path: $filePath, Frames: $totalFrames, SR: $recSampleRate, Ch: $recChannels")
@@ -383,12 +384,16 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "Error creating dummy file ${'$'}tempFilePath", e)
         }
         val durationMs = 2000L
+        val id = UUID.randomUUID().toString()
         return SampleMetadata(
+            id = id, // Added id
+            name = file.nameWithoutExtension,
             uri = file.toURI().toString(),
             duration = durationMs,
-            name = file.nameWithoutExtension,
-            trimStartMs = 0,
-            trimEndMs = durationMs
+            // sampleRate, channels, bitDepth, etc., will use default values
+            // from the SampleMetadata class definition in SampleModels.kt
+            trimStartMs = 0, // Explicitly setting, though defaults might exist
+            trimEndMs = durationMs // Explicitly setting
         )
     }
 

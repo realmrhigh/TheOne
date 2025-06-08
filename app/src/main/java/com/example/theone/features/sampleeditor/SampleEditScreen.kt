@@ -16,7 +16,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.example.theone.model.LoopMode
 import com.example.theone.model.SampleMetadata
 import com.example.theone.model.PlaybackMode // Added import
-import com.example.theone.model.EnvelopeSettings // Added import
+import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
 import java.util.UUID
 
 // Mock AudioEngineControl for preview
@@ -35,9 +35,9 @@ class MockAudioEngineControl : com.example.theone.audio.AudioEngineControl {
         sliceId: String?, velocity: Float,
         playbackMode: com.example.theone.model.PlaybackMode, // Corrected type
         coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        ampEnv: com.example.theone.model.EnvelopeSettings, // Corrected type
-        filterEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
-        pitchEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
+        ampEnv: com.example.theone.model.SynthModels.EnvelopeSettings, // Corrected type
+        filterEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
+        pitchEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
         lfos: List<Any> // Matches interface
     ): Boolean = true
 
@@ -249,17 +249,17 @@ fun PreviewSampleEditScreen() {
     val initialSample = SampleMetadata(
         id = "previewSample1",
         name = "Kick Drum",
-        filePathUri = "file:///dev/null/kick.wav",
-        durationMs = 1200L,
+        uri = "file:///dev/null/kick.wav", // Changed from filePathUri
+        duration = 1200L,                   // Changed from durationMs
         sampleRate = 44100,
         channels = 1,
         trimStartMs = 100L,
-        trimEndMs = 1000L,
-        loopMode = LoopMode.NONE
+        trimEndMs = 1000L
+        // loopMode is not part of SampleMetadata
     )
     // Populate mock project manager for preview
     LaunchedEffect(Unit) {
-        mockProjectManager.addSampleToPool(initialSample.name, initialSample.filePathUri, false)
+        mockProjectManager.addSampleToPool(initialSample.name, initialSample.uri, false) // use uri
     }
 
     val viewModel = SampleEditViewModel(mockAudioEngine, mockProjectManager, initialSample)

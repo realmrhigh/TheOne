@@ -17,8 +17,8 @@ class DrumTrackViewModel(
     private val projectManager: ProjectManager
 ) : ViewModel() {
 
-    private val _padSettingsMap = MutableStateFlow<Map<Int, PadSettings>>(emptyMap())
-    val padSettingsMap: StateFlow<Map<Int, PadSettings>> = _padSettingsMap.asStateFlow()
+    private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())
+    val padSettingsMap: StateFlow<Map<String, PadSettings>> = _padSettingsMap.asStateFlow()
 
     private val _availableSamples = MutableStateFlow<List<SampleMetadata>>(emptyList())
     val availableSamples: StateFlow<List<SampleMetadata>> = _availableSamples.asStateFlow()
@@ -27,7 +27,10 @@ class DrumTrackViewModel(
     private val NUM_PADS = 16
 
     init {
-        val initialPads = (0 until NUM_PADS).associateWith { PadSettings() }
+        val initialPads = (0 until NUM_PADS).associate { index ->
+            val padId = "Pad$index" // Generate IDs like "Pad0", "Pad1", ... "Pad15"
+            padId to PadSettings(id = padId)
+        }
         _padSettingsMap.value = initialPads
         loadSamplesForAssignment() // Load samples on init
     }
@@ -40,50 +43,50 @@ class DrumTrackViewModel(
         _availableSamples.value = projectManager.getSamplesFromPool()
     }
 
-    fun assignSampleToPad(padId: Int, sample: SampleMetadata) {
+    fun assignSampleToPad(padId: String, sample: SampleMetadata) {
         val currentPads = _padSettingsMap.value.toMutableMap()
-        val existingPadSetting = currentPads[padId] ?: PadSettings()
+        val existingPadSetting = currentPads[padId] ?: PadSettings(id = padId) // Ensure PadSettings has an ID
         // Assuming sample.uri can serve as a unique identifier for the sample, as per plan.
         // If SampleMetadata has a persistent `id` from ProjectManager, that should be preferred.
         currentPads[padId] = existingPadSetting.copy(sampleId = sample.uri, sampleName = sample.name)
         _padSettingsMap.value = currentPads
     }
 
-    fun clearSampleFromPad(padId: Int) {
+    fun clearSampleFromPad(padId: String) {
         val currentPads = _padSettingsMap.value.toMutableMap()
-        val existingPadSetting = currentPads[padId] ?: PadSettings()
+        val existingPadSetting = currentPads[padId] ?: PadSettings(id = padId) // Ensure PadSettings has an ID
         currentPads[padId] = existingPadSetting.copy(sampleId = null, sampleName = null)
         _padSettingsMap.value = currentPads
     }
 
-    fun onPadTriggered(padId: Int) {
+    fun onPadTriggered(padId: String) {
         val padSetting = _padSettingsMap.value[padId]
         if (padSetting != null && padSetting.sampleId != null) {
-            audioEngine.playPadSample(padSetting)
+            // Ensure the padSetting passed to audioEngine has the correct ID,
+            // though it should already if map consistency is maintained.
+            audioEngine.playPadSample(padSetting.copy(id = padId))
         } else {
             // Consider logging instead of println for production apps
             println("DrumTrackViewModel: Pad $padId triggered, but no sample assigned.")
         }
     }
 
-    fun updatePadSetting(padId: Int, newSettings: PadSettings) { // For volume, pan, tuning
+    fun updatePadSetting(padId: String, newSettings: PadSettings) { // For volume, pan, tuning
         val currentPads = _padSettingsMap.value.toMutableMap()
+        // Ensure the newSettings has the correct id matching the padId key.
+        // If newSettings comes from a generic editor, its id might be default or different.
+        // Best practice: newSettings should already have its 'id' field correctly set to padId.
+        // For safety, we can use .copy(id = padId) if newSettings might have a mismatched ID.
+        currentPads[padId] = newSettings.copy(id = padId) // Ensure ID consistency
         // Ensure the sampleId and sampleName are preserved if newSettings doesn't include them
         // or if newSettings is only for partial updates like volume/pan/tuning.
         // The current PadSettings data class will copy all fields.
         // If newSettings comes from a UI that only modified e.g. volume, it should be based on the existing settings.
-        val existingSetting = currentPads[padId]
-        if (existingSetting != null) {
-             // This ensures that if newSettings is a partial update (e.g. only volume changed in UI),
-             // we don't lose sampleId or sampleName.
-             // However, the most direct interpretation of the method signature is a full replacement.
-             // For now, direct replacement:
-            currentPads[padId] = newSettings
-        } else {
-            // If no existing settings for a padId (should not happen with init block),
-            // then just place the newSettings.
-            currentPads[padId] = newSettings
-        }
+        // The original code regarding preserving sampleId/Name if newSettings is partial:
+        // This logic might need re-evaluation. If newSettings is meant to be a full replacement,
+        // then just putting it is fine. If it's partial, the ViewModel needs a more complex update strategy.
+        // For now, assuming newSettings is intended to be a complete setting for the pad,
+        // but we ensure its 'id' field is correct.
         _padSettingsMap.value = currentPads
     }
 }

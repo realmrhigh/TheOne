@@ -26,7 +26,7 @@ import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 // Import unified models
 import com.example.theone.model.PlaybackMode
-import com.example.theone.model.EnvelopeSettings
+import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
 import com.example.theone.model.SampleMetadata // Common model for stopAudioRecording
 import android.content.Context // For startAudioRecording in PreviewAudioEngineControl
 // data class LFOSettingsPreviewStub(val id: String = "dummyLfo") // Not using this for List<Any>
@@ -230,9 +230,9 @@ private class PreviewAudioEngineControl(private val context: Context) : AudioEng
         sliceId: String?, velocity: Float,
         playbackMode: com.example.theone.model.PlaybackMode, // Corrected type
         coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        ampEnv: com.example.theone.model.EnvelopeSettings, // Corrected type
-        filterEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
-        pitchEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
+        ampEnv: com.example.theone.model.SynthModels.EnvelopeSettings, // Corrected type
+        filterEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
+        pitchEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
         lfos: List<Any> // Interface expects List<Any>
     ): Boolean {
         println("Preview: Play $sampleId on $padId ($playbackMode), amp attack: ${ampEnv.attackMs}")

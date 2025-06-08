@@ -44,7 +44,7 @@ class ProjectManagerImpl : ProjectManager {
             println("ProjectManager: Replaced existing sample with URI '${sampleMetadata.uri}' in pool.")
         } else {
             currentPool.add(sampleMetadata)
-            println("ProjectManager: Added sample '${sampleMetadata.name ?: sampleMetadata.uri}' to pool.")
+            println("ProjectManager: Added sample '${sampleMetadata.name}' to pool.") // name is non-nullable
         }
         _samplePool.value = currentPool
         println("ProjectManager: Pool size: ${_samplePool.value.size}")
@@ -62,7 +62,7 @@ class ProjectManagerImpl : ProjectManager {
         if (index != -1) {
             currentPool[index] = updatedSampleMetadata
             _samplePool.value = currentPool
-            println("ProjectManager: Updated metadata for sample '${updatedSampleMetadata.name ?: updatedSampleMetadata.uri}'")
+            println("ProjectManager: Updated metadata for sample '${updatedSampleMetadata.name}'") // name is non-nullable
         } else {
             println("ProjectManager: Could not update metadata. Sample with URI '${updatedSampleMetadata.uri}' not found.")
         }
@@ -72,9 +72,11 @@ class ProjectManagerImpl : ProjectManager {
     override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
         println("ProjectManager: Interface addSampleToPool(name,uri,copy) called. Simulating add.")
         val newSampleMeta = SampleMetadata(
+            id = UUID.randomUUID().toString(), // Added ID
+            name = name,
             uri = sourceFileUri,
-            duration = 0L,
-            name = name
+            duration = 0L
+            // Other fields like sampleRate, channels, etc., will use defaults
         )
         addSampleToPool(newSampleMeta)
         return newSampleMeta
@@ -88,7 +90,8 @@ class ProjectManagerImpl : ProjectManager {
 
     override suspend fun getSampleById(sampleId: String): SampleMetadata? {
         println("ProjectManager: Interface getSampleById called for ID: $sampleId")
-        return _samplePool.value.firstOrNull { it.uri == sampleId || it.name == sampleId }
+        // Primarily search by ID, can add fallbacks if necessary for legacy data or specific needs
+        return _samplePool.value.firstOrNull { it.id == sampleId }
     }
 
     // --- Placeholder Implementations for WAV I/O ---
@@ -104,12 +107,14 @@ class ProjectManagerImpl : ProjectManager {
 
         // Placeholder implementation:
         val placeholderMetadata = SampleMetadata(
+            id = UUID.randomUUID().toString(), // Added ID
+            name = "Loaded Sample: " + fileUri.substringAfterLast('/'),
             uri = fileUri,
             duration = 1000L, // Dummy duration 1 sec
-            name = "Loaded Sample: " + fileUri.substringAfterLast('/'),
             sampleRate = 44100,
             channels = 1,
             bitDepth = 16
+            // Other fields will use defaults
         )
         val placeholderAudioData = FloatArray(44100) { 0.0f } // 1 sec of silence
         val placeholderSample = Sample(

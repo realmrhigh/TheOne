@@ -2,16 +2,12 @@ package com.example.theone.features.drumtrack.model
 
 import com.example.theone.model.SampleLayer // Added import
 import com.example.theone.model.LayerTriggerRule // Added import
-import com.example.theone.model.EnvelopeSettings // Added import
-import com.example.theone.model.LFOSettings // Added import
-import com.example.theone.model.EnvelopeType // Added import
+import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
+import com.example.theone.model.SynthModels.LFOSettings // Corrected import
+import com.example.theone.model.SynthModels.EnvelopeType // Corrected import
+import com.example.theone.model.PlaybackMode // Added import for consolidated PlaybackMode
 
-// Enum for PlaybackMode if not defined elsewhere
-enum class PlaybackMode {
-    ONE_SHOT,
-    LOOP,
-    GATE
-}
+// PlaybackMode is now defined in com.example.theone.model.SharedModels
 
 data class PadSettings(
     val id: String, // e.g., "Pad1" - Assuming id is a new requirement, was not in the old file

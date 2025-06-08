@@ -25,7 +25,7 @@ class FakeAudioEngine : AudioEngine() {
     var stopCurrentRecordingCalled = false
     var playSampleSliceCalledWith: Triple<String, Long, Long>? = null
 
-    var nextSampleMetadataToReturn: SampleMetadata = SampleMetadata("default_uri", 1000L, "Default Sample")
+    var nextSampleMetadataToReturn: SampleMetadata = SampleMetadata(id = "default_id", name = "Default Sample", uri = "default_uri", duration = 1000L)
 
     override fun startAudioRecording(audioInputSource: AudioInputSource, tempFilePath: String): SampleMetadata {
         startAudioRecordingCalledWith = Pair(audioInputSource, tempFilePath)
@@ -74,7 +74,7 @@ class FakeProjectManager : ProjectManager {
 
     // Interface methods that need to be implemented
     override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
-        val sample = SampleMetadata(uri = sourceFileUri, duration = 0L, name = name)
+        val sample = SampleMetadata(id = "pm-${name}-${System.currentTimeMillis()}", name = name, uri = sourceFileUri, duration = 0L)
         addSampleToPool(sample) // Call the other version
         return sample
     }
@@ -83,7 +83,7 @@ class FakeProjectManager : ProjectManager {
         return true
     }
     override suspend fun getSampleById(sampleId: String): SampleMetadata? {
-        return samples.find { it.uri == sampleId || it.name == sampleId }
+        return samples.find { it.id == sampleId } // Search by ID
     }
 }
 
@@ -98,10 +98,10 @@ class SamplerViewModelTest {
     private lateinit var fakeAudioEngine: FakeAudioEngine
     private lateinit var fakeProjectManager: FakeProjectManager
 
-    private val testSample1 = SampleMetadata("uri1", 1000L, "Sample1")
-    private val testSample2 = SampleMetadata("uri2", 2000L, "Sample2")
-    private val testSample3 = SampleMetadata("uri3", 3000L, "Sample3")
-    private val testSample4 = SampleMetadata("uri4", 4000L, "Sample4")
+    private val testSample1 = SampleMetadata(id = "id1", name = "Sample1", uri = "uri1", duration = 1000L)
+    private val testSample2 = SampleMetadata(id = "id2", name = "Sample2", uri = "uri2", duration = 2000L)
+    private val testSample3 = SampleMetadata(id = "id3", name = "Sample3", uri = "uri3", duration = 3000L)
+    private val testSample4 = SampleMetadata(id = "id4", name = "Sample4", uri = "uri4", duration = 4000L)
 
 
     @Before

@@ -5,24 +5,13 @@ import com.example.theone.features.drumtrack.model.PadSettings // Added
 
 // --- Enums and Basic Types ---
 
-// PlaybackMode is now defined in com.example.theone.model.PadSettings.kt (implicitly via PadSettings import)
+// PlaybackMode is now defined in com.example.theone.model.SharedModels.kt
+// PadSettings.kt imports it from there.
 
 // --- Sample Related Data ---
 // Placeholder - This should ideally come from a shared 'core.model' module.
 // Copied from SamplerViewModel.kt for now.
-data class SampleMetadata(
-    val id: String, // Unique ID for the sample
-    val name: String, // User-defined name
-    val filePathUri: String, // URI to the actual audio file
-    val durationMs: Long = 0,
-    val sampleRate: Int = 44100,
-    val channels: Int = 1,
-    val detectedBpm: Float? = null,
-    val detectedKey: String? = null,
-    var userBpm: Float? = null,
-    var userKey: String? = null,
-    var rootNote: Int = 60 // MIDI C3, default root note
-)
+// --- SampleMetadata is now defined in com.example.theone.model.SampleModels.kt ---
 
 // --- Pad and Track Specific Data ---
 

@@ -25,7 +25,7 @@ class FakeAudioEngine : AudioEngine() {
     var playSampleSliceCalledWith: Triple<String, Long, Long>? = null
     var playPadSampleCalledWith: PadSettings? = null // Specific for DrumTrackViewModel
 
-    var nextSampleMetadataToReturn: SampleMetadata = SampleMetadata("default_uri", 1000L, "Default Sample")
+    var nextSampleMetadataToReturn: SampleMetadata = SampleMetadata(id = "default_id", name = "Default Sample", uri = "default_uri", duration = 1000L)
 
     override fun startAudioRecording(audioInputSource: AudioInputSource, tempFilePath: String): SampleMetadata {
         startAudioRecordingCalledWith = Pair(audioInputSource, tempFilePath)
@@ -73,7 +73,7 @@ class FakeProjectManager : ProjectManager {
     }
 
     override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
-        val sample = SampleMetadata(uri = sourceFileUri, duration = 0L, name = name)
+        val sample = SampleMetadata(id = "test-${name}-${System.currentTimeMillis()}", name = name, uri = sourceFileUri, duration = 0L)
         addSampleToPool(sample)
         return sample
     }
@@ -82,7 +82,8 @@ class FakeProjectManager : ProjectManager {
         return true
     }
     override suspend fun getSampleById(sampleId: String): SampleMetadata? {
-        return samplesInPool.find { it.uri == sampleId || it.name == sampleId }
+        // Primarily search by ID. Fallback to URI or name can be added if tests rely on it.
+        return samplesInPool.find { it.id == sampleId }
     }
 }
 
@@ -97,8 +98,8 @@ class DrumTrackViewModelTest {
     private lateinit var fakeAudioEngine: FakeAudioEngine
     private lateinit var fakeProjectManager: FakeProjectManager
 
-    private val testSample1 = SampleMetadata(uri = "uri/kick.wav", duration = 100L, name = "Kick")
-    private val testSample2 = SampleMetadata(uri = "uri/snare.wav", duration = 150L, name = "Snare")
+    private val testSample1 = SampleMetadata(id = "kick_id", name = "Kick", uri = "uri/kick.wav", duration = 100L)
+    private val testSample2 = SampleMetadata(id = "snare_id", name = "Snare", uri = "uri/snare.wav", duration = 150L)
 
     @Before
     fun setUp() {
@@ -132,7 +133,7 @@ class DrumTrackViewModelTest {
     fun `loadSamplesForAssignment_fetchesFromProjectManager`() = runTest {
         // Clear initial samples and set new ones for this test
         fakeProjectManager.samplesInPool.clear()
-        val newSamples = listOf(SampleMetadata("new_uri", 123L, "New Sample"))
+        val newSamples = listOf(SampleMetadata(id = "new_id", name = "New Sample", uri = "new_uri", duration = 123L))
         fakeProjectManager.samplesInPool.addAll(newSamples)
 
         viewModel.loadSamplesForAssignment() // Manually call again
@@ -142,7 +143,7 @@ class DrumTrackViewModelTest {
 
     @Test
     fun `assignSampleToPad_updatesPadSettingsMap`() = runTest {
-        val padIdToAssign = 5 // Int ID
+        val padIdToAssign = "Pad5" // String ID
         viewModel.assignSampleToPad(padIdToAssign, testSample1)
 
         val currentPadSettings = viewModel.padSettingsMap.value[padIdToAssign]
@@ -153,7 +154,7 @@ class DrumTrackViewModelTest {
 
     @Test
     fun `onPadTriggered_withAssignedSample_callsAudioEngine`() = runTest {
-        val padIdToTrigger = 3
+        val padIdToTrigger = "Pad3" // String ID
         viewModel.assignSampleToPad(padIdToTrigger, testSample1)
 
         val expectedPadSettings = viewModel.padSettingsMap.value[padIdToTrigger]!!
@@ -166,7 +167,7 @@ class DrumTrackViewModelTest {
 
     @Test
     fun `onPadTriggered_withoutAssignedSample_doesNotCallAudioEngine`() = runTest {
-        val padIdToTrigger = 10 // Assuming this pad has no sample (default state)
+        val padIdToTrigger = "Pad10" // String ID, Assuming this pad has no sample (default state)
 
         viewModel.onPadTriggered(padIdToTrigger)
 
@@ -175,7 +176,7 @@ class DrumTrackViewModelTest {
 
     @Test
     fun `clearSampleFromPad_clearsPadSetting`() = runTest {
-        val padIdToClear = 7
+        val padIdToClear = "Pad7" // String ID
         // Assign first
         viewModel.assignSampleToPad(padIdToClear, testSample2)
         assertNotNull(viewModel.padSettingsMap.value[padIdToClear]?.sampleId)
@@ -190,7 +191,7 @@ class DrumTrackViewModelTest {
 
     @Test
     fun `updatePadSetting_fullyUpdatesThePad`() = runTest {
-        val padId = 0
+        val padId = "Pad0" // String ID
         val initialSetting = viewModel.padSettingsMap.value[padId]!!
         assertEquals(1.0f, initialSetting.volume) // Default volume
 

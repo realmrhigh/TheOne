@@ -14,7 +14,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel // Required for viewModel()
 // Import unified models for the dummy/preview implementations
 import com.example.theone.model.PlaybackMode
-import com.example.theone.model.EnvelopeSettings
+import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
 // Assuming SamplerViewModel is in the same package
 // Assuming RecordingState is accessible
 
@@ -303,9 +303,9 @@ fun DefaultSamplerScreenPreview() {
             sliceId: String?, velocity: Float,
             playbackMode: com.example.theone.model.PlaybackMode, // Corrected type
             coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-            ampEnv: com.example.theone.model.EnvelopeSettings, // Corrected type
-            filterEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
-            pitchEnv: com.example.theone.model.EnvelopeSettings?, // Corrected type
+            ampEnv: com.example.theone.model.SynthModels.EnvelopeSettings, // Corrected type
+            filterEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
+            pitchEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
             lfos: List<Any>
         ): Boolean {
             println("Preview: Play $sampleId on $padId ($playbackMode), amp attack: ${ampEnv.attackMs}")
