@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import com.example.theone.audio.AudioEngine
 import com.example.theone.domain.ProjectManager
 import com.example.theone.features.drumtrack.model.PadSettings
+import com.example.theone.features.sequencer.SequencerViewModel // Added import
 import com.example.theone.model.SampleMetadata
+import dagger.hilt.android.lifecycle.HiltViewModel // Added import
+import javax.inject.Inject // Added import
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,9 +15,11 @@ import kotlinx.coroutines.flow.asStateFlow
 // import androidx.lifecycle.viewModelScope
 // import kotlinx.coroutines.launch
 
-class DrumTrackViewModel(
+@HiltViewModel // Added annotation
+class DrumTrackViewModel @Inject constructor( // Added @Inject
     private val audioEngine: AudioEngine,
-    private val projectManager: ProjectManager
+    private val projectManager: ProjectManager,
+    private val sequencerViewModel: SequencerViewModel // Added parameter
 ) : ViewModel() {
 
     private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())
@@ -65,6 +70,8 @@ class DrumTrackViewModel(
             // Ensure the padSetting passed to audioEngine has the correct ID,
             // though it should already if map consistency is maintained.
             audioEngine.playPadSample(padSetting.copy(id = padId))
+            // Add this line
+            sequencerViewModel.recordPadTrigger(padId = padId, velocity = 127) // Assuming default velocity
         } else {
             // Consider logging instead of println for production apps
             println("DrumTrackViewModel: Pad $padId triggered, but no sample assigned.")
