@@ -38,9 +38,16 @@ fun StepSequencerScreen(
     // Get the current sequence from the ViewModel (or a default one for now)
     // This would typically be selected by the user.
     // For this initial UI, we assume a sequence is loaded or use placeholders.
-    val currentSequence by remember {
-        mutableStateOf(sequencerViewModel.getEventsForCurrentSequence()) // This gets a List<Event>
+    // Observe currentSequence directly from the ViewModel
+    val currentSequenceState by sequencerViewModel.currentSequence.let {
+        // This is a bit of a hack to make Compose happy with a non-State object if currentSequence is nullable var.
+        // A better approach is to have currentSequence itself be a StateFlow or State<Sequence?> in ViewModel.
+        // For now, this will re-evaluate if the reference to currentSequence changes.
+        // If internal events list changes without currentSequence reference changing, this won't recompose grid.
+        // This will be addressed by immutable updates in ViewModel later.
+        remember { derivedStateOf { sequencerViewModel.currentSequence } }
     }
+    val eventsInCurrentSequence = currentSequenceState?.events ?: emptyList()
 
 
     Scaffold(
@@ -69,33 +76,30 @@ fun StepSequencerScreen(
                     val stepCol = index % NUM_STEPS  // Determines which step (0 to NUM_STEPS-1)
 
                     // Determine if an event exists at this pad and step
-                    // This requires querying `currentSequence.events`
-                    val eventExists = currentSequence.any { event ->
-                        event.type is EventType.PadTrigger &&
-                        (event.type as EventType.PadTrigger).padId == "Pad$padRow" && // Assuming padId like "Pad0", "Pad1"
-                        (event.startTimeTicks / (sequencerViewModel.ticksPer16thNote)) == stepCol.toLong() // Assuming ticksPer16thNote is accessible
+                    // This requires querying `eventsInCurrentSequence`
+                    val stepDurationTicks = sequencerViewModel.currentSequence?.ppqn?.div(4) ?: sequencerViewModel.ticksPer16thNote
+                    val targetStartTimeTicks = stepCol * stepDurationTicks
+
+                    val eventExists = eventsInCurrentSequence.any { event ->
+                        val eventType = event.type
+                        if (eventType is EventType.PadTrigger) {
+                            // Compare event's startTimeTicks with the target for this cell
+                            // TrackId check will be added later. For now, any event on this pad at this time counts.
+                            eventType.padId == currentPadId && event.startTimeTicks == targetStartTimeTicks
+                        } else {
+                            false
+                        }
                     }
 
                     StepCell(
-                        padId = "Pad$padRow", // Example padId
+                        padId = currentPadId,
                         step = stepCol,
                         isEventPresent = eventExists,
-                        onCellClick = { pad, step ->
-                            // Logic to add or remove event
-                            // This will call a method in SequencerViewModel
-                            println("Cell clicked: Pad $pad, Step $step. Event present: $eventExists")
-                            // sequencerViewModel.toggleEventAt(pad, step) // Future method
-                            // For now, let's make it call recordPadTrigger as a test if no event,
-                            // or a conceptual removeEvent if event exists.
+                        onCellClick = { clickedPadId, clickedStep ->
                             if (eventExists) {
-                                // sequencerViewModel.removeEventAt(pad, step) // Conceptual
+                                sequencerViewModel.removeEventAtStep(clickedPadId, clickedStep)
                             } else {
-                                // Calculate startTimeTicks for this step
-                                val startTimeTicks = step * sequencerViewModel.ticksPer16thNote // Assuming public access or getter
-                                // sequencerViewModel.addPadTriggerEvent(pad, 127, startTimeTicks) // Conceptual
-                                 sequencerViewModel.recordPadTrigger(padId = pad, velocity = 100) // Using existing for now
-                                // Note: recordPadTrigger uses "current time", not step-based time.
-                                // This interaction will need refinement.
+                                sequencerViewModel.addEventAtStep(clickedPadId, clickedStep, 100) // Default velocity 100
                             }
                         }
                     )
