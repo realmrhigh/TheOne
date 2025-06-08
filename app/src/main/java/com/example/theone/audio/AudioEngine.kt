@@ -32,7 +32,13 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     private external fun native_unloadSample(sampleId: String)
 
     // JNI declaration for sample playback
-    private external fun native_playPadSample(noteInstanceId: String, trackId: String, padId: String, sampleId: String, sliceId: String?, velocity: Float, coarseTune: Int, fineTune: Int, pan: Float, volume: Float): Boolean
+    private external fun native_playPadSample(
+        noteInstanceId: String, trackId: String, padId: String, sampleId: String, sliceId: String?,
+        velocity: Float, coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
+        // New parameters:
+        playbackModeOrdinal: Int,
+        ampEnvAttackMs: Float, ampEnvDecayMs: Float, ampEnvSustainLevel: Float, ampEnvReleaseMs: Float
+    ): Boolean
     private external fun native_playSampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, sampleRate: Int, trimStartMs: Long, trimEndMs: Long, loopStartMs: Long, loopEndMs: Long, isLooping: Boolean): Boolean
     private external fun native_getSampleRate(sampleId: String): Int
 
@@ -187,9 +193,29 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot play pad sample.")
             return false
         }
-        Log.d("AudioEngine", "playPadSample called: sampleID='$sampleId', padID='$padId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
-        // The C++ native_playPadSample now uses trackId and padId to look up the full settings from gPadSettingsMap
-        return native_playPadSample(noteInstanceId, trackId, padId, sampleId, sliceId, velocity, coarseTune, fineTune, pan, volume)
+        Log.d("AudioEngine", "playPadSample called: sampleID='$sampleId', padID='$padId', instanceID='$noteInstanceId', vol=$volume, pan=$pan, mode=${playbackMode.name}, ampAttack=${ampEnv.attackMs}")
+
+        // The C++ native_playPadSample was originally using trackId and padId to look up full settings
+        // from gPadSettingsMap. The feedback suggests passing all parameters directly.
+        // This call now passes more parameters. The C++ side will need to be updated to match.
+        return native_playPadSample(
+            noteInstanceId = noteInstanceId,
+            trackId = trackId,
+            padId = padId,
+            sampleId = sampleId,
+            sliceId = sliceId,
+            velocity = velocity,
+            coarseTune = coarseTune,
+            fineTune = fineTune,
+            pan = pan,
+            volume = volume,
+            playbackModeOrdinal = playbackMode.ordinal,
+            ampEnvAttackMs = ampEnv.attackMs,
+            ampEnvDecayMs = ampEnv.decayMs,
+            ampEnvSustainLevel = ampEnv.sustainLevel,
+            ampEnvReleaseMs = ampEnv.releaseMs
+            // Pass other necessary primitive representations of filterEnv, pitchEnv, LFOs
+        )
     }
 
     override suspend fun playSampleSlice(
