@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        audioEngine = AudioEngine()
+        audioEngine = AudioEngine(this)
 
         Log.i("MainActivity", "Launching coroutine for AudioEngine initialization...")
         CoroutineScope(Dispatchers.Main).launch {
