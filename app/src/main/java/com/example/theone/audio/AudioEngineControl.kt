@@ -1,75 +1,17 @@
 package com.example.theone.audio
 
-// Forward declaration for data models that might be needed later, from README
-// For now, only core lifecycle methods are defined.
-// data class SampleMetadata(...)
-// data class EnvelopeSettings(...)
-// data class LFOSettings(...)
-// enum class PlaybackMode { ONE_SHOT, NOTE_ON_OFF }
 import android.content.Context
+import com.example.theone.model.SampleMetadata
+import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
 import com.example.theone.model.PlaybackMode
-import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
-import com.example.theone.model.SampleMetadata // Added import
-import com.example.theone.model.SynthModels.LFOSettings // Added LFO Settings import
 
 interface AudioEngineControl {
-    // Initialization & Config
     suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean
-    suspend fun shutdown()
-    fun isInitialized(): Boolean
-    fun getReportedLatencyMillis(): Float
-
-    // Metronome - Placeholder, actual implementation later
-    // suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, soundPrimaryUri: String, soundSecondaryUri: String?)
-    // suspend fun setMetronomeVolume(volume: Float)
-
-    // Sample Loading & Management
     suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean
     suspend fun unloadSample(sampleId: String)
     fun isSampleLoaded(sampleId: String): Boolean
-
-    // New simplified playback method
     suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean
-
-    // Metronome control methods
-    suspend fun setMetronomeState(
-        isEnabled: Boolean,
-        bpm: Float,
-        timeSignatureNum: Int,
-        timeSignatureDen: Int,
-        primarySoundSampleId: String,
-        secondarySoundSampleId: String? // Nullable if no secondary sound
-    )
-
-    suspend fun setMetronomeVolume(volume: Float)
-
-    // Recording methods
-    suspend fun startAudioRecording(
-        context: Context, // Added context here for Uri handling
-        filePathUri: String,
-        sampleRate: Int,
-        channels: Int,
-        inputDeviceId: String? = null // Optional input device ID
-    ): Boolean
-
-    suspend fun stopAudioRecording(): SampleMetadata?
-
-    fun isRecordingActive(): Boolean
-    fun getRecordingLevelPeak(): Float // Returns peak and resets it
-
-    // Playback Control - Placeholder
-    // suspend fun playPadSample(noteInstanceId: String, trackId: String, padId: String, sampleId: String, sliceId: String?, velocity: Float, playbackMode: PlaybackMode, coarseTune: Int, fineTune: Int, pan: Float, volume: Float, ampEnv: EnvelopeSettings, filterEnv: EnvelopeSettings?, pitchEnv: EnvelopeSettings?, lfos: List<LFOSettings>): Boolean
-    // suspend fun stopNote(noteInstanceId: String, releaseTimeMs: Float?)
-    // suspend fun stopAllNotes(trackId: String?, immediate: Boolean)
-
-    // Recording - Placeholder
-    // suspend fun startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean
-    // suspend fun stopAudioRecording(): SampleMetadata? // Returns metadata of the recorded sample
-    // fun getRecordingLevelPeak(): Float
-    // fun isRecordingActive(): Boolean
-
-    // Transport Control - Placeholder
-    // suspend fun setTransportBpm(bpm: Float)
 
     suspend fun playPadSample(
         noteInstanceId: String,
@@ -86,7 +28,7 @@ interface AudioEngineControl {
         ampEnv: EnvelopeSettings,
         filterEnv: EnvelopeSettings?,
         pitchEnv: EnvelopeSettings?,
-        lfos: List<LFOSettings> // Changed from List<Any>
+        lfos: List<LFOSettings>
     ): Boolean
 
     suspend fun playSampleSlice(
@@ -100,4 +42,30 @@ interface AudioEngineControl {
         loopEndMs: Long?,
         isLooping: Boolean
     ): Boolean
+
+    suspend fun setMetronomeState(
+        isEnabled: Boolean,
+        bpm: Float,
+        timeSignatureNum: Int,
+        timeSignatureDen: Int,
+        primarySoundSampleId: String,
+        secondarySoundSampleId: String?
+    )
+    suspend fun setMetronomeVolume(volume: Float)
+
+    suspend fun startAudioRecording(context: Context, filePathUri: String, sampleRate: Int, channels: Int, inputDeviceId: String? = null): Boolean
+    suspend fun stopAudioRecording(): SampleMetadata?
+    fun isRecordingActive(): Boolean
+    fun getRecordingLevelPeak(): Float
+
+    suspend fun shutdown()
+    fun isInitialized(): Boolean
+    fun getReportedLatencyMillis(): Float
+
+    // --- New Sequencer Control Methods ---
+    suspend fun loadSequenceData(sequence: com.example.theone.model.Sequence)
+    suspend fun playSequence()
+    suspend fun stopSequence()
+    suspend fun setSequencerBpm(bpm: Float)
+    suspend fun getSequencerPlayheadPosition(): Long
 }

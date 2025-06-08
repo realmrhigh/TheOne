@@ -49,7 +49,7 @@ class SequencerViewModel @Inject constructor(
     private val _playheadPositionTicks = MutableStateFlow(0L)
     val playheadPositionTicks: StateFlow<Long> = _playheadPositionTicks.asStateFlow()
 
-    private var playbackJob: Job? = null
+    private var playbackJob: Job? = null // Will be used for polling playhead position
     private val viewModelScope = CoroutineScope(Dispatchers.Main + Job()) // Use Dispatchers.Main for UI updates
 
     // List to hold all sequences for the current session/project (simplified)
@@ -102,13 +102,16 @@ class SequencerViewModel @Inject constructor(
     // Method to internally set the current sequence and update related states
     private fun setCurrentSequenceInternal(sequence: Sequence?) {
         currentSequence = sequence
-        // When sequence changes, update BPM text in TransportBar (if it's observing currentSequence directly or via a derived state)
-        // For now, TransportBar reads currentSequence.bpm, so this should be fine.
-        // Also reset playback and playhead
-        stop() // Stops playback and resets playhead
-        _playheadPositionTicks.value = 0L // Ensure playhead is at 0 for the new sequence
-        // Update any other UI or state that depends on the current sequence
-        println("SequencerViewModel: Current sequence set to ${sequence?.name}")
+        stop() // Stop any current playback and reset playhead for the old sequence
+        _playheadPositionTicks.value = 0L
+
+        sequence?.let {
+            viewModelScope.launch {
+                audioEngine.loadSequenceData(it)
+                Log.d("SequencerViewModel", "Loaded sequence ${it.name} into native layer.")
+            }
+        }
+        Log.d("SequencerViewModel", "Current sequence set to ${sequence?.name}")
     }
 
     // Public method for sequence selection (will be used by dropdown later)
@@ -116,6 +119,7 @@ class SequencerViewModel @Inject constructor(
         val sequenceToSelect = _sequences.value.find { it.id == sequenceId }
         sequenceToSelect?.let {
             setCurrentSequenceInternal(it)
+            // audioEngine.loadSequenceData should be called by setCurrentSequenceInternal
         }
     }
 
@@ -128,11 +132,12 @@ class SequencerViewModel @Inject constructor(
             barLength = currentSequence?.barLength ?: 4,
             timeSignatureNumerator = currentSequence?.timeSignatureNumerator ?: 4,
             timeSignatureDenominator = currentSequence?.timeSignatureDenominator ?: 4,
+            ppqn = currentSequence?.ppqn ?: 96, // Ensure PPQN is also carried over or defaulted
             events = mutableListOf()
         )
         _sequences.value = _sequences.value + newSequence // Add to the list
-        setCurrentSequenceInternal(newSequence) // Set the new sequence as current
-        println("SequencerViewModel: Created new sequence '${newSequence.name}' and set as current.")
+        setCurrentSequenceInternal(newSequence) // This will also call loadSequenceData
+        Log.d("SequencerViewModel", "Created new sequence '${newSequence.name}' and set as current.")
     }
 
     // This method is effectively replaced by setCurrentSequenceInternal + selectSequence
@@ -154,11 +159,10 @@ class SequencerViewModel @Inject constructor(
                 // currentSequence = it.copy(bpm = newBpm) // If Sequence is data class & this triggers recomposition
                 // _sequences.value = _sequences.value.map { s -> if (s.id == it.id) currentSequence!! else s }
                 // For now, direct mutation. `bpmText` in `TransportBar` will update due to `remember(currentSeq?.id, currentSeq?.bpm)`
-
-                if (playbackJob?.isActive == true) {
-                    stop()
-                    play()
+                viewModelScope.launch {
+                    audioEngine.setSequencerBpm(newBpm)
                 }
+                // No need to stop/start playback, C++ side handles BPM changes dynamically if playing.
             }
         }
     }
@@ -239,128 +243,39 @@ class SequencerViewModel @Inject constructor(
         if (playbackJob?.isActive == true) {
             return
         }
-        val targetSequence = currentSequence // Use currentSequence
-        targetSequence?.let { seq ->
-            if (seq.events.isEmpty() && seq.bpm <= 0) {
-                println("SequencerViewModel: Cannot play, sequence is empty or BPM is invalid.")
+        currentSequence?.let { seq ->
+            if (seq.bpm <= 0) { // PPQN is now handled by C++ side after load
+                Log.e("SequencerViewModel", "Cannot play, BPM is invalid (${seq.bpm}).")
                 return
             }
 
-            playbackJob = viewModelScope.launch {
+            viewModelScope.launch {
+                audioEngine.playSequence() // Call native play
                 _isPlayingState.value = true
-                var lastTickTime = System.currentTimeMillis()
-                // PPQN (Pulses Per Quarter Note) is a standard. If 96 PPQN, and we have 16th notes:
-                // Ticks per quarter note = 96. So, ticksPer16thNote = 96 / 4 = 24.
-                // This means `ticksPer16thNote` should represent the number of ticks in a 16th note.
-                val ppqn = ticksPer16thNote * 4 // Pulses Per Quarter Note
+                Log.d("SequencerViewModel", "Playback started via native engine for sequence: ${seq.name}")
 
-                if (ppqn <= 0) {
-                    println("SequencerViewModel: PPQN is invalid, cannot calculate tick duration. ppqn: $ppqn, ticksPer16thNote: $ticksPer16thNote")
-                    return@launch
-                }
-                if (seq.bpm <= 0) {
-                    println("SequencerViewModel: BPM is invalid, cannot calculate tick duration. bpm: ${seq.bpm}")
-                    return@launch
-                }
-
-
-                // Delay for one tick in ms: (60,000 ms per minute / BPM) / PPQN for that beat type
-                // If PPQN is for quarter notes, then this is (ms per quarter note) / ticks_per_quarter_note
-                val tickDurationMs = (60000.0 / seq.bpm) / ppqn
-
-                if (tickDurationMs <= 0) {
-                    println("SequencerViewModel: Tick duration is invalid. Check BPM and PPQN values. tickDurationMs: $tickDurationMs")
-                    return@launch
-                }
-
-
-                _playheadPositionTicks.value = 0L // Start from the beginning
-
-                while (isActive) {
-                    val currentLoopPositionTicks = _playheadPositionTicks.value
-
-                    // Check for events at the current playhead position
-                    seq.events.filter { it.startTimeTicks == currentLoopPositionTicks }.forEach { event ->
-                        if (event.type is EventType.PadTrigger) {
-                            val padTrigger = event.type as EventType.PadTrigger
-
-                            // TODO: Implement proper lookup of PadSettings for event.trackId and padTrigger.padId
-                            // For now, using placeholder/default values.
-                            println("SequencerPlayback: Looking up PadSettings for track ${event.trackId}, pad ${padTrigger.padId} - NOT IMPLEMENTED, USING DEFAULTS")
-
-                            val placeholderSampleId = "default_kick_placeholder" // This sample would need to be loaded for actual sound
-                            val placeholderPlaybackMode = PlaybackMode.ONE_SHOT
-                            val placeholderAmpEnv = EnvelopeSettings(
-                                type = EnvelopeType.ADSR,
-                                attackMs = 5f,
-                                holdMs = 0f,
-                                decayMs = 100f,
-                                sustainLevel = 1.0f,
-                                releaseMs = 100f
-                            )
-
-                            viewModelScope.launch { // audioEngine.playPadSample is suspend
-                                audioEngine.playPadSample(
-                                    noteInstanceId = UUID.randomUUID().toString(),
-                                    trackId = event.trackId, // Use event's trackId
-                                    padId = padTrigger.padId,
-                                    sampleId = placeholderSampleId, // Placeholder
-                                    sliceId = null, // Placeholder
-                                    velocity = padTrigger.velocity.toFloat() / 127.0f, // Use event's velocity
-                                    playbackMode = placeholderPlaybackMode, // Placeholder
-                                    coarseTune = 0, // Placeholder
-                                    fineTune = 0, // Placeholder
-                                    pan = 0.0f, // Placeholder
-                                    volume = padTrigger.velocity.toFloat() / 127.0f, // Using velocity for volume
-                                    ampEnv = placeholderAmpEnv, // Placeholder
-                                    filterEnv = null, // Placeholder
-                                    pitchEnv = null, // Placeholder
-                                    lfos = emptyList() // Placeholder
-                                )
-                            }
-                        }
+                // Start polling for playhead position
+                playbackJob = viewModelScope.launch {
+                    while (isActive && _isPlayingState.value) { // Check _isPlayingState as well
+                        _playheadPositionTicks.value = audioEngine.getSequencerPlayheadPosition()
+                        delay(50) // Poll every 50ms
                     }
-
-                    // Increment playhead
-                    _playheadPositionTicks.value = (currentLoopPositionTicks + 1)
-
-                    // Handle Looping
-                    // seq.barLength = number of bars in the sequence (e.g. 1, 2, 4 bars)
-                    // seq.timeSignatureNumerator = beats per bar (e.g. 4 for 4/4 time)
-                    // ppqn = ticks per quarter note
-                    // A beat is usually a quarter note in contexts like this (e.g. 4/4 time, BPM refers to quarter notes)
-                    val ticksPerBeat = ppqn.toLong() // If ppqn is for quarter notes
-                    val totalBeatsInSequence = seq.barLength * seq.timeSignatureNumerator // Total quarter notes in sequence
-                    val totalTicksInSequence = totalBeatsInSequence * ticksPerBeat
-
-                    if (totalTicksInSequence <= 0) {
-                         println("SequencerViewModel: totalTicksInSequence is invalid ($totalTicksInSequence), playback may not loop correctly.")
-                        // Potentially stop playback or handle error, for now, it will just not loop.
-                    } else if (_playheadPositionTicks.value >= totalTicksInSequence) {
-                        _playheadPositionTicks.value = 0L // Loop back to the beginning
-                         println("SequencerViewModel: Looping sequence. Total Ticks: $totalTicksInSequence")
-                    }
-
-
-                    // Delay for the duration of one tick
-                    val currentTime = System.currentTimeMillis()
-                    val elapsedTime = currentTime - lastTickTime
-                    // Ensure calculated delayTime is not negative, which can happen if processing takes longer than tickDurationMs
-                    val delayTime = Math.max(0, (tickDurationMs - elapsedTime).toLong())
-
-                    delay(delayTime)
-                    lastTickTime = System.currentTimeMillis() // More accurate for next tick calculation
                 }
             }
+        } ?: run {
+            Log.w("SequencerViewModel", "Play called but currentSequence is null.")
         }
     }
 
     fun stop() {
-        playbackJob?.cancel()
-        playbackJob = null
-        _playheadPositionTicks.value = 0L // Reset playhead
-        _isPlayingState.value = false // Add this - As per instruction
-        println("SequencerViewModel: Playback stopped.")
+        viewModelScope.launch {
+            audioEngine.stopSequence() // Call native stop
+            _isPlayingState.value = false
+            playbackJob?.cancel() // Cancel the polling job
+            playbackJob = null
+            _playheadPositionTicks.value = 0L // Reset playhead on UI
+            Log.d("SequencerViewModel", "Playback stopped via native engine.")
+        }
     }
 
     // For "Clear Sequence" Button
