@@ -1609,7 +1609,7 @@ theone::audio::EnvelopeSettingsCpp ConvertKotlinEnvelopeSettings(JNIEnv* env, jo
         return cppSettings;
     }
 
-    jfieldID typeFid = env->GetFieldID(envSettingsClass, "type", "Lcom/example/theone/model/ audioEngine/ModelEnvelopeTypeInternal;");
+    jfieldID typeFid = env->GetFieldID(envSettingsClass, "type", "Lcom/example/theone/model/audioEngine/ModelEnvelopeTypeInternal;");
     jfieldID attackMsFid = env->GetFieldID(envSettingsClass, "attackMs", "F");
     jfieldID holdMsFid = env->GetFieldID(envSettingsClass, "holdMs", "Ljava/lang/Float;"); // Nullable Float
     jfieldID decayMsFid = env->GetFieldID(envSettingsClass, "decayMs", "F");
