@@ -27,6 +27,25 @@ class DrumTrackViewModel @Inject constructor(
     private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())
     val padSettingsMap: StateFlow<Map<String, PadSettings>> = _padSettingsMap.asStateFlow()
 
+    // --- Pad Settings Persistence ---
+    private fun persistPadSettings(padId: String, settings: PadSettings) {
+        viewModelScope.launch {
+            try {
+                // Assuming projectManager.savePadSettings exists and is suspending or handled appropriately
+                val result = projectManager.savePadSettings(padId, settings)
+                if (result.isSuccess) {
+                    android.util.Log.d("DrumTrackViewModel", "Pad settings persistence successful for $padId.")
+                } else {
+                    android.util.Log.e("DrumTrackViewModel", "Pad settings persistence failed for $padId: ${result.exceptionOrNull()?.message}")
+                    // Handle error (e.g., update a StateFlow to show a message to the user)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DrumTrackViewModel", "Error saving pad settings for $padId", e)
+                // Handle error
+            }
+        }
+    }
+
     private val _availableSamples = MutableStateFlow<List<SampleMetadata>>(emptyList())
     val availableSamples: StateFlow<List<SampleMetadata>> = _availableSamples.asStateFlow()
 
@@ -161,22 +180,41 @@ class DrumTrackViewModel @Inject constructor(
         // then just putting it is fine. If it's partial, the ViewModel needs a more complex update strategy.
         // For now, assuming newSettings is intended to be a complete setting for the pad,
         // but we ensure its 'id' field is correct.
+        val settingsToPersist = newSettings.copy(id = padId) // Ensure ID consistency
+        currentPads[padId] = settingsToPersist
         _padSettingsMap.value = currentPads.toMap() // Ensure immutable map is set back
+        persistPadSettings(padId, settingsToPersist)
+    }
 
-        viewModelScope.launch {
-            try {
-                projectManager.savePadSettings(padId, newSettings).let { result ->
-                    if (result.isSuccess) {
-                        android.util.Log.d("DrumTrackViewModel", "Pad settings persistence successful for $padId.")
-                    } else {
-                        android.util.Log.e("DrumTrackViewModel", "Pad settings persistence failed for $padId: ${result.exceptionOrNull()?.message}")
-                        // Handle error appropriately, e.g., show a message to the user via a StateFlow<UserMessage?>
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("DrumTrackViewModel", "Error saving pad settings for $padId", e)
-                // Handle error appropriately
-            }
+    fun updatePadVolume(padId: String, volume: Float) {
+        val currentPads = _padSettingsMap.value.toMutableMap()
+        val existingSetting = currentPads[padId]
+        if (existingSetting != null) {
+            val newSettings = existingSetting.copy(volume = volume)
+            currentPads[padId] = newSettings
+            _padSettingsMap.value = currentPads.toMap()
+            persistPadSettings(padId, newSettings) // Persist changes
+
+            // Optional: Call new audio engine methods for real-time effect if desired
+            // viewModelScope.launch {
+            //     audioEngine.setPadVolume("drumTrack_TODO", padId, volume)
+            // }
+        }
+    }
+
+    fun updatePadPan(padId: String, pan: Float) {
+        val currentPads = _padSettingsMap.value.toMutableMap()
+        val existingSetting = currentPads[padId]
+        if (existingSetting != null) {
+            val newSettings = existingSetting.copy(pan = pan)
+            currentPads[padId] = newSettings
+            _padSettingsMap.value = currentPads.toMap()
+            persistPadSettings(padId, newSettings) // Persist changes
+
+            // Optional: Call new audio engine methods for real-time effect if desired
+            // viewModelScope.launch {
+            //     audioEngine.setPadPan("drumTrack_TODO", padId, pan)
+            // }
         }
     }
 }

@@ -176,6 +176,19 @@ class DrumProgramEditViewModel(
         _padSettings.update(updateAction)
     }
 
+    fun updatePadOverallVolume(newVolume: Float) {
+        updateGlobalPadParameter { currentSettings ->
+            // Assuming volume is typically 0.0 to 1.0 (or up to 2.0 for boost)
+            // Clamping to a sensible range, e.g., 0.0 to 1.5 for some headroom.
+            currentSettings.copy(volume = newVolume.coerceIn(0f, 1.5f))
+        }
+    }
+
+    fun updatePadOverallPan(newPan: Float) {
+        updateGlobalPadParameter { currentSettings ->
+            currentSettings.copy(pan = newPan.coerceIn(-1f, 1f)) // Standard pan range -1.0 (L) to 1.0 (R)
+        }
+    }
 
     fun updateEnvelope(envelopeTypeLocal: EnvelopeType, newSettingsFromUI: ModelEnvelopeSettings) {
         // newSettingsFromUI is a ModelEnvelopeSettings where fields like attackMs might hold values in seconds from UI.

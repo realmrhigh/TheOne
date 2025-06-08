@@ -2311,3 +2311,59 @@ Java_com_example_theone_audio_AudioEngine_native_1getSequencerPlayheadPosition(
     return 0L;
 }
 
+// --- JNI Functions for Pad Mixer Controls ---
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_nativeSetPadVolume(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring trackId,
+        jstring padId,
+        jfloat volume) {
+
+    std::string trackIdStr = JStringToString(env, trackId);
+    std::string padIdStr = JStringToString(env, padId);
+
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "nativeSetPadVolume called: trackId=%s, padId=%s, volume=%f", trackIdStr.c_str(), padIdStr.c_str(), volume);
+
+    // TODO: Implement actual audio engine logic to set pad volume here.
+    // This will involve finding the specific track and pad (e.g. in gPadSettingsMap using a key like trackIdStr + "_" + padIdStr),
+    // then adjusting its mixer/voice parameters or updating its PadSettingsCpp object and notifying the audio thread.
+    // Example:
+    // std::string padKey = trackIdStr + "_" + padIdStr;
+    // std::lock_guard<std::mutex> lock(gPadSettingsMutex);
+    // auto it = gPadSettingsMap.find(padKey);
+    // if (it != gPadSettingsMap.end()) {
+    //     it->second.volume = volume; // Assuming PadSettingsCpp has a volume member
+    //     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Updated volume for pad %s to %f", padKey.c_str(), volume);
+    // } else {
+    //     __android_log_print(ANDROID_LOG_WARN, APP_NAME, "PadSettings not found for key %s during setPadVolume", padKey.c_str());
+    // }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_nativeSetPadPan(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring trackId,
+        jstring padId,
+        jfloat pan) {
+
+    std::string trackIdStr = JStringToString(env, trackId);
+    std::string padIdStr = JStringToString(env, padId);
+
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "nativeSetPadPan called: trackId=%s, padId=%s, pan=%f", trackIdStr.c_str(), padIdStr.c_str(), pan);
+
+    // TODO: Implement actual audio engine logic to set pad pan here.
+    // Similar to setPadVolume, this would involve updating the pan for the specific pad.
+    // Example:
+    // std::string padKey = trackIdStr + "_" + padIdStr;
+    // std::lock_guard<std::mutex> lock(gPadSettingsMutex);
+    // auto it = gPadSettingsMap.find(padKey);
+    // if (it != gPadSettingsMap.end()) {
+    //     it->second.pan = pan; // Assuming PadSettingsCpp has a pan member
+    //     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Updated pan for pad %s to %f", padKey.c_str(), pan);
+    // } else {
+    //     __android_log_print(ANDROID_LOG_WARN, APP_NAME, "PadSettings not found for key %s during setPadPan", padKey.c_str());
+    // }
+}

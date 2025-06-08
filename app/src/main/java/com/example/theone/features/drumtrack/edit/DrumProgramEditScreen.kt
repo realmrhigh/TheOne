@@ -181,7 +181,32 @@ fun SamplesEditorContent( /* ... existing code ... */
             Text("Reverse:", modifier = Modifier.weight(1f))
             Switch(checked = currentLayer.reverse, onCheckedChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.REVERSE, it) })
         }
-         Button(onClick = { viewModel.removeLayer(selectedLayerIndex) }, colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error), modifier = Modifier.padding(top = 8.dp).fillMaxWidth()) {
+
+        Divider() // Add a divider before global pad controls
+
+        Text(
+            "Overall Pad Settings",
+            style = MaterialTheme.typography.subtitle1,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        ParameterSlider(
+            label = "Pad Volume",
+            value = padSettings.volume,
+            onValueChange = { viewModel.updatePadOverallVolume(it) },
+            valueRange = 0f..1.5f // Example range, allows some boost
+        )
+
+        ParameterSlider(
+            label = "Pad Pan",
+            value = padSettings.pan,
+            onValueChange = { viewModel.updatePadOverallPan(it) },
+            valueRange = -1f..1f // Standard pan range
+        )
+
+        Divider() // Add a divider after global pad controls before layer removal button or other content
+
+        Button(onClick = { viewModel.removeLayer(selectedLayerIndex) }, colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error), modifier = Modifier.padding(top = 8.dp).fillMaxWidth()) {
             Text("Remove Layer ${selectedLayerIndex + 1}")
         }
     }

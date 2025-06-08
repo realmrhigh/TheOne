@@ -72,6 +72,11 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     private external fun native_getSequencerPlayheadPosition(): Long
     // --- End New Sequencer JNI Declarations ---
 
+    // --- Pad Mixer JNI Declarations ---
+    private external fun nativeSetPadVolume(trackId: String, padId: String, volume: Float)
+    private external fun nativeSetPadPan(trackId: String, padId: String, pan: Float)
+    // --- End Pad Mixer JNI Declarations ---
+
     private var mRecordingParams: Pair<Int, Int>? = null
 
     override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean {
@@ -420,6 +425,28 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         }
     }
     // --- End New Sequencer Kotlin Methods ---
+
+    // --- Pad Mixer Kotlin Methods ---
+    override suspend fun setPadVolume(trackId: String, padId: String, volume: Float) {
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set pad volume.")
+            return
+        }
+        withContext(Dispatchers.IO) {
+            nativeSetPadVolume(trackId, padId, volume)
+        }
+    }
+
+    override suspend fun setPadPan(trackId: String, padId: String, pan: Float) {
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set pad pan.")
+            return
+        }
+        withContext(Dispatchers.IO) {
+            nativeSetPadPan(trackId, padId, pan)
+        }
+    }
+    // --- End Pad Mixer Kotlin Methods ---
 
     // Other methods like startAudioRecording (simulated), playSampleSlice (simulated) etc.
     // from the original file should be here if they are still needed.
