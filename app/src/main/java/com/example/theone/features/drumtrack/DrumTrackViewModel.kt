@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import com.example.theone.audio.AudioEngine
 import com.example.theone.domain.ProjectManager
 import com.example.theone.features.drumtrack.model.PadSettings
-import com.example.theone.features.sequencer.SequencerViewModel // Added import
+// import com.example.theone.features.sequencer.SequencerViewModel // Removed import
+import com.example.theone.features.sequencer.SequencerEventBus // Added import
+import com.example.theone.features.sequencer.PadTriggerEvent // Added import
 import com.example.theone.model.SampleMetadata
-import dagger.hilt.android.lifecycle.HiltViewModel // Added import
-import javax.inject.Inject // Added import
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,11 +17,11 @@ import androidx.lifecycle.viewModelScope // Added import
 import kotlinx.coroutines.launch // Added import
 import java.util.UUID // Added import
 
-@HiltViewModel // Added annotation
-class DrumTrackViewModel @Inject constructor( // Added @Inject
+@HiltViewModel
+class DrumTrackViewModel @Inject constructor(
     private val audioEngine: AudioEngine,
     private val projectManager: ProjectManager,
-    private val sequencerViewModel: SequencerViewModel // Added parameter
+    private val sequencerEventBus: SequencerEventBus // Injected Event Bus
 ) : ViewModel() {
 
     private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())
@@ -53,14 +55,26 @@ class DrumTrackViewModel @Inject constructor( // Added @Inject
         val existingPadSetting = currentPads[padId] ?: PadSettings(id = padId) // Ensure PadSettings has an ID
         // Assuming sample.uri can serve as a unique identifier for the sample, as per plan.
         // If SampleMetadata has a persistent `id` from ProjectManager, that should be preferred.
-        currentPads[padId] = existingPadSetting.copy(sampleId = sample.uri, sampleName = sample.name)
+        // MODIFIED: Update first layer or create one. This is a temporary fix.
+        val layers = existingPadSetting.layers.toMutableList()
+        if (layers.isEmpty()) {
+            layers.add(com.example.theone.model.LayerModels.SampleLayer(id = "layer_0", sampleId = sample.id, sampleNameCache = sample.name))
+        } else {
+            layers[0] = layers[0].copy(sampleId = sample.id, sampleNameCache = sample.name)
+        }
+        currentPads[padId] = existingPadSetting.copy(layers = layers)
         _padSettingsMap.value = currentPads
     }
 
     fun clearSampleFromPad(padId: String) {
         val currentPads = _padSettingsMap.value.toMutableMap()
         val existingPadSetting = currentPads[padId] ?: PadSettings(id = padId) // Ensure PadSettings has an ID
-        currentPads[padId] = existingPadSetting.copy(sampleId = null, sampleName = null)
+        // MODIFIED: Clear sample from first layer. This is a temporary fix.
+        val layers = existingPadSetting.layers.toMutableList()
+        if (layers.isNotEmpty()) {
+            layers[0] = layers[0].copy(sampleId = "", sampleNameCache = "Empty") // Or some placeholder for empty
+        }
+        currentPads[padId] = existingPadSetting.copy(layers = layers)
         _padSettingsMap.value = currentPads
     }
 
@@ -90,8 +104,10 @@ class DrumTrackViewModel @Inject constructor( // Added @Inject
                         lfos = padSetting.lfos // Directly pass List<LFOSettings>
                     )
                 }
-                // Also call the sequencer recording logic
-                sequencerViewModel.recordPadTrigger(padId = padId, velocity = 127) // Using default MIDI velocity
+                // Also call the sequencer recording logic via event bus
+                viewModelScope.launch { // Launch a coroutine to emit the event
+                    sequencerEventBus.emitPadTriggerEvent(PadTriggerEvent(padId = padId, velocity = 127))
+                }
             } else {
                 println("DrumTrackViewModel: Pad $padId triggered, but no sample assigned to its first layer.")
             }
