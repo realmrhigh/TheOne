@@ -117,7 +117,4 @@ fun PadView(
     }
 }
 
-// Type aliases below are no longer needed as models are consolidated.
-// typealias EditLfoWaveform = com.example.theone.features.drumtrack.edit.LfoWaveform
-// typealias EditLfoDestination = com.example.theone.features.drumtrack.edit.LfoDestination
-```
+// FIX: Add missing closing brace for the package

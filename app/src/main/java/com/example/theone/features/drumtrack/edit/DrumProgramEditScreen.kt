@@ -105,7 +105,7 @@ fun DrumProgramEditScreen(
                 selectedLayerIndex = selectedLayerIndex,
                 onLayerSelected = { viewModel.selectLayer(it) },
                 onAddLayer = {
-                    val firstSample = viewModel.projectManager.getAvailableSamples().firstOrNull()
+                    val firstSample = viewModel.projectManager.getSamplesFromPool().firstOrNull()
                     if (firstSample != null) {
                         viewModel.addSampleLayer(firstSample)
                     }
@@ -136,9 +136,9 @@ fun DrumProgramEditScreen(
 
 @Composable
 fun SamplesEditorContent( /* ... existing code ... */
-    padSettings: PadSettings,
-    selectedLayerIndex: Int,
-    viewModel: DrumProgramEditViewModel
+                          padSettings: PadSettings,
+                          selectedLayerIndex: Int,
+                          viewModel: DrumProgramEditViewModel
 ) {
     val scrollState = rememberScrollState()
     val currentLayer = padSettings.layers.getOrNull(selectedLayerIndex)
@@ -151,7 +151,7 @@ fun SamplesEditorContent( /* ... existing code ... */
 
     if (showSampleSelectorDialog) {
         SampleSelectorDialog(
-            availableSamples = viewModel.projectManager.getAvailableSamples(),
+            availableSamples = viewModel.projectManager.getSamplesFromPool(),
             onSampleSelected = { selectedSample ->
                 viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.SAMPLE_ID, selectedSample.id)
                 showSampleSelectorDialog = false
@@ -174,14 +174,14 @@ fun SamplesEditorContent( /* ... existing code ... */
         }
         ParameterSlider(label = "Loop Point", value = currentLayer.loopPoint, onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.LOOP_POINT, it) }, valueRange = 0f..1f, enabled = currentLayer.loopEnabled)
         Divider()
-        ParameterSlider(label = "Tune (Semi)", value = currentLayer.tuningSemi.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_SEMI, it.toInt()) }, valueRange = -24f..24f, steps = 47 )
-        ParameterSlider(label = "Tune (Fine)", value = currentLayer.tuningFine.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_FINE, it.toInt()) }, valueRange = -100f..100f, steps = 199 )
+        ParameterSlider(label = "Tune (Semi)", value = currentLayer.tuningSemi.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_SEMI, it.toInt()) }, valueRange = -24f..24f, steps = 47)
+        ParameterSlider(label = "Tune (Fine)", value = currentLayer.tuningFine.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_FINE, it.toInt()) }, valueRange = -100f..100f, steps = 199)
         Divider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Reverse:", modifier = Modifier.weight(1f))
             Switch(checked = currentLayer.reverse, onCheckedChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.REVERSE, it) })
         }
-         Button(onClick = { viewModel.removeLayer(selectedLayerIndex) }, colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error), modifier = Modifier.padding(top = 8.dp).fillMaxWidth()) {
+        Button(onClick = { viewModel.removeLayer(selectedLayerIndex) }, colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error), modifier = Modifier.padding(top = 8.dp).fillMaxWidth()) {
             Text("Remove Layer ${selectedLayerIndex + 1}")
         }
     }
@@ -332,7 +332,7 @@ fun EffectSettingItem(
                 valueRange = 0f..1f
             )
             // TODO: Implement detailed parameter editing UI for each effect type.
-            Text("Parameters: ${effectSetting.parameters.entries.joinToString { \"${it.key}=${it.value.toString().take(4)}\" }}")
+            Text("Parameters: ${effectSetting.parameters.entries.joinToString { "${it.key}=${it.value.toString().take(4)}" }}")
             Button(onClick = { viewModel.removeEffect(effectSetting.id) }) {
                 Text("Remove")
             }
@@ -386,11 +386,11 @@ fun WaveformPlaceholder() { /* ... existing code ... */
 
 @Composable
 fun LayerSelectionTabs( /* ... existing code ... */
-    padSettings: PadSettings,
-    selectedLayerIndex: Int,
-    onLayerSelected: (Int) -> Unit,
-    onAddLayer: () -> Unit,
-    viewModel: DrumProgramEditViewModel
+                        padSettings: PadSettings,
+                        selectedLayerIndex: Int,
+                        onLayerSelected: (Int) -> Unit,
+                        onAddLayer: () -> Unit,
+                        viewModel: DrumProgramEditViewModel
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         ScrollableTabRow(
@@ -422,8 +422,8 @@ fun LayerSelectionTabs( /* ... existing code ... */
 
 @Composable
 fun EditorTabsBottomNavigation( /* ... existing code ... */
-    selectedTab: EditorTab,
-    onTabSelected: (EditorTab) -> Unit
+                                selectedTab: EditorTab,
+                                onTabSelected: (EditorTab) -> Unit
 ) {
     TabRow(selectedTabIndex = selectedTab.ordinal) {
         EditorTab.values().forEach { tab ->
@@ -434,9 +434,9 @@ fun EditorTabsBottomNavigation( /* ... existing code ... */
 
 @Composable
 fun SampleSelectorDialog( /* ... existing code ... */
-    availableSamples: List<SampleMetadata>,
-    onSampleSelected: (SampleMetadata) -> Unit,
-    onDismiss: () -> Unit
+                          availableSamples: List<SampleMetadata>,
+                          onSampleSelected: (SampleMetadata) -> Unit,
+                          onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -444,7 +444,8 @@ fun SampleSelectorDialog( /* ... existing code ... */
         text = {
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 items(availableSamples) { sample ->
-                    Text(text = "${sample.name} (${sample.durationMs}ms)", modifier = Modifier.fillMaxWidth().clickable { onSampleSelected(sample) }.padding(vertical = 8.dp))
+                    // FIX: Changed sample.durationMs to sample.duration
+                    Text(text = "${sample.name} (${sample.duration}ms)", modifier = Modifier.fillMaxWidth().clickable { onSampleSelected(sample) }.padding(vertical = 8.dp))
                 }
             }
         },
@@ -454,12 +455,12 @@ fun SampleSelectorDialog( /* ... existing code ... */
 
 @Composable
 fun ParameterSlider( /* ... existing code ... */
-    label: String,
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    steps: Int = 0,
-    enabled: Boolean = true
+                     label: String,
+                     value: Float,
+                     onValueChange: (Float) -> Unit,
+                     valueRange: ClosedFloatingPointRange<Float>,
+                     steps: Int = 0,
+                     enabled: Boolean = true
 ) {
     Column(modifier = Modifier.padding(vertical = 4.dp)) {
         Row {
@@ -472,9 +473,9 @@ fun ParameterSlider( /* ... existing code ... */
 
 @Composable
 fun LfoControls( /* ... existing code ... */
-    lfoIndex: Int,
-    lfoSettings: LFOSettings,
-    onLfoUpdate: (LFOSettings) -> Unit
+                 lfoIndex: Int,
+                 lfoSettings: LFOSettings,
+                 onLfoUpdate: (LFOSettings) -> Unit
 ) {
     var waveformDropdownExpanded by remember { mutableStateOf(false) }
     var destinationDropdownExpanded by remember { mutableStateOf(false) }
@@ -520,11 +521,12 @@ fun LfoControls( /* ... existing code ... */
 
 @Composable
 fun ParameterTextField( /* ... existing code ... */
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    keyboardType: KeyboardType = KeyboardType.Number,
-    enabled: Boolean = true
+                        label: String,
+                        value: String,
+                        onValueChange: (String) -> Unit,
+                        keyboardType: KeyboardType = KeyboardType.Number,
+                        enabled: Boolean = true
 ) {
     OutlinedTextField(value = value, onValueChange = onValueChange, label = { Text(label) }, keyboardOptions = KeyboardOptions(keyboardType = keyboardType), enabled = enabled, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), singleLine = true)
 }
+
