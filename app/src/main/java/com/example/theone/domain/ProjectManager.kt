@@ -2,7 +2,6 @@ package com.example.theone.domain
 
 import com.example.theone.model.SampleMetadata // Import the unified SampleMetadata
 import com.example.theone.model.Sample // Import the new Sample class
-import java.io.File // For the user's original request context, though URIs are better
 import kotlinx.coroutines.flow.StateFlow // Keep this if getSamplesFromPool uses it
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,7 +15,7 @@ import kotlin.Result // Ensure this is Kotlin's Result
 
 interface ProjectManager {
     // Original interface methods - will be implemented minimally
-    suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata?
+    suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata
     suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean
     suspend fun getSampleById(sampleId: String): SampleMetadata?
 
@@ -25,17 +24,21 @@ interface ProjectManager {
     fun getSamplesFromPool(): List<SampleMetadata>      // From previous work
 
     // --- New methods for WAV I/O ---
-    suspend fun loadWavFile(fileUri: String): Result<Sample, Error> // Using Kotlin's Result
-    suspend fun saveWavFile(sample: Sample, fileUri: String): Result<Unit, Error> // Using Kotlin's Result
+    suspend fun loadWavFile(fileUri: String): Result<Sample> // Using Kotlin's Result
+    suspend fun saveWavFile(sample: Sample, fileUri: String): Result<Unit> // Using Kotlin's Result
 
     // --- Method for saving PadSettings ---
-    suspend fun savePadSettings(padId: String, settings: com.example.theone.features.drumtrack.model.PadSettings): Result<Unit, Error>
+    suspend fun savePadSettings(padId: String, settings: com.example.theone.features.drumtrack.model.PadSettings): Result<Unit>
+
+    // --- Expose the sample pool as a StateFlow ---
+    val samplePool: StateFlow<List<SampleMetadata>>
 }
 
 class ProjectManagerImpl : ProjectManager {
 
     private val _samplePool = MutableStateFlow<List<SampleMetadata>>(emptyList())
-    val samplePool: StateFlow<List<SampleMetadata>> = _samplePool.asStateFlow()
+    // Use 'override' because this property is now defined in the interface
+    override val samplePool: StateFlow<List<SampleMetadata>> = _samplePool.asStateFlow()
 
     // ... (existing addSampleToPool, getSamplesFromPool, updateSampleMetadataNonSuspend, etc.)
 
@@ -72,7 +75,7 @@ class ProjectManagerImpl : ProjectManager {
         // TODO: Persist changes to project file (C3 core responsibility)
     }
 
-    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
+    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata {
         println("ProjectManager: Interface addSampleToPool(name,uri,copy) called. Simulating add.")
         val newSampleMeta = SampleMetadata(
             id = UUID.randomUUID().toString(), // Added ID
@@ -98,7 +101,7 @@ class ProjectManagerImpl : ProjectManager {
     }
 
     // --- Placeholder Implementations for WAV I/O ---
-    override suspend fun loadWavFile(fileUri: String): Result<Sample, Error> {
+    override suspend fun loadWavFile(fileUri: String): Result<Sample> {
         println("ProjectManagerImpl: loadWavFile called for URI: $fileUri")
         // TODO: Implement actual WAV file reading and parsing here.
         // This involves:
@@ -109,31 +112,29 @@ class ProjectManagerImpl : ProjectManager {
         // 5. Populating SampleMetadata and creating a Sample object.
 
         // Placeholder implementation:
-        val placeholderMetadata = SampleMetadata(
-            id = UUID.randomUUID().toString(), // Added ID
-            name = "Loaded Sample: " + fileUri.substringAfterLast('/'),
-            uri = fileUri,
-            duration = 1000L, // Dummy duration 1 sec
-            sampleRate = 44100,
-            channels = 1,
-            bitDepth = 16
-            // Other fields will use defaults
-        )
-        val placeholderAudioData = FloatArray(44100) { 0.0f } // 1 sec of silence
-        val placeholderSample = Sample(
-            metadata = placeholderMetadata,
-            audioData = placeholderAudioData
-        )
-        // Simulate success
-        // return Result.success(placeholderSample)
-        // Simulate failure:
-        // return Result.failure(Error("Failed to load WAV: Not implemented"))
-
-        // For now, return success with placeholder data for testing ViewModel
-        return Result.success(placeholderSample)
+        return try {
+            val placeholderMetadata = SampleMetadata(
+                id = UUID.randomUUID().toString(), // Added ID
+                name = "Loaded Sample: " + fileUri.substringAfterLast('/'),
+                uri = fileUri,
+                duration = 1000L, // Dummy duration 1 sec
+                sampleRate = 44100,
+                channels = 1,
+                bitDepth = 16
+                // Other fields will use defaults
+            )
+            val placeholderAudioData = FloatArray(44100) // 1 sec of silence, initialized to 0.0f
+            val placeholderSample = Sample(
+                metadata = placeholderMetadata,
+                audioData = placeholderAudioData
+            )
+            Result.success(placeholderSample)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
-    override suspend fun saveWavFile(sample: Sample, fileUri: String): Result<Unit, Error> {
+    override suspend fun saveWavFile(sample: Sample, fileUri: String): Result<Unit> {
         println("ProjectManagerImpl: saveWavFile called for sample '${sample.metadata.name}' to URI: $fileUri")
         // TODO: Implement actual WAV file writing here.
         // This involves:
@@ -143,7 +144,7 @@ class ProjectManagerImpl : ProjectManager {
         // 4. Writing audio data to the file.
 
         // Placeholder implementation:
-        println("  Sample ID: ${sample.id}")
+        println("  Sample ID: ${sample.metadata.id}")
         println("  Sample Rate: ${sample.metadata.sampleRate}, Channels: ${sample.metadata.channels}, BitDepth: ${sample.metadata.bitDepth}")
         println("  Audio Data Length: ${sample.audioData.size}")
 
@@ -153,7 +154,7 @@ class ProjectManagerImpl : ProjectManager {
         // return Result.failure(Error("Failed to save WAV: Not implemented"))
     }
 
-    override suspend fun savePadSettings(padId: String, settings: com.example.theone.features.drumtrack.model.PadSettings): Result<Unit, Error> {
+    override suspend fun savePadSettings(padId: String, settings: com.example.theone.features.drumtrack.model.PadSettings): Result<Unit> {
         android.util.Log.d("ProjectManagerImpl", "Saving PadSettings for padId: $padId, Settings: $settings")
         // TODO: Implement actual serialization and file writing logic here.
         // This would involve:

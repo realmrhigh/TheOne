@@ -55,7 +55,7 @@ class SamplerViewModel @Inject constructor(
             val result = projectManager.loadWavFile(uri)
 
             result.fold(
-                onSuccess = { sample ->
+                onSuccess = { sample: Sample ->
                     println("SamplerViewModel: Successfully loaded WAV file. Sample ID: ${sample.id}, Name: ${sample.metadata.name}")
                     projectManager.addSampleToPool(sample.metadata)
                     println("SamplerViewModel: Added sample metadata to ProjectManager pool.")
