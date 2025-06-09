@@ -970,11 +970,13 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
         jfloat volume,    // Fallback
         // New parameters matching AudioEngine.kt
         jint jPlaybackModeOrdinal,
-        jfloat jAmpEnvAttackMs,
-        jfloat jAmpEnvDecayMs,
-        jfloat jAmpEnvSustainLevel,
-        jfloat jAmpEnvReleaseMs
-        // TODO: Add JNI params for filterEnv, pitchEnv, LFOs later
+        // Amp Envelope
+        jint jAmpEnvTypeOrdinal, jfloat jAmpEnvAttackMs, jfloat jAmpEnvHoldMs, jfloat jAmpEnvDecayMs, jfloat jAmpEnvSustainLevel, jfloat jAmpEnvReleaseMs, jfloat jAmpEnvVelocityToAttack, jfloat jAmpEnvVelocityToLevel,
+        // Filter Envelope
+        jboolean jHasFilterEnv, jint jFilterEnvTypeOrdinal, jfloat jFilterEnvAttackMs, jfloat jFilterEnvHoldMs, jfloat jFilterEnvDecayMs, jfloat jFilterEnvSustainLevel, jfloat jFilterEnvReleaseMs, jfloat jFilterEnvVelocityToAttack, jfloat jFilterEnvVelocityToLevel,
+        // Pitch Envelope
+        jboolean jHasPitchEnv, jint jPitchEnvTypeOrdinal, jfloat jPitchEnvAttackMs, jfloat jPitchEnvHoldMs, jfloat jPitchEnvDecayMs, jfloat jPitchEnvSustainLevel, jfloat jPitchEnvReleaseMs, jfloat jPitchEnvVelocityToAttack, jfloat jPitchEnvVelocityToLevel
+        // TODO: LFOs
 ) {
     const char *nativeNoteInstanceId = env->GetStringUTFChars(jNoteInstanceId, nullptr);
     std::string noteInstanceIdStr(nativeNoteInstanceId);
@@ -1014,9 +1016,74 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
                 __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample (fallback): Sample ID '%s' has no audio data.", fallbackSampleIdStr.c_str());
                 return JNI_FALSE;
             }
-            std::lock_guard<std::mutex> activeSoundsLock(gActiveSoundsMutex);
-            gActiveSounds.emplace_back(loadedSample, noteInstanceIdStr, volume, pan); // Using JNI params for vol/pan
-            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sample '%s' (fallback) added. Active sounds: %zu", fallbackSampleIdStr.c_str(), gActiveSounds.size());
+
+            // Fallback: Configure envelopes directly from JNI parameters
+            // This sound instance will not have a shared_ptr to PadSettingsCpp.
+            // Its envelopes are configured once based on direct JNI params.
+            // Modifying gPadSettingsMap later won't affect this specific sound instance's envelopes.
+
+            // Determine sample rate for envelope configuration
+            float sr = (gAudioStreamSampleRate > 0) ? static_cast<float>(gAudioStreamSampleRate) : 48000.0f; // Default if global not set
+
+            theone::audio::PlayingSound soundInFallback(loadedSample, noteInstanceIdStr, volume, pan);
+
+            // Amp Envelope (from JNI params)
+            theone::audio::EnvelopeSettingsCpp ampEnvelopeFromParams;
+            ampEnvelopeFromParams.type = static_cast<theone::audio::ModelEnvelopeTypeInternalCpp>(jAmpEnvTypeOrdinal);
+            ampEnvelopeFromParams.attackMs = jAmpEnvAttackMs;
+            ampEnvelopeFromParams.holdMs = jAmpEnvHoldMs;
+            ampEnvelopeFromParams.decayMs = jAmpEnvDecayMs;
+            ampEnvelopeFromParams.sustainLevel = jAmpEnvSustainLevel;
+            ampEnvelopeFromParams.releaseMs = jAmpEnvReleaseMs;
+            ampEnvelopeFromParams.velocityToAttack = jAmpEnvVelocityToAttack;
+            ampEnvelopeFromParams.velocityToLevel = jAmpEnvVelocityToLevel;
+
+            soundInFallback.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+            soundInFallback.ampEnvelopeGen->configure(ampEnvelopeFromParams, sr, velocity);
+            soundInFallback.ampEnvelopeGen->triggerOn(velocity);
+
+            // Filter Envelope (from JNI params, if jHasFilterEnv is true)
+            if (jHasFilterEnv == JNI_TRUE) {
+                theone::audio::EnvelopeSettingsCpp filterEnvelopeFromParams;
+                filterEnvelopeFromParams.type = static_cast<theone::audio::ModelEnvelopeTypeInternalCpp>(jFilterEnvTypeOrdinal);
+                filterEnvelopeFromParams.attackMs = jFilterEnvAttackMs;
+                filterEnvelopeFromParams.holdMs = jFilterEnvHoldMs;
+                filterEnvelopeFromParams.decayMs = jFilterEnvDecayMs;
+                filterEnvelopeFromParams.sustainLevel = jFilterEnvSustainLevel;
+                filterEnvelopeFromParams.releaseMs = jFilterEnvReleaseMs;
+                filterEnvelopeFromParams.velocityToAttack = jFilterEnvVelocityToAttack;
+                filterEnvelopeFromParams.velocityToLevel = jFilterEnvVelocityToLevel;
+
+                soundInFallback.filterEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+                soundInFallback.filterEnvelopeGen->configure(filterEnvelopeFromParams, sr, velocity);
+                soundInFallback.filterEnvelopeGen->triggerOn(velocity);
+                // soundInFallback.hasFilterEnvelope = true; // If PlayingSound struct needs this flag
+            }
+
+            // Pitch Envelope (from JNI params, if jHasPitchEnv is true)
+            if (jHasPitchEnv == JNI_TRUE) {
+                theone::audio::EnvelopeSettingsCpp pitchEnvelopeFromParams;
+                pitchEnvelopeFromParams.type = static_cast<theone::audio::ModelEnvelopeTypeInternalCpp>(jPitchEnvTypeOrdinal);
+                pitchEnvelopeFromParams.attackMs = jPitchEnvAttackMs;
+                pitchEnvelopeFromParams.holdMs = jPitchEnvHoldMs;
+                pitchEnvelopeFromParams.decayMs = jPitchEnvDecayMs;
+                pitchEnvelopeFromParams.sustainLevel = jPitchEnvSustainLevel;
+                pitchEnvelopeFromParams.releaseMs = jPitchEnvReleaseMs;
+                pitchEnvelopeFromParams.velocityToAttack = jPitchEnvVelocityToAttack;
+                pitchEnvelopeFromParams.velocityToLevel = jPitchEnvVelocityToLevel;
+
+                soundInFallback.pitchEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+                soundInFallback.pitchEnvelopeGen->configure(pitchEnvelopeFromParams, sr, velocity);
+                soundInFallback.pitchEnvelopeGen->triggerOn(velocity);
+                // soundInFallback.hasPitchEnvelope = true; // If PlayingSound struct needs this flag
+            }
+
+            // Add the fully configured sound to active sounds
+            {
+                std::lock_guard<std::mutex> activeSoundsLock(gActiveSoundsMutex);
+                gActiveSounds.push_back(std::move(soundInFallback));
+            }
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sample '%s' (fallback with JNI envs) added. Active sounds: %zu", fallbackSampleIdStr.c_str(), gActiveSounds.size());
             return JNI_TRUE;
         }
     }
@@ -1184,17 +1251,22 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
         // but the current structure ensures padSettingsPtr is valid if we reach here, or returns early.
         // For robustness, or if the JNI params are meant as an override/alternative path:
         theone::audio::EnvelopeSettingsCpp ampEnvelopeFromParams;
-        ampEnvelopeFromParams.type = theone::audio::ModelEnvelopeTypeInternalCpp::ADSR; // Default type
+        // Populate from new JNI params
+        ampEnvelopeFromParams.type = static_cast<theone::audio::ModelEnvelopeTypeInternalCpp>(jAmpEnvTypeOrdinal);
         ampEnvelopeFromParams.attackMs = jAmpEnvAttackMs;
-        ampEnvelopeFromParams.holdMs = 0; // JNI doesn't pass hold for amp
+        ampEnvelopeFromParams.holdMs = jAmpEnvHoldMs;
         ampEnvelopeFromParams.decayMs = jAmpEnvDecayMs;
         ampEnvelopeFromParams.sustainLevel = jAmpEnvSustainLevel;
         ampEnvelopeFromParams.releaseMs = jAmpEnvReleaseMs;
+        ampEnvelopeFromParams.velocityToAttack = jAmpEnvVelocityToAttack;
+        ampEnvelopeFromParams.velocityToLevel = jAmpEnvVelocityToLevel;
 
         soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
         soundToMove.ampEnvelopeGen->configure(ampEnvelopeFromParams, sr, noteVelocity);
         soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
-        // No LFOs or other envelopes in this fallback path from JNI params
+
+        // TODO: If jHasFilterEnv is true, construct filterEnvParams and configure filterEnvelopeGen
+        // TODO: If jHasPitchEnv is true, construct pitchEnvParams and configure pitchEnvelopeGen
     }
 
     // Slicing parameters (currently not set by PadSettings, but PlayingSound supports them)
@@ -1615,16 +1687,24 @@ theone::audio::EnvelopeSettingsCpp ConvertKotlinEnvelopeSettings(JNIEnv* env, jo
     jfieldID decayMsFid = env->GetFieldID(envSettingsClass, "decayMs", "F");
     jfieldID sustainLevelFid = env->GetFieldID(envSettingsClass, "sustainLevel", "F");
     jfieldID releaseMsFid = env->GetFieldID(envSettingsClass, "releaseMs", "F");
+    jfieldID velocityToAttackFid = env->GetFieldID(envSettingsClass, "velocityToAttack", "F"); // Added
+    jfieldID velocityToLevelFid = env->GetFieldID(envSettingsClass, "velocityToLevel", "F");   // Added
 
     if (typeFid == nullptr || attackMsFid == nullptr || holdMsFid == nullptr || decayMsFid == nullptr ||
-        sustainLevelFid == nullptr || releaseMsFid == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinEnvelopeSettings: Failed to get one or more field IDs for EnvelopeSettings");
+        sustainLevelFid == nullptr || releaseMsFid == nullptr || velocityToAttackFid == nullptr || velocityToLevelFid == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinEnvelopeSettings: Failed to get one or more field IDs for EnvelopeSettings (including velocity params)");
         env->DeleteLocalRef(envSettingsClass);
         env->ExceptionClear();
         return cppSettings;
     }
 
     // Type (Enum)
+    // Assuming C++ enum theone::audio::ModelEnvelopeTypeInternalCpp { AD, ADSR, AHDSR_distinct_if_needed };
+    // And Kotlin enum com.example.theone.model.audioEngine.ModelEnvelopeTypeInternal { AD, AHDS, ADSR };
+    // Current mapping: AD (0->AD), AHDS (1->AHDSR), ADSR (2->ADSR)
+    // This implies the C++ enum should have a distinct AHDSR if its behavior is different beyond just having holdMs > 0.
+    // If C++ only has AD, ADSR, then Kotlin AHDS (ordinal 1) should map to C++ ADSR and rely on holdMs.
+    // The existing code correctly maps Kotlin ordinal 1 to C++ AHDSR.
     jobject kotlinTypeEnum = env->GetObjectField(kotlinEnvelopeSettings, typeFid);
     if (kotlinTypeEnum != nullptr) {
         int ordinal = getEnumOrdinal(env, kotlinTypeEnum);
@@ -1657,6 +1737,10 @@ theone::audio::EnvelopeSettingsCpp ConvertKotlinEnvelopeSettings(JNIEnv* env, jo
     cppSettings.sustainLevel = env->GetFloatField(kotlinEnvelopeSettings, sustainLevelFid);
     cppSettings.releaseMs = env->GetFloatField(kotlinEnvelopeSettings, releaseMsFid);
 
+    // Assign new velocity-related fields
+    cppSettings.velocityToAttack = env->GetFloatField(kotlinEnvelopeSettings, velocityToAttackFid);
+    cppSettings.velocityToLevel = env->GetFloatField(kotlinEnvelopeSettings, velocityToLevelFid);
+
     env->DeleteLocalRef(envSettingsClass);
     return cppSettings;
 }
@@ -1676,20 +1760,33 @@ theone::audio::LfoSettingsCpp ConvertKotlinLfoSettings(JNIEnv* env, jobject kotl
         return cppSettings;
     }
 
+    jfieldID idFid = env->GetFieldID(lfoSettingsClass, "id", "Ljava/lang/String;"); // Added
     jfieldID isEnabledFid = env->GetFieldID(lfoSettingsClass, "isEnabled", "Z");
-    jfieldID waveformFid = env->GetFieldID(lfoSettingsClass, "waveform", "Lcom/example/theone/model/ audioEngine/LfoWaveform;");
+    jfieldID waveformFid = env->GetFieldID(lfoSettingsClass, "waveform", "Lcom/example/theone/model/audioEngine/LfoWaveform;");
     jfieldID rateHzFid = env->GetFieldID(lfoSettingsClass, "rateHz", "F");
     jfieldID syncToTempoFid = env->GetFieldID(lfoSettingsClass, "syncToTempo", "Z");
-    jfieldID tempoDivisionFid = env->GetFieldID(lfoSettingsClass, "tempoDivision", "Lcom/example/theone/model/ audioEngine/TimeDivision;");
+    jfieldID tempoDivisionFid = env->GetFieldID(lfoSettingsClass, "tempoDivision", "Lcom/example/theone/model/audioEngine/TimeDivision;");
     jfieldID depthFid = env->GetFieldID(lfoSettingsClass, "depth", "F");
-    jfieldID primaryDestinationFid = env->GetFieldID(lfoSettingsClass, "primaryDestination", "Lcom/example/theone/model/ audioEngine/LfoDestination;");
+    jfieldID primaryDestinationFid = env->GetFieldID(lfoSettingsClass, "primaryDestination", "Lcom/example/theone/model/audioEngine/LfoDestination;");
 
-    if (isEnabledFid == nullptr || waveformFid == nullptr || rateHzFid == nullptr || syncToTempoFid == nullptr ||
+    if (idFid == nullptr || isEnabledFid == nullptr || waveformFid == nullptr || rateHzFid == nullptr || syncToTempoFid == nullptr ||
         tempoDivisionFid == nullptr || depthFid == nullptr || primaryDestinationFid == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinLfoSettings: Failed to get one or more field IDs for LFOSettings");
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinLfoSettings: Failed to get ALL field IDs for LFOSettings");
         env->DeleteLocalRef(lfoSettingsClass);
         env->ExceptionClear();
         return cppSettings;
+    }
+
+    // Convert ID
+    jstring jId = (jstring)env->GetObjectField(kotlinLfoSettings, idFid);
+    if (jId != nullptr) {
+        cppSettings.id = JStringToString(env, jId);
+        env->DeleteLocalRef(jId);
+    } else {
+        // This case should ideally not be hit if Kotlin's LFOSettings.id is non-null.
+        // If it can be null, or as a safety measure:
+        cppSettings.id = "lfo_id_missing"; // Or generate a unique ID
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "ConvertKotlinLfoSettings: LFOSettings.id is null, using placeholder.");
     }
 
     cppSettings.isEnabled = env->GetBooleanField(kotlinLfoSettings, isEnabledFid);
@@ -1995,7 +2092,8 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
 
 // Forward declaration
 EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent);
-TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrackObject);
+// Modified ConvertKotlinTrack to accept trackIdFromMap and kotlinTrackDataObject (which is TrackData)
+TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrackDataObject, const std::string& trackIdFromMap);
 
 
 EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent) {
@@ -2074,35 +2172,34 @@ EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent) {
     return cppEvent;
 }
 
-TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrackObject) {
+// trackIdFromMap is the new parameter, kotlinTrackDataObject is an instance of Kotlin's TrackData
+TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrackDataObject, const std::string& trackIdFromMap) {
     TrackCpp cppTrack;
-    if (kotlinTrackObject == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: kotlinTrackObject is null");
+    cppTrack.id = trackIdFromMap; // Assign ID from map key
+
+    if (kotlinTrackDataObject == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: kotlinTrackDataObject is null for track ID %s", trackIdFromMap.c_str());
         return cppTrack;
     }
 
-    jclass trackClass = env->GetObjectClass(kotlinTrackObject);
-    if (!trackClass) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: GetObjectClass failed for Track");
+    // kotlinTrackDataObject is now a TrackData object. Get its 'events' field.
+    jclass trackDataClass = env->GetObjectClass(kotlinTrackDataObject);
+    if (!trackDataClass) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: GetObjectClass failed for TrackData (track ID %s)", trackIdFromMap.c_str());
         env->ExceptionClear();
         return cppTrack;
     }
 
-    jfieldID idFid = env->GetFieldID(trackClass, "id", "Ljava/lang/String;");
-    jfieldID eventsListFid = env->GetFieldID(trackClass, "events", "Ljava/util/List;");
-
-    if (!idFid || !eventsListFid) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: Failed to get field IDs for Track (id or events)");
-        env->DeleteLocalRef(trackClass);
+    // Get field ID for 'events' list in TrackData
+    jfieldID eventsListFid = env->GetFieldID(trackDataClass, "events", "Ljava/util/List;");
+    if (!eventsListFid) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "ConvertKotlinTrack: Failed to get field ID for 'events' in TrackData (track ID %s)", trackIdFromMap.c_str());
+        env->DeleteLocalRef(trackDataClass);
         env->ExceptionClear();
         return cppTrack;
     }
 
-    jstring jId = (jstring)env->GetObjectField(kotlinTrackObject, idFid);
-    cppTrack.id = JStringToString(env, jId);
-    env->DeleteLocalRef(jId);
-
-    jobject eventsListObj = env->GetObjectField(kotlinTrackObject, eventsListFid);
+    jobject eventsListObj = env->GetObjectField(kotlinTrackDataObject, eventsListFid);
     if (eventsListObj) {
         jclass listClass = env->FindClass("java/util/List");
         jmethodID listSizeMid = env->GetMethodID(listClass, "size", "()I");
@@ -2124,10 +2221,10 @@ TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrackObject) {
         if (listClass) env->DeleteLocalRef(listClass);
         env->DeleteLocalRef(eventsListObj);
     } else {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "ConvertKotlinTrack: Track '%s' has null events list", cppTrack.id.c_str());
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "ConvertKotlinTrack: TrackData for track '%s' has null events list", cppTrack.id.c_str());
     }
 
-    env->DeleteLocalRef(trackClass);
+    env->DeleteLocalRef(trackDataClass);
     return cppTrack;
 }
 
@@ -2214,13 +2311,14 @@ Java_com_example_theone_audio_AudioEngine_native_1loadSequenceData(
             while (env->CallBooleanMethod(iteratorObj, hasNextMid)) {
                 jobject entryObj = env->CallObjectMethod(iteratorObj, nextMid);
                 jstring jTrackMapKey = (jstring)env->CallObjectMethod(entryObj, getKeyMid); // Track ID (String)
-                jobject kotlinTrackObj = env->CallObjectMethod(entryObj, getValueMid);   // Track object
+                jobject kotlinTrackDataObject = env->CallObjectMethod(entryObj, getValueMid);   // This is now a TrackData object
 
-                std::string trackIdCpp = JStringToString(env, jTrackMapKey);
-                gCurrentSequence->tracks[trackIdCpp] = ConvertKotlinTrack(env, kotlinTrackObj);
+                std::string trackIdCppStr = JStringToString(env, jTrackMapKey);
+                // Call the modified ConvertKotlinTrack
+                gCurrentSequence->tracks[trackIdCppStr] = ConvertKotlinTrack(env, kotlinTrackDataObject, trackIdCppStr);
 
                 env->DeleteLocalRef(jTrackMapKey);
-                env->DeleteLocalRef(kotlinTrackObj);
+                env->DeleteLocalRef(kotlinTrackDataObject);
                 env->DeleteLocalRef(entryObj);
             }
         } else {
@@ -2311,3 +2409,161 @@ Java_com_example_theone_audio_AudioEngine_native_1getSequencerPlayheadPosition(
     return 0L;
 }
 
+// --- JNI Functions for Pad Mixer Controls ---
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_nativeSetPadVolume(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring trackId,
+        jstring padId,
+        jfloat volume) {
+
+    std::string trackIdStr = JStringToString(env, trackId);
+    std::string padIdStr = JStringToString(env, padId); // This padId should be the one used as key in gPadSettingsMap
+
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "nativeSetPadVolume called: trackId=%s, padId=%s, volume=%f", trackIdStr.c_str(), padIdStr.c_str(), volume);
+
+    // Update settings for future notes
+    {
+        std::lock_guard<std::mutex> settingsLock(gPadSettingsMutex);
+        // The key in gPadSettingsMap is trackId + "_" + padId as per native_updatePadSettings
+        std::string padKey = trackIdStr + "_" + padIdStr;
+        auto it = gPadSettingsMap.find(padKey);
+        if (it != gPadSettingsMap.end()) {
+            it->second.volume = volume;
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Updated gPadSettingsMap volume for padKey %s to %f", padKey.c_str(), volume);
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "PadSettings not found in gPadSettingsMap for key %s during nativeSetPadVolume", padKey.c_str());
+        }
+    }
+
+    // Update currently playing sounds that use this pad's settings
+    {
+        std::lock_guard<std::mutex> activeSoundsLock(gActiveSoundsMutex);
+        int updatedActiveSounds = 0;
+        for (auto& sound : gActiveSounds) {
+            if (sound.padSettings && sound.padSettings->id == padIdStr) { // Assuming PadSettingsCpp.id stores the unique padId
+                // Note: Modifying initialVolume directly. The audio callback uses initialVolume.
+                // If sound.padSettings->volume was used directly by audio callback, this direct update wouldn't be needed for active sounds.
+                // However, PlayingSound constructor copies volume to initialVolume.
+                sound.initialVolume = volume * (sound.padSettings->volume / (it->second.volume == 0 ? 1.0f : it->second.volume)); // Adjust based on original pad setting if layer has own vol
+                                                                                                         // More simply, if padSettings.volume IS the overall volume:
+                                                                                                         // sound.initialVolume = volume;
+                                                                                                         // This needs to align with how PlayingSound is constructed and how its volume is interpreted.
+                                                                                                         // Let's assume PadSettings.volume from Kotlin is the new absolute base volume for the pad.
+                                                                                                         // And PlayingSound.initialVolume was set based on a combination.
+                                                                                                         // The most straightforward is to assume the new 'volume' from JNI is the new 'initialVolume' for the pad.
+                                                                                                         // However, PlayingSound's initialVolume is set considering layer volume too.
+                                                                                                         // float baseVolume = padSettingsPtr->volume;
+                                                                                                         // float volumeOffsetGain = powf(10.0f, selectedLayer->volumeOffsetDb / 20.0f);
+                                                                                                         // float finalVolume = baseVolume * volumeOffsetGain;
+                                                                                                         // soundToMove(..., finalVolume, ...);
+                                                                                                         // So, if 'volume' is the new padSettingsPtr->volume, then initialVolume needs recalculation.
+                                                                                                         // For simplicity, if this JNI function is *only* for the Pad's global volume,
+                                                                                                         // and layers have offsets, we'd update sound.padSettings->volume directly.
+                                                                                                         // The audio callback would then need to read sound.padSettings->volume.
+                                                                                                         // Given current PlayingSound takes finalVolume, we need to update it carefully.
+
+                // Simplest interpretation: the 'volume' param is the new base volume for the pad.
+                // Active sounds should reflect this new base volume, *potentially modulated by their layer settings*.
+                // Let's assume the PlayingSound's initialVolume was set using the Pad's volume that is now being changed.
+                // If sound.padSettings->volume was the old base pad volume, and 'volume' is the new one:
+                // old_final_volume = old_pad_volume * layer_gain_factor
+                // new_final_volume = new_pad_volume * layer_gain_factor
+                // new_final_volume = old_final_volume * (new_pad_volume / old_pad_volume)
+                // This assumes sound.initialVolume stores the 'finalVolume' calculated at note trigger.
+
+                if (sound.padSettings && sound.padSettings->volume != 0) { // Avoid division by zero if old pad volume was 0
+                     // This assumes sound.initialVolume was calculated using sound.padSettings->volume as the pad's contribution.
+                     // And that sound.padSettings->volume has ALREADY been updated by the gPadSettingsMap modification block above.
+                     // If gPadSettingsMap's value was updated, sound.padSettings.get() now points to the updated value.
+                    float oldPadVolumeInSettings = sound.padSettings->volume; // This is now the NEW volume.
+                                                                            // This logic is tricky. Let's assume the intention is simpler:
+                                                                            // The new `volume` parameter is the final effective volume for the pad itself,
+                                                                            // and active sounds should just adopt this. But this ignores layers.
+
+                    // Revisit: The audio callback uses sound.initialVolume.
+                    // This initialVolume was set at sound creation by:
+                    //   float baseVolume = padSettingsPtr->volume; // This is what we are changing
+                    //   float volumeOffsetGain = powf(10.0f, selectedLayer->volumeOffsetDb / 20.0f);
+                    //   float finalVolume = baseVolume * volumeOffsetGain;
+                    //   sound.initialVolume = finalVolume;
+                    // So, if we change 'baseVolume' (which is padSettingsPtr->volume), we need to re-apply volumeOffsetGain.
+                    // The PadSettingsCpp object pointed to by sound.padSettings has its 'volume' member updated from gPadSettingsMap.
+                    // We need to find the layer that this sound was triggered from to get its volumeOffsetDb.
+                    // PlayingSound does not store which layer it came from. This is a problem for precise real-time updates.
+
+                    // **Simplification for this step**: Assume `sound.initialVolume` should be directly updated to the new `volume`
+                    // if the sound matches the pad. This implies the JNI `volume` is meant to be the new "output" volume
+                    // for all sounds on that pad, overriding previous layer calculations for active sounds.
+                    // This is likely not the full desired logic but fits the available structure.
+                    // A better approach would be for PlayingSound to store its layer's gain factor separately.
+                    sound.initialVolume = volume; // Simplified: Set active sound's output volume directly.
+                                                  // This might ignore layer-specific volume offsets for *active* sounds.
+                                                  // Future notes will use the updated gPadSettingsMap correctly with layers.
+                    updatedActiveSounds++;
+                } else if (sound.padSettings && sound.padSettings->volume == 0 && volume != 0) {
+                    // If old pad volume was 0, and new is not, this is tricky.
+                    // Safest to also just set to new volume, assuming it's an override.
+                    sound.initialVolume = volume;
+                     updatedActiveSounds++;
+                }
+                 // If new volume is 0, sound.initialVolume becomes 0.
+                 // If old and new are 0, no change.
+            }
+        }
+        if (updatedActiveSounds > 0) {
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Updated initialVolume for %d active sounds on padId %s", updatedActiveSounds, padIdStr.c_str());
+        }
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_nativeSetPadPan(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring trackId,
+        jstring padId,
+        jfloat pan) {
+
+    std::string trackIdStr = JStringToString(env, trackId);
+    std::string padIdStr = JStringToString(env, padId); // This padId should be the one used as key in gPadSettingsMap
+
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "nativeSetPadPan called: trackId=%s, padId=%s, pan=%f", trackIdStr.c_str(), padIdStr.c_str(), pan);
+
+    // Update settings for future notes
+    {
+        std::lock_guard<std::mutex> settingsLock(gPadSettingsMutex);
+        std::string padKey = trackIdStr + "_" + padIdStr;
+        auto it = gPadSettingsMap.find(padKey);
+        if (it != gPadSettingsMap.end()) {
+            it->second.pan = pan;
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Updated gPadSettingsMap pan for padKey %s to %f", padKey.c_str(), pan);
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "PadSettings not found in gPadSettingsMap for key %s during nativeSetPadPan", padKey.c_str());
+        }
+    }
+
+    // Update currently playing sounds
+    {
+        std::lock_guard<std::mutex> activeSoundsLock(gActiveSoundsMutex);
+        int updatedActiveSounds = 0;
+        for (auto& sound : gActiveSounds) {
+            if (sound.padSettings && sound.padSettings->id == padIdStr) {
+                // Similar simplification as with volume for active sounds.
+                // initialPan was set via:
+                //   float basePan = padSettingsPtr->pan; // This is what we are changing
+                //   float finalPan = basePan + selectedLayer->panOffset;
+                //   sound.initialPan = finalPan;
+                // If we update sound.padSettings->pan, we'd need layer's panOffset.
+                // **Simplification**: Assume `pan` is the new absolute pan for the pad's sounds.
+                sound.initialPan = pan; // This might ignore layer-specific pan offsets for *active* sounds.
+                updatedActiveSounds++;
+            }
+        }
+        if (updatedActiveSounds > 0) {
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Updated initialPan for %d active sounds on padId %s", updatedActiveSounds, padIdStr.c_str());
+        }
+    }
+}

@@ -31,7 +31,16 @@ import java.util.UUID // For generating noteInstanceId
 
 // Enums specific to this ViewModel's editing logic
 enum class EditorTab { SAMPLES, ENVELOPES, LFO, MODULATION, EFFECTS }
-enum class LayerParameter { SAMPLE_ID, TUNING_SEMI, TUNING_FINE, VOLUME, PAN, START_POINT, END_POINT, LOOP_POINT, LOOP_ENABLED, REVERSE }
+enum class LayerParameter {
+    SAMPLE_ID,
+    TUNING_SEMI, TUNING_FINE,
+    VOLUME, PAN, // These seem to be layer-specific volume/pan, distinct from global pad vol/pan
+    START_POINT, END_POINT,
+    LOOP_POINT, LOOP_ENABLED,
+    REVERSE,
+    VELOCITY_RANGE_MIN, // Added
+    VELOCITY_RANGE_MAX  // Added
+}
 // This EnvelopeType is for selecting which envelope to edit (Amp, Pitch, Filter)
 enum class EnvelopeType { AMP, PITCH, FILTER }
 
@@ -160,7 +169,9 @@ class DrumProgramEditViewModel(
                         LayerParameter.LOOP_POINT -> if (value is Float) layerToUpdate.copy(loopPoint = value) else layerToUpdate
                         LayerParameter.LOOP_ENABLED -> if (value is Boolean) layerToUpdate.copy(loopEnabled = value) else layerToUpdate
                         LayerParameter.REVERSE -> if (value is Boolean) layerToUpdate.copy(reverse = value) else layerToUpdate
-                        else -> layerToUpdate // Should not happen if SAMPLE_ID is handled
+                        LayerParameter.VELOCITY_RANGE_MIN -> if (value is Int) layerToUpdate.copy(velocityRangeMin = value.coerceIn(0, 127)) else layerToUpdate
+                        LayerParameter.VELOCITY_RANGE_MAX -> if (value is Int) layerToUpdate.copy(velocityRangeMax = value.coerceIn(0, 127)) else layerToUpdate
+                        // else -> layerToUpdate // Should not happen if SAMPLE_ID is handled - This line is removed as VELOCITY_RANGE might be the 'else' case now
                     }
                     updatedLayers[layerIndex] = updatedLayer
                     currentSettings.copy(layers = updatedLayers)
@@ -176,6 +187,19 @@ class DrumProgramEditViewModel(
         _padSettings.update(updateAction)
     }
 
+    fun updatePadOverallVolume(newVolume: Float) {
+        updateGlobalPadParameter { currentSettings ->
+            // Assuming volume is typically 0.0 to 1.0 (or up to 2.0 for boost)
+            // Clamping to a sensible range, e.g., 0.0 to 1.5 for some headroom.
+            currentSettings.copy(volume = newVolume.coerceIn(0f, 1.5f))
+        }
+    }
+
+    fun updatePadOverallPan(newPan: Float) {
+        updateGlobalPadParameter { currentSettings ->
+            currentSettings.copy(pan = newPan.coerceIn(-1f, 1f)) // Standard pan range -1.0 (L) to 1.0 (R)
+        }
+    }
 
     fun updateEnvelope(envelopeTypeLocal: EnvelopeType, newSettingsFromUI: ModelEnvelopeSettings) {
         // newSettingsFromUI is a ModelEnvelopeSettings where fields like attackMs might hold values in seconds from UI.

@@ -18,7 +18,7 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.high.theone.CustomTestRunner"
 
         // The externalNativeBuild block for flags belongs INSIDE defaultConfig
         externalNativeBuild {
@@ -95,4 +95,11 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.48")
     kapt("com.google.dagger:hilt-compiler:2.48")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+
+    // Oboe Dependency (New)
+    implementation("com.google.oboe:oboe:1.8.1")
+
+    // Hilt Testing Dependencies (New)
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.48")
+    kaptAndroidTest("com.google.dagger:hilt-compiler:2.48")
 }
