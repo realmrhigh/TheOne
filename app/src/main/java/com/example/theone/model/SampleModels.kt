@@ -18,6 +18,11 @@ data class SampleMetadata(
     var trimStartMs: Long = 0,
     var trimEndMs: Long = 0 // Will be set in init block if 0 and duration > 0
 ) {
+    val durationMs: String
+        get() {
+            TODO()
+        }
+
     init {
         if (trimEndMs == 0L && duration > 0L) {
             trimEndMs = duration

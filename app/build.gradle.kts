@@ -3,8 +3,9 @@ plugins {
     alias(libs.plugins.kotlin.android)
     id("com.google.devtools.ksp") // Using KSP
     id("com.google.dagger.hilt.android")
-    alias(libs.plugins.kotlin.compose)
+    //alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.plugin.serialization")
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -75,14 +76,14 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.core)
-    implementation(libs.androidx.material.icons.extended)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation("androidx.navigation:navigation-compose:2.7.7")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    //implementation(libs.androidx.material.icons.core)
+    //implementation(libs.androidx.material.icons.extended)
+    //implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.navigation.compose.v277)
+    implementation(libs.kotlinx.serialization.json.v160)
     testImplementation(libs.junit)
-    testImplementation("org.robolectric:robolectric:4.10.3")
-    testImplementation("androidx.test:core:1.5.0")
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -91,7 +92,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     // Hilt Dependencies
-    implementation("com.google.dagger:hilt-android:2.51.1")
-    ksp("com.google.dagger:hilt-compiler:2.51.1")
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
 }

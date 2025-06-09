@@ -96,3 +96,6 @@ enum class EffectType {
 //     val DELAY = mapOf("timeMs" to 300f, "feedback" to 0.4f, "lowPassCutoffHz" to 8000f, "highPassCutoffHz" to 100f)
 //     val REVERB = mapOf("size" to 0.7f, "decayMs" to 1500f, "damping" to 0.5f, "earlyReflections" to 0.8f)
 // }
+class SynthModels {
+
+}
