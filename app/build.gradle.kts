@@ -1,9 +1,9 @@
+// DO NOT CHANGE VERSIONS! UPDATED AND LOCKED!
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    id("com.google.devtools.ksp") // Using KSP
+    id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    //alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.plugin.serialization")
     alias(libs.plugins.kotlin.compose)
 }
@@ -21,7 +21,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // This is the correct structure: cppFlags inside defaultConfig's externalNativeBuild block
+
         externalNativeBuild {
             cmake {
                 cppFlags.add("-std=c++17")
@@ -50,7 +50,7 @@ android {
         buildConfig = true
     }
 
-    // And the path definition is in its own externalNativeBuild block
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -76,9 +76,6 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    //implementation(libs.androidx.material.icons.core)
-    //implementation(libs.androidx.material.icons.extended)
-    //implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose.v277)
     implementation(libs.kotlinx.serialization.json.v160)
     testImplementation(libs.junit)

@@ -1,4 +1,4 @@
-[versions]
+[versions]#DO NOT CHANGE VERSIONS! UPDATED AND LOCKED!
 agp = "8.10.1"
 core = "1.6.1"
 coreKtx = "1.16.0"
