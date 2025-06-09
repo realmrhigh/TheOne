@@ -25,6 +25,12 @@ sealed class EventType {
 }
 
 @Serializable
+data class TrackData( // New data class
+    val events: MutableList<Event> = mutableListOf()
+    // Consider adding val id: String and val name: String to TrackData later if needed
+)
+
+@Serializable
 data class Sequence(
     val id: String,
     var name: String,
@@ -32,5 +38,7 @@ data class Sequence(
     var barLength: Int = 4,
     var timeSignatureNumerator: Int = 4,
     var timeSignatureDenominator: Int = 4,
-    val events: MutableList<Event> = mutableListOf()
+    val ppqn: Long = 96, // Added ppqn field
+    val tracks: Map<String, TrackData> = emptyMap() // Replaced events list with tracks map
+    // Removed: val events: MutableList<Event> = mutableListOf()
 )

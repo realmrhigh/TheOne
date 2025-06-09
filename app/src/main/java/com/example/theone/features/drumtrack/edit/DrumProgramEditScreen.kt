@@ -177,11 +177,56 @@ fun SamplesEditorContent( /* ... existing code ... */
         ParameterSlider(label = "Tune (Semi)", value = currentLayer.tuningSemi.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_SEMI, it.toInt()) }, valueRange = -24f..24f, steps = 47 )
         ParameterSlider(label = "Tune (Fine)", value = currentLayer.tuningFine.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_FINE, it.toInt()) }, valueRange = -100f..100f, steps = 199 )
         Divider()
+        Text(
+            "Layer Velocity Range",
+            style = MaterialTheme.typography.subtitle2, // Or another appropriate style
+            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+        )
+        ParameterSlider(
+            label = "Velocity Min",
+            value = currentLayer.velocityRangeMin.toFloat(),
+            onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.VELOCITY_RANGE_MIN, it.toInt()) },
+            valueRange = 0f..127f,
+            steps = 126
+        )
+        ParameterSlider(
+            label = "Velocity Max",
+            value = currentLayer.velocityRangeMax.toFloat(),
+            onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.VELOCITY_RANGE_MAX, it.toInt()) },
+            valueRange = 0f..127f,
+            steps = 126
+        )
+        Divider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Reverse:", modifier = Modifier.weight(1f))
             Switch(checked = currentLayer.reverse, onCheckedChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.REVERSE, it) })
         }
-         Button(onClick = { viewModel.removeLayer(selectedLayerIndex) }, colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error), modifier = Modifier.padding(top = 8.dp).fillMaxWidth()) {
+
+        Divider() // Add a divider before global pad controls
+
+        Text(
+            "Overall Pad Settings",
+            style = MaterialTheme.typography.subtitle1,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        ParameterSlider(
+            label = "Pad Volume",
+            value = padSettings.volume,
+            onValueChange = { viewModel.updatePadOverallVolume(it) },
+            valueRange = 0f..1.5f // Example range, allows some boost
+        )
+
+        ParameterSlider(
+            label = "Pad Pan",
+            value = padSettings.pan,
+            onValueChange = { viewModel.updatePadOverallPan(it) },
+            valueRange = -1f..1f // Standard pan range
+        )
+
+        Divider() // Add a divider after global pad controls before layer removal button or other content
+
+        Button(onClick = { viewModel.removeLayer(selectedLayerIndex) }, colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error), modifier = Modifier.padding(top = 8.dp).fillMaxWidth()) {
             Text("Remove Layer ${selectedLayerIndex + 1}")
         }
     }
