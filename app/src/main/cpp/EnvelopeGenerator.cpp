@@ -13,7 +13,8 @@ EnvelopeGenerator::EnvelopeGenerator()
       decayRate(0.0f),
       releaseRate(0.0f),
       holdTimeSamples(0.0f),
-      holdSamplesRemaining(0.0f) {
+      holdSamplesRemaining(0.0f),
+      velocityGainFactor_(1.0f) { // Initialize velocityGainFactor_
     // settings will be default constructed
 }
 
@@ -105,6 +106,14 @@ void EnvelopeGenerator::triggerOn(float triggerVelocity) {
     }
     // Note: Velocity to Level is not implemented in this `process` method yet.
     // It would typically scale `currentValue` or the target levels of stages.
+
+    // Calculate velocityGainFactor_
+    // velocityToLevel is 0-1. If 1, max velocity gives full level, min velocity gives 0 level.
+    // If 0, velocity has no effect on level (factor is 1.0).
+    // Ensure triggerVelocity is 0.0 to 1.0.
+    float clampedTriggerVelocity = std::max(0.0f, std::min(1.0f, triggerVelocity));
+    this->velocityGainFactor_ = (1.0f - settings.velocityToLevel) + (clampedTriggerVelocity * settings.velocityToLevel);
+    this->velocityGainFactor_ = std::max(0.0f, this->velocityGainFactor_); // Ensure non-negative
 }
 
 void EnvelopeGenerator::triggerOff() {
@@ -196,7 +205,7 @@ float EnvelopeGenerator::process() {
             }
             break;
     }
-    return currentValue;
+    return currentValue * velocityGainFactor_; // Apply velocity gain factor
 }
 
 void EnvelopeGenerator::reset() {

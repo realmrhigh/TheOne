@@ -27,6 +27,25 @@ class DrumTrackViewModel @Inject constructor(
     private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())
     val padSettingsMap: StateFlow<Map<String, PadSettings>> = _padSettingsMap.asStateFlow()
 
+    // --- Pad Settings Persistence ---
+    private fun persistPadSettings(padId: String, settings: PadSettings) {
+        viewModelScope.launch {
+            try {
+                // Assuming projectManager.savePadSettings exists and is suspending or handled appropriately
+                val result = projectManager.savePadSettings(padId, settings)
+                if (result.isSuccess) {
+                    android.util.Log.d("DrumTrackViewModel", "Pad settings persistence successful for $padId.")
+                } else {
+                    android.util.Log.e("DrumTrackViewModel", "Pad settings persistence failed for $padId: ${result.exceptionOrNull()?.message}")
+                    // Handle error (e.g., update a StateFlow to show a message to the user)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DrumTrackViewModel", "Error saving pad settings for $padId", e)
+                // Handle error
+            }
+        }
+    }
+
     private val _availableSamples = MutableStateFlow<List<SampleMetadata>>(emptyList())
     val availableSamples: StateFlow<List<SampleMetadata>> = _availableSamples.asStateFlow()
 
@@ -107,38 +126,39 @@ class DrumTrackViewModel @Inject constructor(
         _padSettingsMap.value = currentPads
     }
 
-    fun onPadTriggered(padId: String) {
+    fun onPadTriggered(padId: String, triggerVelocity: Float = 1.0f) { // Added triggerVelocity parameter
         val padSetting = _padSettingsMap.value[padId]
         if (padSetting != null) {
-            val firstLayer = padSetting.layers.firstOrNull()
-            val sampleIdToPlay = firstLayer?.sampleId
+            // C++ side handles layer selection. Provide a fallback sample ID from the first layer if it exists.
+            val fallbackSampleId = padSetting.layers.firstOrNull()?.sampleId ?: ""
 
-            if (sampleIdToPlay != null) {
-                viewModelScope.launch {
-                    audioEngine.playPadSample(
-                        noteInstanceId = UUID.randomUUID().toString(),
-                        trackId = "drumTrack_TODO", // Placeholder
-                        padId = padSetting.id,
-                        sampleId = sampleIdToPlay,
-                        sliceId = null, // Placeholder, needs mapping from firstLayer.activeSliceInfo if relevant
-                        velocity = 1.0f, // Default velocity for direct pad press from UI
-                        playbackMode = padSetting.playbackMode,
-                        coarseTune = padSetting.tuningCoarse,
-                        fineTune = padSetting.tuningFine,
-                        pan = padSetting.pan,
-                        volume = padSetting.volume,
-                        ampEnv = padSetting.ampEnvelope,
-                        filterEnv = padSetting.filterEnvelope,
-                        pitchEnv = padSetting.pitchEnvelope,
-                        lfos = padSetting.lfos // Directly pass List<LFOSettings>
-                    )
-                }
-                // Also call the sequencer recording logic via event bus
-                viewModelScope.launch { // Launch a coroutine to emit the event
-                    sequencerEventBus.emitPadTriggerEvent(PadTriggerEvent(padId = padId, velocity = 127))
-                }
-            } else {
-                println("DrumTrackViewModel: Pad $padId triggered, but no sample assigned to its first layer.")
+            // Ensure velocity is within expected normalized range for the audio engine call
+            val normalizedVelocity = triggerVelocity.coerceIn(0.0f, 1.0f)
+
+            viewModelScope.launch {
+                audioEngine.playPadSample(
+                    noteInstanceId = UUID.randomUUID().toString(),
+                    trackId = "drumTrack_TODO", // Placeholder - needs to be the actual track ID this pad belongs to
+                    padId = padSetting.id,
+                    sampleId = fallbackSampleId, // Fallback for C++ if PadSettingsCpp lookup fails or has no layers
+                    sliceId = null, // Slicing not yet part of this layer logic
+                    velocity = normalizedVelocity, // Pass the normalized trigger velocity
+                    playbackMode = padSetting.playbackMode,
+                    coarseTune = padSetting.tuningCoarse, // Global pad coarse tune
+                    fineTune = padSetting.tuningFine,     // Global pad fine tune
+                    pan = padSetting.pan,                 // Global pad pan
+                    volume = padSetting.volume,           // Global pad volume
+                    ampEnv = padSetting.ampEnvelope,
+                    filterEnv = padSetting.filterEnvelope,
+                    pitchEnv = padSetting.pitchEnvelope,
+                    lfos = padSetting.lfos
+                )
+            }
+
+            // For sequencer events, convert normalized velocity back to MIDI 0-127 range
+            val midiVelocity = (normalizedVelocity * 127).toInt().coerceIn(0, 127)
+            viewModelScope.launch {
+                sequencerEventBus.emitPadTriggerEvent(PadTriggerEvent(padId = padId, velocity = midiVelocity))
             }
         } else {
             println("DrumTrackViewModel: Pad $padId triggered, but no settings found.")
@@ -161,21 +181,40 @@ class DrumTrackViewModel @Inject constructor(
         // then just putting it is fine. If it's partial, the ViewModel needs a more complex update strategy.
         // For now, assuming newSettings is intended to be a complete setting for the pad,
         // but we ensure its 'id' field is correct.
+        val settingsToPersist = newSettings.copy(id = padId) // Ensure ID consistency
+        currentPads[padId] = settingsToPersist
         _padSettingsMap.value = currentPads.toMap() // Ensure immutable map is set back
+        persistPadSettings(padId, settingsToPersist)
+    }
 
-        viewModelScope.launch {
-            try {
-                projectManager.savePadSettings(padId, newSettings).let { result ->
-                    if (result.isSuccess) {
-                        android.util.Log.d("DrumTrackViewModel", "Pad settings persistence successful for $padId.")
-                    } else {
-                        android.util.Log.e("DrumTrackViewModel", "Pad settings persistence failed for $padId: ${result.exceptionOrNull()?.message}")
-                        // Handle error appropriately, e.g., show a message to the user via a StateFlow<UserMessage?>
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("DrumTrackViewModel", "Error saving pad settings for $padId", e)
-                // Handle error appropriately
+    fun updatePadVolume(padId: String, volume: Float) {
+        val currentPads = _padSettingsMap.value.toMutableMap()
+        val existingSetting = currentPads[padId]
+        if (existingSetting != null) {
+            val newSettings = existingSetting.copy(volume = volume)
+            currentPads[padId] = newSettings
+            _padSettingsMap.value = currentPads.toMap()
+            persistPadSettings(padId, newSettings) // Persist changes
+
+            // Call new audio engine methods for real-time effect
+            viewModelScope.launch {
+                audioEngine.setPadVolume("drumTrack_TODO", padId, volume) // "drumTrack_TODO" needs to be replaced with actual track ID if available
+            }
+        }
+    }
+
+    fun updatePadPan(padId: String, pan: Float) {
+        val currentPads = _padSettingsMap.value.toMutableMap()
+        val existingSetting = currentPads[padId]
+        if (existingSetting != null) {
+            val newSettings = existingSetting.copy(pan = pan)
+            currentPads[padId] = newSettings
+            _padSettingsMap.value = currentPads.toMap()
+            persistPadSettings(padId, newSettings) // Persist changes
+
+            // Call new audio engine methods for real-time effect
+            viewModelScope.launch {
+                audioEngine.setPadPan("drumTrack_TODO", padId, pan) // "drumTrack_TODO" needs to be replaced with actual track ID if available
             }
         }
     }

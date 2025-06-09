@@ -73,8 +73,14 @@ class SequencerViewModel @Inject constructor(
     val isPlayingState: StateFlow<Boolean> = _isPlayingState.asStateFlow()
 
     // Placeholder for quantization settings (e.g., 16th notes)
-    // 96 PPQN (Pulses Per Quarter Note) is common. If 16th notes, then 96/4 = 24 ticks.
-    val ticksPer16thNote: Long = 24 // Assuming 96 PPQN, made public
+    // PPQN is now part of the Sequence model. ticksPer16thNote can be a helper or calculated dynamically.
+    // For simplicity, we can keep it if it's used as a default or in contexts where Sequence object isn't available.
+    // However, per-step calculations should prioritize Sequence.ppqn.
+    val ticksPer16thNote: Long = 24 // Assuming 96 PPQN default for contexts where sequence ppqn isn't available
+
+    companion object {
+        private const val DEFAULT_DRUM_TRACK_ID = "drum_track_0"
+    }
 
     init {
         // Create an initial default sequence
@@ -82,7 +88,8 @@ class SequencerViewModel @Inject constructor(
             id = UUID.randomUUID().toString(),
             name = "Sequence 1",
             bpm = 120.0f,
-            events = mutableListOf()
+            ppqn = 96L, // Added
+            tracks = mapOf(DEFAULT_DRUM_TRACK_ID to TrackData()) // Initialize with one default track
             // barLength, timeSignatureNumerator, timeSignatureDenominator use defaults
         )
         _sequences.value = listOf(initialSeq)
@@ -132,8 +139,8 @@ class SequencerViewModel @Inject constructor(
             barLength = currentSequence?.barLength ?: 4,
             timeSignatureNumerator = currentSequence?.timeSignatureNumerator ?: 4,
             timeSignatureDenominator = currentSequence?.timeSignatureDenominator ?: 4,
-            ppqn = currentSequence?.ppqn ?: 96, // Ensure PPQN is also carried over or defaulted
-            events = mutableListOf()
+            ppqn = currentSequence?.ppqn ?: 96L,
+            tracks = mapOf(DEFAULT_DRUM_TRACK_ID to TrackData()) // Initialize with one default track
         )
         _sequences.value = _sequences.value + newSequence // Add to the list
         setCurrentSequenceInternal(newSequence) // This will also call loadSequenceData
@@ -148,21 +155,18 @@ class SequencerViewModel @Inject constructor(
 
     // For TransportBar's BPM Editor
     fun setBpm(newBpm: Float) {
-        val targetSequence = currentSequence // Use currentSequence
-        targetSequence?.let {
+        val targetSequence = currentSequence
+        targetSequence?.let { seq ->
             if (newBpm > 0) { // Basic validation
-                it.bpm = newBpm // This directly mutates the bpm property of the Sequence object
-                println("SequencerViewModel: BPM set to $newBpm for sequence ${it.name}")
-
-                // To make sure Compose recomposes if only bpm of currentSequence object changes:
-                // One way is to replace the sequence in the list and currentSequence with a new instance.
-                // currentSequence = it.copy(bpm = newBpm) // If Sequence is data class & this triggers recomposition
-                // _sequences.value = _sequences.value.map { s -> if (s.id == it.id) currentSequence!! else s }
-                // For now, direct mutation. `bpmText` in `TransportBar` will update due to `remember(currentSeq?.id, currentSeq?.bpm)`
+                val updatedSequence = seq.copy(bpm = newBpm)
+                currentSequence = updatedSequence
+                _sequences.value = _sequences.value.map { s ->
+                    if (s.id == updatedSequence.id) updatedSequence else s
+                }
+                println("SequencerViewModel: BPM set to $newBpm for sequence ${updatedSequence.name}")
                 viewModelScope.launch {
                     audioEngine.setSequencerBpm(newBpm)
                 }
-                // No need to stop/start playback, C++ side handles BPM changes dynamically if playing.
             }
         }
     }
@@ -197,46 +201,110 @@ class SequencerViewModel @Inject constructor(
         }
 
         targetSequence.let { seq -> // Use targetSequence, which is effectively currentSequence
-            // 1. Get current timestamp (placeholder - this needs a real time source from playback engine)
-            // For now, let's simulate a simple incrementing time or use System.currentTimeMillis()
-            // This should eventually be replaced by the playhead position from M2.4
-            val currentTimeTicks = System.currentTimeMillis() // THIS IS A VERY CRUDE PLACEHOLDER
+            // Use the current playhead position from the StateFlow
+            val currentPlayheadTimeTicks = _playheadPositionTicks.value
 
-            // 2. Quantize the timestamp
-            // Example: Round to the nearest 16th note.
-            // This is a simplified quantization logic. Real quantization can be more complex.
-            val quantizedTimeTicks = (currentTimeTicks / ticksPer16thNote) * ticksPer16thNote
+            // Quantize the timestamp (existing logic)
+            // ticksPer16thNote should ideally be derived from seq.ppqn if ppqn can change per sequence.
+            // For now, assuming constant ticksPer16thNote or that it's appropriately set.
+            // Example: val ticksPerStep = seq.ppqn / 4 (for 16th notes if ppqn is quarter note based)
+            // If ticksPer16thNote is fixed at 24 (based on 96 PPQN / 4), that's fine for now.
+            val quantizationGrid = ticksPer16thNote
+            val quantizedTimeTicks = if (quantizationGrid > 0) {
+                (currentPlayheadTimeTicks / quantizationGrid) * quantizationGrid
+            } else {
+                currentPlayheadTimeTicks // Avoid division by zero if grid is 0
+            }
 
-            // 3. Create a new Event
+            val stepDurationTicks = if (seq.ppqn > 0) seq.ppqn / 4 else ticksPer16thNote // Use sequence's PPQN
+
             val newEvent = Event(
-                id = UUID.randomUUID().toString(), // Generate a unique ID for the event
-                trackId = "", // Placeholder: associate with a track if necessary, or remove if not used
+                id = UUID.randomUUID().toString(),
+                trackId = DEFAULT_DRUM_TRACK_ID, // Use default track ID
                 startTimeTicks = quantizedTimeTicks,
                 type = EventType.PadTrigger(
                     padId = padId,
                     velocity = velocity,
-                    durationTicks = ticksPer16thNote // Default duration, might be configurable
+                    durationTicks = stepDurationTicks
                 )
             )
 
-            // 4. Add this new Event to the events list of the current Sequence
-            // If seq.events is not a snapshot state list, UI might not update.
-            // For now, direct mutation.
-            seq.events.add(newEvent)
-            // To trigger UI update if events list is observed as state:
-            // currentSequence = seq.copy(events = seq.events.toMutableList().apply { add(newEvent) })
-            // _sequences.value = _sequences.value.map { s -> if (s.id == seq.id) currentSequence!! else s }
+            val trackData = seq.tracks[DEFAULT_DRUM_TRACK_ID] ?: TrackData()
+            val newEventsForTrack = trackData.events.toMutableList().apply { add(newEvent) }
+            val newTrackData = trackData.copy(events = newEventsForTrack)
+            val newTracks = seq.tracks.toMutableMap().apply { this[DEFAULT_DRUM_TRACK_ID] = newTrackData }
+            val updatedSequence = seq.copy(tracks = newTracks)
 
+            currentSequence = updatedSequence
+            _sequences.value = _sequences.value.map { s ->
+                if (s.id == updatedSequence.id) updatedSequence else s
+            }
 
             // For debugging:
-            println("Recorded event: $newEvent to sequence ${seq.name}")
-            println("Total events in ${seq.name}: ${seq.events.size}")
+            println("Recorded event: $newEvent to sequence ${updatedSequence.name} on track $DEFAULT_DRUM_TRACK_ID")
+            println("Total events in track $DEFAULT_DRUM_TRACK_ID: ${updatedSequence.tracks[DEFAULT_DRUM_TRACK_ID]?.events?.size ?: 0}")
         }
     }
 
-    // Placeholder for getting the current sequence's events for the UI or playback
-    fun getEventsForCurrentSequence(): List<Event> {
-        return currentSequence?.events ?: emptyList()
+    // Updated to get events for a specific track
+    fun getEventsForTrack(trackId: String = DEFAULT_DRUM_TRACK_ID): List<Event> {
+        return currentSequence?.tracks?.get(trackId)?.events ?: emptyList()
+    }
+
+    fun addEventAtStep(padId: String, step: Int, velocity: Int, trackIdPlaceholder: String = DEFAULT_DRUM_TRACK_ID) {
+        val targetSequence = currentSequence ?: return
+        val stepDurationTicks = if (targetSequence.ppqn > 0) targetSequence.ppqn / 4 else ticksPer16thNote
+        val startTimeTicks = step * stepDurationTicks
+
+        val newEvent = Event(
+            id = UUID.randomUUID().toString(),
+            trackId = trackIdPlaceholder,
+            startTimeTicks = startTimeTicks,
+            type = EventType.PadTrigger(
+                padId = padId,
+                velocity = velocity,
+                durationTicks = stepDurationTicks
+            )
+        )
+
+        val trackData = targetSequence.tracks[trackIdPlaceholder] ?: TrackData()
+        val newEventsForTrack = trackData.events.toMutableList().apply { add(newEvent) }
+        val newTrackData = trackData.copy(events = newEventsForTrack)
+        val newTracks = targetSequence.tracks.toMutableMap().apply { this[trackIdPlaceholder] = newTrackData }
+        val updatedSequence = targetSequence.copy(tracks = newTracks)
+
+        currentSequence = updatedSequence
+        _sequences.value = _sequences.value.map { s ->
+            if (s.id == updatedSequence.id) updatedSequence else s
+        }
+        Log.d("SequencerViewModel", "Added event at step $step for pad $padId on track $trackIdPlaceholder: $newEvent")
+    }
+
+    fun removeEventAtStep(padId: String, step: Int, trackIdPlaceholder: String = DEFAULT_DRUM_TRACK_ID) {
+        val targetSequence = currentSequence ?: return
+        val stepDurationTicks = if (targetSequence.ppqn > 0) targetSequence.ppqn / 4 else ticksPer16thNote
+        val targetStartTimeTicks = step * stepDurationTicks
+
+        val trackData = targetSequence.tracks[trackIdPlaceholder] ?: return // No track, nothing to remove
+        val originalEvents = trackData.events
+        val updatedEventsForTrack = originalEvents.filterNot { event ->
+            event.startTimeTicks == targetStartTimeTicks &&
+            // event.trackId == trackIdPlaceholder && // Already filtered by trackData
+            event.type is EventType.PadTrigger &&
+            (event.type as EventType.PadTrigger).padId == padId
+        }
+
+        if (originalEvents.size > updatedEventsForTrack.size) {
+            val newTrackData = trackData.copy(events = updatedEventsForTrack.toMutableList())
+            val newTracks = targetSequence.tracks.toMutableMap().apply { this[trackIdPlaceholder] = newTrackData }
+            val updatedSequence = targetSequence.copy(tracks = newTracks)
+
+            currentSequence = updatedSequence
+            _sequences.value = _sequences.value.map { s ->
+                if (s.id == updatedSequence.id) updatedSequence else s
+            }
+            Log.d("SequencerViewModel", "Removed event at step $step for pad $padId on track $trackIdPlaceholder")
+        }
     }
 
     fun play() {
@@ -310,12 +378,16 @@ class SequencerViewModel @Inject constructor(
 
     // For "Clear Sequence" Button
     fun clearCurrentSequenceEvents() {
-        val targetSequence = currentSequence // Use currentSequence
-        targetSequence?.events?.clear()
-        println("SequencerViewModel: Cleared all events from sequence ${targetSequence?.name}")
-        // Similar to recordPadTrigger, if events list is not a snapshot state list, UI might not update.
-        // currentSequence = targetSequence?.copy(events = mutableListOf())
-        // _sequences.value = _sequences.value.map { s -> if (s.id == targetSequence?.id) currentSequence!! else s }
+        val targetSequence = currentSequence
+        if (targetSequence != null) {
+            // Create new TrackData instances with empty event lists for each existing track
+            val newTracks = targetSequence.tracks.mapValues { TrackData() }
+            val updatedSequence = targetSequence.copy(tracks = newTracks)
+            currentSequence = updatedSequence
+            _sequences.value = _sequences.value.map { s ->
+                if (s.id == updatedSequence.id) updatedSequence else s
+            }
+            println("SequencerViewModel: Cleared all events from all tracks in sequence ${updatedSequence.name}")
     }
 
     // Call this when ViewModel is cleared
