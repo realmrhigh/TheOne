@@ -1,10 +1,10 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    id("com.google.devtools.ksp") // Using KSP
+    id("com.google.dagger.hilt.android")
     alias(libs.plugins.kotlin.compose)
-    kotlin("plugin.serialization") version "1.9.0" // Or the latest stable version
-    id("kotlin-kapt") // Added kotlin-kapt
-    id("com.google.dagger.hilt.android") // Added Hilt plugin
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -20,10 +20,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // The externalNativeBuild block for flags belongs INSIDE defaultConfig
+        // This is the correct structure: cppFlags inside defaultConfig's externalNativeBuild block
         externalNativeBuild {
             cmake {
-                // This is the correct way to add the C++17 standard flag
                 cppFlags.add("-std=c++17")
             }
         }
@@ -50,7 +49,7 @@ android {
         buildConfig = true
     }
 
-    // This block for the path stays at the root of the android block
+    // And the path definition is in its own externalNativeBuild block
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -79,11 +78,11 @@ dependencies {
     implementation(libs.androidx.material.icons.core)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation("androidx.navigation:navigation-compose:2.7.7") // Added Compose Navigation
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0") // Or the latest stable version
+    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.10.3")
-    testImplementation("androidx.test:core:1.5.0") // May be needed by Robolectric
+    testImplementation("androidx.test:core:1.5.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -92,7 +91,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     // Hilt Dependencies
-    implementation("com.google.dagger:hilt-android:2.48")
-    kapt("com.google.dagger:hilt-compiler:2.48")
-    implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation("com.google.dagger:hilt-android:2.51.1")
+    ksp("com.google.dagger:hilt-compiler:2.51.1")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 }

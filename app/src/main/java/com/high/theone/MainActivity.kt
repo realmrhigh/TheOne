@@ -1,64 +1,57 @@
 package com.high.theone
 
+import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button // Added
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment // Added
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp // Added
-import androidx.navigation.NavHostController // Added
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.theone.audio.AudioEngine
+import com.example.theone.audio.AudioEngineControl
+import com.example.theone.features.debug.DebugScreen
+import com.example.theone.features.drumtrack.DrumTrackViewModel
+import com.example.theone.features.drumtrack.ui.DrumPadScreen
 import com.example.theone.features.sequencer.StepSequencerScreen
-import com.example.theone.features.debug.DebugScreen // Added import for DebugScreen
 import com.high.theone.ui.theme.TheOneTheme
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import android.util.Log
-import kotlinx.coroutines.delay
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import android.Manifest
-import androidx.core.content.ContextCompat
-import android.content.pm.PackageManager
-import android.content.Context // Ensure this is present
-import dagger.hilt.android.AndroidEntryPoint // Added Hilt import
+import javax.inject.Inject
 
-@AndroidEntryPoint // Added Hilt annotation
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    // private lateinit var audioEngine: AudioEngine // Removed manual instantiation and property
-    @Inject lateinit var audioEngine: AudioEngineControl // Injected for onDestroy, though direct use in Activity is not ideal
+    @Inject
+    lateinit var audioEngine: AudioEngineControl
 
-    // Define copyAssetToCache here
     private fun copyAssetToCache(context: Context, assetName: String, cacheFileName: String): String? {
         val assetManager = context.assets
         try {
             val inputStream = assetManager.open(assetName)
             val cacheDir = context.cacheDir
             val outFile = File(cacheDir, cacheFileName)
-            // Ensure parent directory exists, though cacheDir should exist
-            // outFile.parentFile?.mkdirs()
             val outputStream = FileOutputStream(outFile)
             inputStream.copyTo(outputStream)
             inputStream.close()
@@ -75,17 +68,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // audioEngine = AudioEngine(this) // Removed manual instantiation
-
-        // AudioEngine initialization should be triggered by a component that needs it,
-        // e.g., a ViewModel, or a dedicated startup service/initializer.
-        // For now, removing the direct initialization call from MainActivity.onCreate.
-        // If no other component initializes it, it won't start.
-        // Consider adding an Application-level initialization or ViewModel-triggered init.
         Log.i("MainActivity", "AudioEngine will be initialized by Hilt-injected components as needed.")
-
-        // The CoroutineScope.launch for initialization and tests is removed.
-        // Test logic is now in DebugScreen -> SequencerViewModel.
 
         setContent {
             TheOneTheme {
@@ -93,24 +76,22 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // AppNavigation() // Call your new NavHost composable
                     val navController = rememberNavController()
                     NavHost(navController = navController, startDestination = "main_screen") {
                         composable("main_screen") {
                             MainScreen(navController = navController)
                         }
                         composable("step_sequencer_screen") {
-                            StepSequencerScreen(navController = navController) // Pass NavController
+                            StepSequencerScreen(navController = navController)
                         }
                         composable("debug_screen") {
                             DebugScreen()
                         }
-                        composable("drum_pad_screen") { // Added route for DrumPadScreen
-                            com.example.theone.features.drumtrack.ui.DrumPadScreen( // Use fully qualified name
-                                drumTrackViewModel = androidx.hilt.navigation.compose.hiltViewModel<com.example.theone.features.drumtrack.DrumTrackViewModel>()
+                        composable("drum_pad_screen") {
+                            DrumPadScreen(
+                                drumTrackViewModel = hiltViewModel<DrumTrackViewModel>()
                             )
                         }
-                        // Add other destinations here if needed
                     }
                 }
             }
@@ -120,9 +101,8 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i("MainActivity", "onDestroy called, preparing to shutdown AudioEngine.")
-        // Check if audioEngine has been injected and then if it's initialized before shutting down
         if (this::audioEngine.isInitialized && audioEngine.isInitialized()) {
-             CoroutineScope(Dispatchers.IO).launch { // Still okay to launch a short scope for shutdown
+            CoroutineScope(Dispatchers.IO).launch {
                 audioEngine.shutdown()
                 Log.i("MainActivity", "AudioEngine shutdown complete. IsInitialized after shutdown: ${audioEngine.isInitialized()}")
             }
@@ -132,7 +112,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// New Composable for the main screen (can be in the same file or separate)
 @Composable
 fun MainScreen(navController: NavHostController, modifier: Modifier = Modifier) {
     Column(
@@ -145,19 +124,13 @@ fun MainScreen(navController: NavHostController, modifier: Modifier = Modifier) 
         Button(onClick = { navController.navigate("step_sequencer_screen") }) {
             Text("Go to Step Sequencer")
         }
-        Spacer(modifier = Modifier.height(16.dp)) // Added spacer
-        Button(onClick = { navController.navigate("debug_screen") }) { // Added button for DebugScreen
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = { navController.navigate("drum_pad_screen") }) {
+            Text("Go to Drum Pads")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = { navController.navigate("debug_screen") }) {
             Text("Go to Debug Screen")
         }
-        // Add other navigation buttons here later
     }
 }
-
-// Remove or comment out Greeting and GreetingPreview
-/*
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) { ... }
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() { ... }
-*/
