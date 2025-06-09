@@ -93,7 +93,7 @@ void EnvelopeGenerator::triggerOn(float triggerVelocity) {
         currentStage = EnvelopeStage::DECAY; // Then start decaying
     } else if (settings.attackMs <= 0.0f) { // Non-AD type, zero attack time
         currentValue = 1.0f;
-        if (settings.type == ModelEnvelopeTypeInternalCpp::AHDS || settings.type == ModelEnvelopeTypeInternalCpp::ADSR) {
+        if (settings.type == ModelEnvelopeTypeInternalCpp::AHDSR || settings.type == ModelEnvelopeTypeInternalCpp::ADSR) {
             if (holdTimeSamples > 0) {
                 currentStage = EnvelopeStage::HOLD;
             } else {
@@ -135,7 +135,7 @@ float EnvelopeGenerator::process() {
             currentValue += attackRate;
             if (currentValue >= 1.0f) {
                 currentValue = 1.0f;
-                if (settings.type == ModelEnvelopeTypeInternalCpp::AHDS || (settings.type == ModelEnvelopeTypeInternalCpp::ADSR && settings.holdMs > 0.0f)) {
+                if (settings.type == ModelEnvelopeTypeInternalCpp::AHDSR || (settings.type == ModelEnvelopeTypeInternalCpp::ADSR && settings.holdMs > 0.0f)) {
                     if (holdTimeSamples > 0) {
                         currentStage = EnvelopeStage::HOLD;
                         holdSamplesRemaining = holdTimeSamples; // Reset for this new hold phase
