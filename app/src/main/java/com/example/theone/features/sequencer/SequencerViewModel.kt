@@ -12,8 +12,6 @@ import com.example.theone.model.Event
 import com.example.theone.model.EventType
 import com.example.theone.model.PlaybackMode // Added import
 import com.example.theone.model.Sequence // This was the problematic import before
-import com.example.theone.model.SynthModels.EnvelopeSettings // Added import
-import com.example.theone.model.SynthModels.EnvelopeType // Added import
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 // import com.example.theone.model.Project // Not using Project directly for now
@@ -35,6 +33,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import android.Manifest
+import com.example.theone.model.SynthModels
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 
@@ -74,14 +73,14 @@ class SequencerViewModel @Inject constructor(
 
     // Placeholder for quantization settings (e.g., 16th notes)
     // 96 PPQN (Pulses Per Quarter Note) is common. If 16th notes, then 96/4 = 24 ticks.
-    val ticksPer16thNote: Long = 24 // Assuming 96 PPQN, made public
+    val ticksPer16thNote: Long get() = (currentSequence?.ppqn ?: 96L) / 4L
 
     init {
         // Create an initial default sequence
         val initialSeq = Sequence(
             id = UUID.randomUUID().toString(),
             name = "Sequence 1",
-            bpm = 120.0f,
+            bpm = 120.0f, ppqn = 96,
             events = mutableListOf()
             // barLength, timeSignatureNumerator, timeSignatureDenominator use defaults
         )
@@ -107,7 +106,7 @@ class SequencerViewModel @Inject constructor(
 
         sequence?.let {
             viewModelScope.launch {
-                audioEngine.loadSequenceData(it)
+                (audioEngine as? AudioEngine)?.native_loadSequenceData(it)
                 Log.d("SequencerViewModel", "Loaded sequence ${it.name} into native layer.")
             }
         }
@@ -118,7 +117,7 @@ class SequencerViewModel @Inject constructor(
     fun selectSequence(sequenceId: String) {
         val sequenceToSelect = _sequences.value.find { it.id == sequenceId }
         sequenceToSelect?.let {
-            setCurrentSequenceInternal(it)
+            setCurrentSequenceInternal(it) // This will also call loadSequenceData
             // audioEngine.loadSequenceData should be called by setCurrentSequenceInternal
         }
     }
@@ -157,7 +156,7 @@ class SequencerViewModel @Inject constructor(
                 // To make sure Compose recomposes if only bpm of currentSequence object changes:
                 // One way is to replace the sequence in the list and currentSequence with a new instance.
                 // currentSequence = it.copy(bpm = newBpm) // If Sequence is data class & this triggers recomposition
-                // _sequences.value = _sequences.value.map { s -> if (s.id == it.id) currentSequence!! else s }
+                // _sequences.value = _sequences.value.map { s -> if (s.id == it.id) currentSequence!! else s } // For now, direct mutation. `bpmText` in `TransportBar` will update due to `remember(currentSeq?.id, currentSeq?.bpm)`
                 // For now, direct mutation. `bpmText` in `TransportBar` will update due to `remember(currentSeq?.id, currentSeq?.bpm)`
                 viewModelScope.launch {
                     audioEngine.setSequencerBpm(newBpm)
@@ -262,7 +261,7 @@ class SequencerViewModel @Inject constructor(
                 // audioEngine.loadSequenceData(seq) // Re-load to be absolutely sure, or rely on prior loads.
                                                  // For now, relying on prior loads via setCurrentSequenceInternal.
 
-                audioEngine.playSequence()
+                (audioEngine as? AudioEngine)?.native_playSequence()
                 _isPlayingState.value = true
                 Log.d("SequencerViewModel", "Playback started via native engine for sequence: ${seq.name}")
 
@@ -271,7 +270,7 @@ class SequencerViewModel @Inject constructor(
                 playbackJob = viewModelScope.launch {
                     try {
                         while (isActive && _isPlayingState.value) { // Loop while coroutine is active and playing
-                            _playheadPositionTicks.value = audioEngine.getSequencerPlayheadPosition()
+                            _playheadPositionTicks.value = (audioEngine as? AudioEngine)?.native_getSequencerPlayheadPosition() ?: 0L
                             delay(50) // Poll every 50ms
                         }
                     } finally {
@@ -289,23 +288,23 @@ class SequencerViewModel @Inject constructor(
     }
 
     fun stop() {
-        viewModelScope.launch {
-            if (!_isPlayingState.value && playbackJob == null) {
-                Log.d("SequencerViewModel", "Stop called but already stopped or polling job null.")
-                // Ensure UI state is consistent even if called redundantly
-                _isPlayingState.value = false
+        currentSequence?.let { seq ->
+            viewModelScope.launch {
+                if (!_isPlayingState.value && playbackJob == null) {
+                    Log.d("SequencerViewModel", "Stop called for sequence ${seq.name} but already stopped or polling job null.")
+                    // Ensure UI state is consistent even if called redundantly
+                    _isPlayingState.value = false
+                    _playheadPositionTicks.value = 0L
+                    return@launch
+                }
+                audioEngine.stopSequence()
+                _isPlayingState.value = false // Set state before cancelling job to influence job's finally block
+                playbackJob?.cancel()
+                playbackJob = null
                 _playheadPositionTicks.value = 0L
-                return@launch
+                Log.d("SequencerViewModel", "Playback stopped via native engine for sequence ${seq.name}. Polling job cancelled.")
             }
-            audioEngine.stopSequence()
-            _isPlayingState.value = false // Set state before cancelling job to influence job's finally block
-            playbackJob?.cancel()
-            playbackJob = null
-            // _playheadPositionTicks.value = 0L // Reset in the polling job's finally or here. Redundant if also in finally.
-                                             // Set to 0L directly here to ensure it's immediate.
-            _playheadPositionTicks.value = 0L
-            Log.d("SequencerViewModel", "Playback stopped via native engine. Polling job cancelled.")
-        }
+        } ?: run { Log.w("SequencerViewModel", "Stop called but currentSequence is null.") }
     }
 
     // For "Clear Sequence" Button
@@ -359,12 +358,12 @@ class SequencerViewModel @Inject constructor(
             val primaryCachedPath = copyAssetToCache(applicationContext, primaryAssetName, "cached_click_primary_test.wav")
             if (primaryCachedPath != null) {
                 val primaryFileUri = "file://$primaryCachedPath"
-                audioEngine.loadSampleToMemory(applicationContext, primaryClickId, primaryFileUri)
+                audioEngine.loadSampleToMemory(primaryClickId, primaryFileUri)
             }
             val secondaryCachedPath = copyAssetToCache(applicationContext, secondaryAssetName, "cached_click_secondary_test.wav")
             if (secondaryCachedPath != null) {
                 val secondaryFileUri = "file://$secondaryCachedPath"
-                audioEngine.loadSampleToMemory(applicationContext, secondaryClickId, secondaryFileUri)
+                audioEngine.loadSampleToMemory(secondaryClickId, secondaryFileUri)
             }
 
             audioEngine.setMetronomeVolume(0.8f)
@@ -427,7 +426,7 @@ class SequencerViewModel @Inject constructor(
             val cachedFilePath = copyAssetToCache(applicationContext, assetName, "cached_test_$sampleId.wav")
             if (cachedFilePath != null) {
                 val fileUriString = "file://$cachedFilePath"
-                val loadSuccess = audioEngine.loadSampleToMemory(applicationContext, sampleId, fileUriString)
+                val loadSuccess = audioEngine.loadSampleToMemory(sampleId, fileUriString)
                 Log.i("SequencerViewModel_Test", "loadSampleToMemory($sampleId) result: $loadSuccess")
                 if (loadSuccess && audioEngine.isSampleLoaded(sampleId)) {
                     Log.i("SequencerViewModel_Test", "Attempting to play sample $sampleId...")

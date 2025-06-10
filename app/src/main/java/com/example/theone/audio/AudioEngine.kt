@@ -62,11 +62,11 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     external fun native_updatePadSettings(trackId: String, padId: String, padSettings: PadSettings)
 
     // --- New Sequencer JNI Declarations ---
-    private external fun native_loadSequenceData(sequence: com.example.theone.model.Sequence)
-    private external fun native_playSequence()
-    private external fun native_stopSequence()
-    private external fun native_setSequencerBpm(bpm: Float)
-    private external fun native_getSequencerPlayheadPosition(): Long
+    internal external fun native_loadSequenceData(sequence: com.example.theone.model.Sequence)
+    internal external fun native_playSequence()
+    internal external fun native_stopSequence()
+    internal external fun native_setSequencerBpm(bpm: Float)
+    internal external fun native_getSequencerPlayheadPosition(): Long
     // --- End New Sequencer JNI Declarations ---
 
     private var mRecordingParams: Pair<Int, Int>? = null
@@ -379,7 +379,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot load sequence data.")
             return
         }
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             native_loadSequenceData(sequence)
         }
     }
@@ -389,7 +389,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot play sequence.")
             return
         }
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             native_playSequence()
         }
     }
@@ -399,7 +399,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot stop sequence.")
             return
         }
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             native_stopSequence()
         }
     }
@@ -409,7 +409,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot set sequencer BPM.")
             return
         }
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             native_setSequencerBpm(bpm)
         }
     }
@@ -417,8 +417,9 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     override suspend fun getSequencerPlayheadPosition(): Long {
         if (!initialized) {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot get playhead position.")
-            return 0L
+            return 0L // This existing return is for the outer function if not initialized.
         }
+        // The native call itself returns Long, so the withContext block will also return Long.
         return withContext(Dispatchers.IO) {
             native_getSequencerPlayheadPosition()
         }
