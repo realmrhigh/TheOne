@@ -7,42 +7,22 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-// Material 3 Imports
-import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
+// CORRECTED IMPORT: Removed .automirrored from VolumeUp
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import java.util.Locale
-
-// Consolidated Model Imports
 import com.example.theone.features.drumtrack.model.PadSettings
-import com.example.theone.model.EffectSetting
-import com.example.theone.model.EffectType
-import com.example.theone.model.LFOSettings
-import com.example.theone.model.LayerModels.SampleLayer
-import com.example.theone.model.LfoDestination
-import com.example.theone.model.ModulationRouting
-import com.example.theone.model.SampleMetadata
-import com.example.theone.model.SynthModels
-import com.example.theone.model.SynthModels.EnvelopeSettings
-import com.example.theone.model.SynthModels.LFOSettings
-import com.example.theone.model.SynthModels.LfoWaveform
-import com.example.theone.model.SynthModels.LfoDestination
-import com.example.theone.model.SynthModels.ModulationRouting
-import com.example.theone.model.SynthModels.EffectSetting
-import com.example.theone.model.SynthModels.EffectType
-
+import com.example.theone.model.*
+import java.util.Locale
 
 @Composable
 fun DrumProgramEditDialog(
@@ -53,20 +33,18 @@ fun DrumProgramEditDialog(
         onDismissRequest = { onDismiss(null) },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        // M3: Surface is largely the same, but ensure it's the M3 version.
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.9f),
             shape = MaterialTheme.shapes.medium,
-            tonalElevation = 8.dp // M3 uses tonal elevation
+            tonalElevation = 8.dp
         ) {
             DrumProgramEditScreen(viewModel = viewModel, onDismiss = onDismiss)
         }
     }
 }
 
-// M3: OptIn annotation for ExperimentalMaterial3Api is often needed.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DrumProgramEditScreen(
@@ -77,7 +55,6 @@ fun DrumProgramEditScreen(
     val selectedLayerIndex by viewModel.selectedLayerIndex.collectAsState()
     val currentEditorTab by viewModel.currentEditorTab.collectAsState()
 
-    // M3: Scaffold signature is updated.
     Scaffold(
         topBar = {
             TopAppBar(
@@ -89,8 +66,8 @@ fun DrumProgramEditScreen(
                 },
                 actions = {
                     IconButton(onClick = { viewModel.auditionPad() }) {
-                        // FIX: Deprecated icon reference updated
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Audition Pad")
+                        // CORRECTED ICON REFERENCE
+                        Icon(Icons.Filled.VolumeUp, contentDescription = "Audition Pad")
                     }
                     IconButton(onClick = {
                         val finalSettings = viewModel.saveChanges()
@@ -123,8 +100,7 @@ fun DrumProgramEditScreen(
                     if (firstSample != null) {
                         viewModel.addSampleLayer(firstSample)
                     }
-                },
-                viewModel = viewModel
+                }
             )
 
             Box(
@@ -159,7 +135,9 @@ fun SamplesEditorContent(
     var showSampleSelectorDialog by remember { mutableStateOf(false) }
 
     if (currentLayer == null) {
-        Text("No layer selected or layer is invalid.", modifier = Modifier.padding(16.dp))
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No layers. Click '+' to add one.", modifier = Modifier.padding(16.dp))
+        }
         return
     }
 
@@ -179,7 +157,7 @@ fun SamplesEditorContent(
             Text("Sample: ${currentLayer.sampleNameCache.ifEmpty { currentLayer.sampleId }}")
             Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Sample")
         }
-        HorizontalDivider() // M3: Divider is now HorizontalDivider
+        HorizontalDivider()
         ParameterSlider(label = "Start Point", value = currentLayer.startPoint, onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.START_POINT, it) }, valueRange = 0f..1f)
         ParameterSlider(label = "End Point", value = currentLayer.endPoint, onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.END_POINT, it) }, valueRange = 0f..1f)
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
@@ -188,14 +166,13 @@ fun SamplesEditorContent(
         }
         ParameterSlider(label = "Loop Point", value = currentLayer.loopPoint, onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.LOOP_POINT, it) }, valueRange = 0f..1f, enabled = currentLayer.loopEnabled)
         HorizontalDivider()
-        ParameterSlider(label = "Tune (Semi)", value = currentLayer.tuningSemi.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_SEMI, it.toInt()) }, valueRange = -24f..24f, steps = 47)
-        ParameterSlider(label = "Tune (Fine)", value = currentLayer.tuningFine.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_FINE, it.toInt()) }, valueRange = -100f..100f, steps = 199)
+        ParameterSlider(label = "Tune (Semi)", value = currentLayer.tuningSemi.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_SEMI, it.toInt()) }, valueRange = -24f..24f, steps = 48)
+        ParameterSlider(label = "Tune (Fine)", value = currentLayer.tuningFine.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_FINE, it.toInt()) }, valueRange = -100f..100f, steps = 200)
         HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Reverse:", modifier = Modifier.weight(1f))
             Switch(checked = currentLayer.reverse, onCheckedChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.REVERSE, it) })
         }
-        // M3: Button colors are set differently
         Button(
             onClick = { viewModel.removeLayer(selectedLayerIndex) },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -208,23 +185,21 @@ fun SamplesEditorContent(
 
 @Composable
 fun EnvelopesEditorContent(padSettings: PadSettings, viewModel: DrumProgramEditViewModel) {
-    var selectedEditorEnvelopeType by remember { mutableStateOf(com.example.theone.features.drumtrack.edit.EnvelopeType.AMP) }
+    var selectedEditorEnvelopeType by remember { mutableStateOf(EnvelopeType.AMP) }
     val scrollState = rememberScrollState()
     val currentModelEnvelope = when (selectedEditorEnvelopeType) {
-        com.example.theone.features.drumtrack.edit.EnvelopeType.AMP -> padSettings.ampEnvelope
-        com.example.theone.features.drumtrack.edit.EnvelopeType.PITCH -> padSettings.pitchEnvelope
-        com.example.theone.features.drumtrack.edit.EnvelopeType.FILTER -> padSettings.filterEnvelope
+        EnvelopeType.AMP -> padSettings.ampEnvelope
+        EnvelopeType.PITCH -> padSettings.pitchEnvelope
+        EnvelopeType.FILTER -> padSettings.filterEnvelope
     }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(8.dp)) {
-        // M3: TabRow and Tab signatures updated
         TabRow(selectedTabIndex = selectedEditorEnvelopeType.ordinal) {
-            com.example.theone.features.drumtrack.edit.EnvelopeType.values().forEach { type ->
+            EnvelopeType.entries.forEach { type ->
                 Tab(
                     selected = selectedEditorEnvelopeType == type,
                     onClick = { selectedEditorEnvelopeType = type },
-                    // M3: text is now part of the content lambda
-                    content = { Text(type.name, modifier = Modifier.padding(16.dp)) }
+                    text = { Text(type.name, modifier = Modifier.padding(16.dp)) }
                 )
             }
         }
@@ -233,10 +208,10 @@ fun EnvelopesEditorContent(padSettings: PadSettings, viewModel: DrumProgramEditV
             Text("Graphical Envelope Editor for ${selectedEditorEnvelopeType.name}")
         }
         Spacer(Modifier.height(8.dp))
-        ParameterSlider(label = "Attack (s)", value = currentModelEnvelope.attackMs.toFloat() / 1000f, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(attackMs = it.toDouble())) }, valueRange = 0f..2f )
-        ParameterSlider(label = "Decay (s)", value = currentModelEnvelope.decayMs.toFloat() / 1000f, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(decayMs = it.toDouble())) }, valueRange = 0f..2f)
+        ParameterSlider(label = "Attack (ms)", value = currentModelEnvelope.attackMs, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(attackMs = it)) }, valueRange = 0f..2000f )
+        ParameterSlider(label = "Decay (ms)", value = currentModelEnvelope.decayMs, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(decayMs = it)) }, valueRange = 0f..2000f)
         ParameterSlider(label = "Sustain Level", value = currentModelEnvelope.sustainLevel, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(sustainLevel = it)) }, valueRange = 0f..1f)
-        ParameterSlider(label = "Release (s)", value = currentModelEnvelope.releaseMs.toFloat() / 1000f, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(releaseMs = it.toDouble())) }, valueRange = 0f..5f)
+        ParameterSlider(label = "Release (ms)", value = currentModelEnvelope.releaseMs, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(releaseMs = it)) }, valueRange = 0f..5000f)
     }
 }
 
@@ -244,7 +219,7 @@ fun EnvelopesEditorContent(padSettings: PadSettings, viewModel: DrumProgramEditV
 fun LfosEditorContent(padSettings: PadSettings, viewModel: DrumProgramEditViewModel) {
     val scrollState = rememberScrollState()
     Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(8.dp)) {
-        padSettings.lfos.forEachIndexed { lfoIndex, lfoSettings: LFOSettings ->
+        for ((lfoIndex, lfoSettings) in padSettings.lfos.withIndex()) {
             if (lfoIndex > 0) Spacer(Modifier.height(8.dp))
             LfoControls(lfoIndex = lfoIndex, lfoSettings = lfoSettings, onLfoUpdate = { newSettings -> viewModel.updateLfo(lfoIndex, newSettings) })
             if (lfoIndex < padSettings.lfos.size - 1) HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -257,14 +232,14 @@ fun ModulationEditorContent(padSettings: PadSettings, viewModel: DrumProgramEdit
     val scrollState = rememberScrollState()
     Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Modulation Routings", style = MaterialTheme.typography.headlineSmall) // M3: typography updated
+            Text("Modulation Routings", style = MaterialTheme.typography.headlineSmall)
             Button(onClick = { viewModel.addModulationRouting() }) { Text("Add") }
         }
         Spacer(Modifier.height(8.dp))
         if (padSettings.modulations.isEmpty()) {
             Text("No modulation routings defined.")
         } else {
-            padSettings.modulations.forEach { routing: ModulationRouting ->
+            for (routing in padSettings.modulations) {
                 ModulationRoutingItem(routing = routing, viewModel = viewModel)
                 HorizontalDivider()
             }
@@ -274,7 +249,6 @@ fun ModulationEditorContent(padSettings: PadSettings, viewModel: DrumProgramEdit
 
 @Composable
 fun ModulationRoutingItem(routing: ModulationRouting, viewModel: DrumProgramEditViewModel) {
-    // M3: Card elevation is a direct parameter
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
         Column(modifier = Modifier.padding(8.dp)) {
             Text("ID: ${routing.id.take(8)}...")
@@ -287,39 +261,22 @@ fun ModulationRoutingItem(routing: ModulationRouting, viewModel: DrumProgramEdit
 }
 
 @Composable
-fun EffectsEditorContent(
-    padSettings: PadSettings,
-    viewModel: DrumProgramEditViewModel
-) {
+fun EffectsEditorContent(padSettings: PadSettings, viewModel: DrumProgramEditViewModel) {
     val scrollState = rememberScrollState()
     var showAddEffectDialog by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Effects Chain", style = MaterialTheme.typography.headlineSmall)
-            Button(onClick = { showAddEffectDialog = true }) {
-                Text("Add Effect")
-            }
+            Button(onClick = { showAddEffectDialog = true }) { Text("Add Effect") }
         }
         Spacer(Modifier.height(8.dp))
 
         if (padSettings.effects.isEmpty()) {
             Text("No effects in the chain.")
         } else {
-            padSettings.effects.forEach { effect: EffectSetting ->
-                EffectSettingItem(
-                    effectSetting = effect,
-                    viewModel = viewModel
-                )
+            for (effect in padSettings.effects) {
+                EffectSettingItem(effectSetting = effect, viewModel = viewModel)
                 HorizontalDivider()
             }
         }
@@ -328,7 +285,7 @@ fun EffectsEditorContent(
     if (showAddEffectDialog) {
         AddEffectDialog(
             onDismiss = { showAddEffectDialog = false },
-            onEffectSelected = { effectType: EffectType ->
+            onEffectSelected = { effectType ->
                 viewModel.addEffect(effectType)
                 showAddEffectDialog = false
             }
@@ -337,33 +294,18 @@ fun EffectsEditorContent(
 }
 
 @Composable
-fun EffectSettingItem(
-    effectSetting: EffectSetting,
-    viewModel: DrumProgramEditViewModel
-) {
+fun EffectSettingItem(effectSetting: EffectSetting, viewModel: DrumProgramEditViewModel) {
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
         Column(modifier = Modifier.padding(8.dp)) {
             Text("Type: ${effectSetting.type.name} (ID: ${effectSetting.id.take(8)}...)")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Enabled:", modifier = Modifier.weight(1f))
-                Switch(
-                    checked = effectSetting.isEnabled,
-                    onCheckedChange = { viewModel.toggleEffectEnabled(effectSetting.id) }
-                )
+                Switch(checked = effectSetting.isEnabled, onCheckedChange = { viewModel.toggleEffectEnabled(effectSetting.id) })
             }
-            ParameterSlider(
-                label = "Mix",
-                value = effectSetting.mix,
-                onValueChange = { newMix -> viewModel.updateEffectMix(effectSetting.id, newMix) },
-                valueRange = 0f..1f
-            )
-            // FIX: Explicitly define the Map.Entry type for the lambda parameter 'it'
-            val paramsString = effectSetting.parameters.entries.joinToString(", ") {
-                // Explicitly declare the type of 'it'
-                    it: Map.Entry<String, Float> ->
-                // Now you can destructure 'it' without issues
-                val (key, value) = it
-                "$key=${String.format("%.2f", value)}"
+            ParameterSlider(label = "Mix", value = effectSetting.mix, onValueChange = { newMix -> viewModel.updateEffectMix(effectSetting.id, newMix) }, valueRange = 0f..1f)
+
+            val paramsString = effectSetting.parameters.entries.joinToString(", ") { entry ->
+                "${entry.key}=${String.format(Locale.US, "%.2f", entry.value)}"
             }
             Text("Parameters: $paramsString")
 
@@ -375,34 +317,24 @@ fun EffectSettingItem(
 }
 
 @Composable
-fun AddEffectDialog(
-    onDismiss: () -> Unit,
-    onEffectSelected: (EffectType) -> Unit
-) {
-    // M3: AlertDialog signature updated
+fun AddEffectDialog(onDismiss: () -> Unit, onEffectSelected: (EffectType) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Effect") },
         text = {
             LazyColumn {
-                items(EffectType.values()) { effectType ->
-                    Button(
-                        onClick = { onEffectSelected(effectType) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    ) {
+                items(EffectType.entries) { effectType ->
+                    Button(onClick = { onEffectSelected(effectType) }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Text(effectType.name)
                     }
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
-
-// --- Helper Composables and Dialogs from here ---
+// --- Helper Composables and Dialogs ---
 
 @Composable
 fun WaveformPlaceholder() {
@@ -425,12 +357,10 @@ fun LayerSelectionTabs(
     selectedLayerIndex: Int,
     onLayerSelected: (Int) -> Unit,
     onAddLayer: () -> Unit,
-    viewModel: DrumProgramEditViewModel
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-        // M3: ScrollableTabRow signature updated
         ScrollableTabRow(
-            selectedTabIndex = if (selectedLayerIndex < 0 && padSettings.layers.isNotEmpty()) 0 else selectedLayerIndex.coerceAtLeast(0),
+            selectedTabIndex = selectedLayerIndex.coerceAtLeast(0),
             modifier = Modifier.weight(1f),
             edgePadding = 0.dp
         ) {
@@ -438,7 +368,7 @@ fun LayerSelectionTabs(
                 Tab(
                     selected = index == selectedLayerIndex,
                     onClick = { onLayerSelected(index) },
-                    content = {
+                    text = {
                         val sampleName = layer.sampleNameCache.ifEmpty { layer.sampleId.take(8) }
                         Text("L${index + 1}: $sampleName", maxLines = 1, modifier = Modifier.padding(16.dp))
                     }
@@ -456,17 +386,13 @@ fun LayerSelectionTabs(
 
 
 @Composable
-fun EditorTabsBottomNavigation(
-    selectedTab: EditorTab,
-    onTabSelected: (EditorTab) -> Unit
-) {
-    // M3: TabRow and Tab signatures updated
+fun EditorTabsBottomNavigation(selectedTab: EditorTab, onTabSelected: (EditorTab) -> Unit) {
     TabRow(selectedTabIndex = selectedTab.ordinal) {
-        EditorTab.values().forEach { tab ->
+        EditorTab.entries.forEach { tab ->
             Tab(
                 selected = selectedTab == tab,
                 onClick = { onTabSelected(tab) },
-                content = { Text(tab.name.uppercase(Locale.getDefault()), modifier = Modifier.padding(16.dp)) }
+                text = { Text(tab.name.uppercase(Locale.getDefault()), modifier = Modifier.padding(16.dp)) }
             )
         }
     }
@@ -484,9 +410,8 @@ fun SampleSelectorDialog(
         text = {
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 items(availableSamples) { sample ->
-                    // FIX: Based on your SampleModels.kt, the field is `durationMs` not `duration`.
                     Text(
-                        text = "${sample.name} (${sample.durationMs}ms)",
+                        text = "${sample.name} (${sample.duration}ms)",
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onSampleSelected(sample) }
@@ -517,8 +442,7 @@ fun ParameterSlider(
             value = value,
             onValueChange = onValueChange,
             valueRange = valueRange,
-            // M3: steps parameter is calculated differently
-            steps = if (steps > 0) steps -1 else 0,
+            steps = if (steps > 1) steps - 1 else 0,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth()
         )
@@ -543,10 +467,9 @@ fun LfoControls(
             }
             Spacer(Modifier.height(8.dp))
 
-            // FIX: Use ExposedDropdownMenuBox for Material 3 Dropdowns
             ExposedDropdownMenuBox(
                 expanded = waveformDropdownExpanded,
-                onExpandedChange = { waveformDropdownExpanded = !waveformDropdownExpanded }
+                onExpandedChange = { if (lfoSettings.isEnabled) waveformDropdownExpanded = !waveformDropdownExpanded }
             ) {
                 OutlinedTextField(
                     value = lfoSettings.waveform.name,
@@ -554,15 +477,14 @@ fun LfoControls(
                     readOnly = true,
                     label = { Text("Wave") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = waveformDropdownExpanded) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth(), // menuAnchor is crucial
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
                     enabled = lfoSettings.isEnabled
                 )
                 ExposedDropdownMenu(
                     expanded = waveformDropdownExpanded,
                     onDismissRequest = { waveformDropdownExpanded = false }
                 ) {
-                    // FIX: Explicitly define the lambda parameter type
-                    SynthModels.LfoWaveform.entries.forEach { waveform: LfoWaveform ->
+                    LfoWaveform.entries.forEach { waveform ->
                         DropdownMenuItem(
                             text = { Text(waveform.name) },
                             onClick = {
@@ -583,10 +505,9 @@ fun LfoControls(
             Spacer(Modifier.height(8.dp))
             Text("Routing", style = MaterialTheme.typography.titleMedium)
 
-            // FIX: Use ExposedDropdownMenuBox for the second dropdown as well
             ExposedDropdownMenuBox(
                 expanded = destinationDropdownExpanded,
-                onExpandedChange = { destinationDropdownExpanded = !destinationDropdownExpanded }
+                onExpandedChange = { if (lfoSettings.isEnabled) destinationDropdownExpanded = !destinationDropdownExpanded }
             ) {
                 OutlinedTextField(
                     value = lfoSettings.primaryDestination.name,
@@ -601,8 +522,7 @@ fun LfoControls(
                     expanded = destinationDropdownExpanded,
                     onDismissRequest = { destinationDropdownExpanded = false }
                 ) {
-                    // FIX: Explicitly define the lambda parameter type
-                    SynthModels.LfoDestination.values().forEach { destination: LfoDestination ->
+                    LfoDestination.entries.forEach { destination ->
                         DropdownMenuItem(
                             text = { Text(destination.name) },
                             onClick = {
@@ -614,7 +534,7 @@ fun LfoControls(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            ParameterSlider(label = "Depth", value = lfoSettings.depth, onValueChange = { onLfoUpdate(lfoSettings.copy(depth = it)) }, valueRange = 0f..1f, enabled = lfoSettings.isEnabled && lfoSettings.primaryDestination != com.example.theone.model.SynthModels.LfoDestination.NONE)
+            ParameterSlider(label = "Depth", value = lfoSettings.depth, onValueChange = { onLfoUpdate(lfoSettings.copy(depth = it)) }, valueRange = 0f..1f, enabled = lfoSettings.isEnabled && lfoSettings.primaryDestination != LfoDestination.NONE)
         }
     }
 }

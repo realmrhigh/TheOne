@@ -46,7 +46,7 @@ class SamplerViewModel @Inject constructor(
     private val _saveSampleStatus = MutableStateFlow<String?>(null)
     val saveSampleStatus: StateFlow<String?> = _saveSampleStatus.asStateFlow()
 
-    private val MAX_RECORDINGS = 3
+    private val mAXRECORDINGS = 3
 
     fun loadSample(uri: String) {
         viewModelScope.launch {
@@ -173,7 +173,7 @@ class SamplerViewModel @Inject constructor(
 
     fun onRecordingFinished(newSample: SampleMetadata) { // This is now called by stopRecordingAndFinalize
         val currentQueue = _recordedSamplesQueue.value.toMutableList()
-        if (currentQueue.size == MAX_RECORDINGS) {
+        if (currentQueue.size == mAXRECORDINGS) {
             currentQueue.removeAt(0)
         }
         currentQueue.add(newSample)

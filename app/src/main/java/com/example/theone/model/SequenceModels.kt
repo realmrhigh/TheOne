@@ -32,5 +32,6 @@ data class Sequence(
     var barLength: Int = 4,
     var timeSignatureNumerator: Int = 4,
     var timeSignatureDenominator: Int = 4,
+    val ppqn: Int = 96, // Pulses Per Quarter Note - ADDED THIS LINE
     val events: MutableList<Event> = mutableListOf()
 )

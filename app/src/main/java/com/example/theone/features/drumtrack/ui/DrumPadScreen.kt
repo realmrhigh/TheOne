@@ -110,7 +110,7 @@ fun PadView(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = padModel.name ?: padModel.id, // Display name or ID
+            text = padModel.name, // Display name or ID
             color = Color.White,
             fontSize = 10.sp,
             textAlign = TextAlign.Center

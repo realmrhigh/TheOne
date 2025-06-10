@@ -4,8 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.core.net.toUri
 import com.example.theone.features.drumtrack.model.PadSettings
-import com.example.theone.model.EnvelopeSettings // Corrected import
-import com.example.theone.model.LFOSettings // Corrected import
+import com.example.theone.model.EnvelopeSettings
+import com.example.theone.model.LFOSettings
 import com.example.theone.model.PlaybackMode
 import com.example.theone.model.SampleMetadata
 import kotlinx.coroutines.Dispatchers
@@ -17,32 +17,32 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
 
     private var initialized = false
 
-    // JNI declarations (Oboe)
-    private external fun native_initOboe(): Boolean
-    private external fun native_shutdownOboe()
-    private external fun native_isOboeInitialized(): Boolean
-    private external fun native_getOboeReportedLatencyMillis(): Float
-    external fun native_stringFromJNI(): String
+    // JNI declarations (Oboe) - Renamed to camelCase
+    private external fun nativeInitOboe(): Boolean
+    private external fun nativeShutdownOboe()
+    private external fun nativeIsOboeInitialized(): Boolean
+    private external fun nativeGetOboeReportedLatencyMillis(): Float
+    private external fun nativeStringFromJNI(): String
 
-    // JNI declarations for sample loading
-    private external fun native_loadSampleToMemory(sampleId: String, fd: Int, offset: Long, length: Long): Boolean
-    private external fun native_isSampleLoaded(sampleId: String): Boolean
-    private external fun native_unloadSample(sampleId: String)
-    private external fun native_getSampleRate(sampleId: String): Int
+    // JNI declarations for sample loading - Renamed to camelCase
+    private external fun nativeLoadSampleToMemory(sampleId: String, fd: Int, offset: Long, length: Long): Boolean
+    private external fun nativeIsSampleLoaded(sampleId: String): Boolean
+    private external fun nativeUnloadSample(sampleId: String)
+    private external fun nativeGetSampleRate(sampleId: String): Int
 
-    // JNI declaration for sample playback (Pad related)
-    private external fun native_playPadSample(
+    // JNI declaration for sample playback (Pad related) - Renamed to camelCase
+    private external fun nativePlayPadSample(
         noteInstanceId: String, trackId: String, padId: String, sampleId: String, sliceId: String?,
         velocity: Float, coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
         playbackModeOrdinal: Int,
         ampEnvAttackMs: Float, ampEnvDecayMs: Float, ampEnvSustainLevel: Float, ampEnvReleaseMs: Float
     ): Boolean
 
-    // JNI declaration for sample playback (Slice related)
-    private external fun native_playSampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, sampleRate: Int, trimStartMs: Long, trimEndMs: Long, loopStartMs: Long, loopEndMs: Long, isLooping: Boolean): Boolean
+    // JNI declaration for sample playback (Slice related) - Renamed to camelCase
+    private external fun nativePlaySampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, sampleRate: Int, trimStartMs: Long, trimEndMs: Long, loopStartMs: Long, loopEndMs: Long, isLooping: Boolean): Boolean
 
-    // JNI declarations for metronome
-    private external fun native_setMetronomeState(
+    // JNI declarations for metronome - Renamed to camelCase
+    private external fun nativeSetMetronomeState(
         isEnabled: Boolean,
         bpm: Float,
         timeSignatureNum: Int,
@@ -50,34 +50,42 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         primarySoundSampleId: String,
         secondarySoundSampleId: String?
     )
-    private external fun native_setMetronomeVolume(volume: Float)
+    private external fun nativeSetMetronomeVolume(volume: Float)
 
-    // JNI declarations for recording
-    private external fun native_startAudioRecording(fd: Int, storagePathForMetadata: String, sampleRate: Int, channels: Int): Boolean
-    private external fun native_stopAudioRecording(): Array<Any>?
-    private external fun native_isRecordingActive(): Boolean
-    private external fun native_getRecordingLevelPeak(): Float
+    // JNI declarations for recording - Renamed to camelCase
+    private external fun nativeStartAudioRecording(fd: Int, storagePathForMetadata: String, sampleRate: Int, channels: Int): Boolean
+    private external fun nativeStopAudioRecording(): Array<Any>?
+    private external fun nativeIsRecordingActive(): Boolean
+    private external fun nativeGetRecordingLevelPeak(): Float
 
-    // JNI declaration for updating PadSettings
-    external fun native_updatePadSettings(trackId: String, padId: String, padSettings: PadSettings)
+    // JNI declaration for updating PadSettings - Renamed to camelCase
+    external fun nativeUpdatePadSettings(trackId: String, padId: String, padSettings: PadSettings)
 
-    // --- New Sequencer JNI Declarations ---
-    internal external fun native_loadSequenceData(sequence: com.example.theone.model.Sequence)
-    internal external fun native_playSequence()
-    internal external fun native_stopSequence()
-    internal external fun native_setSequencerBpm(bpm: Float)
-    internal external fun native_getSequencerPlayheadPosition(): Long
+    // --- New Sequencer JNI Declarations --- Renamed to camelCase and removed 'internal'
+    private external fun nativeLoadSequenceData(sequence: com.example.theone.model.Sequence)
+    private external fun nativePlaySequence()
+    private external fun nativeStopSequence()
+    private external fun nativeSetSequencerBpm(bpm: Float)
+    private external fun nativeGetSequencerPlayheadPosition(): Long
     // --- End New Sequencer JNI Declarations ---
 
     private var mRecordingParams: Pair<Int, Int>? = null
+
+    private fun checkInitialized(functionName: String): Boolean {
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot execute '$functionName'.")
+            return false
+        }
+        return true
+    }
 
     override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean {
         Log.d("AudioEngine", "AudioEngineControl.initialize called with sr: $sampleRate, bs: $bufferSize, lowLatency: $enableLowLatency")
         if (!initialized) {
             Log.d("AudioEngine", "Initializing Oboe via JNI...")
-            initialized = native_initOboe()
+            initialized = nativeInitOboe()
             Log.d("AudioEngine", "Oboe JNI initialization result: $initialized")
-            val testString = native_stringFromJNI()
+            val testString = nativeStringFromJNI()
             Log.d("AudioEngine", "Test JNI string: $testString")
         } else {
             Log.d("AudioEngine", "Already initialized.")
@@ -85,20 +93,14 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         return initialized
     }
 
-    // Using context provided at construction time for ContentResolver
-    suspend fun loadSampleToMemory(contextForContentResolver: Context, sampleId: String, filePathUri: String): Boolean {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot load sample.")
-            return false
-        }
-        Log.d("AudioEngine", "loadSampleToMemory (with context) called for ID: $sampleId, URI: $filePathUri")
+    override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean {
+        if (!checkInitialized("loadSampleToMemory")) return false
+        Log.d("AudioEngine", "loadSampleToMemory called for ID: $sampleId, URI: $filePathUri")
 
         return withContext(Dispatchers.IO) {
             try {
                 val uri = filePathUri.toUri()
-                // Use the context passed to this specific call if needed, or the class member 'this.context'
-                val contentResolver = contextForContentResolver.contentResolver
-                contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
                     val fd = pfd.fd
                     val statSize = pfd.statSize
                     Log.d("AudioEngine", "Opened FD: $fd, StatSize: $statSize for URI: $filePathUri")
@@ -106,7 +108,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
                         Log.e("AudioEngine", "Failed to get valid FileDescriptor for URI: $filePathUri (FD is -1)")
                         return@withContext false
                     }
-                    native_loadSampleToMemory(sampleId, fd, 0L, statSize)
+                    nativeLoadSampleToMemory(sampleId, fd, 0L, statSize)
                 } ?: run {
                     Log.e("AudioEngine", "Failed to open ParcelFileDescriptor for URI: $filePathUri")
                     false
@@ -124,52 +126,36 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         }
     }
 
-    override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean {
-        Log.d("AudioEngine", "loadSampleToMemory (interface version) called for ID: $sampleId, URI: $filePathUri")
-        return loadSampleToMemory(this.context, sampleId, filePathUri) // Uses the class member context
-    }
-
-
     override suspend fun unloadSample(sampleId: String) {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot unload sample.")
-            return
-        }
+        if (!checkInitialized("unloadSample")) return
         Log.d("AudioEngine", "unloadSample called for ID: $sampleId")
         withContext(Dispatchers.IO) {
-            native_unloadSample(sampleId)
+            nativeUnloadSample(sampleId)
         }
     }
 
     override fun isSampleLoaded(sampleId: String): Boolean {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot check if sample loaded.")
-            return false
-        }
-        return native_isSampleLoaded(sampleId)
+        if (!checkInitialized("isSampleLoaded")) return false
+        return nativeIsSampleLoaded(sampleId)
     }
 
-    // This is a simplified playSample, playPadSample is more detailed
+    @Deprecated("Use playPadSample for more explicit control.", ReplaceWith("playPadSample(...)"), DeprecationLevel.WARNING)
     override suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot play sample.")
-            return false
-        }
+        if (!checkInitialized("playSample")) return false
         Log.d("AudioEngine", "playSample called: sampleID='$sampleId', instanceID='$noteInstanceId', vol=$volume, pan=$pan")
-        // Default values for parameters not present in this simplified call
-        return native_playPadSample(
+        return nativePlayPadSample(
             noteInstanceId = noteInstanceId,
-            trackId = "general_track", // Default or derive if possible
-            padId = "general_pad",     // Default or derive if possible
+            trackId = "general_track",
+            padId = "general_pad",
             sampleId = sampleId,
             sliceId = null,
-            velocity = 1.0f,      // Default velocity
+            velocity = 1.0f,
             coarseTune = 0,
             fineTune = 0,
             pan = pan,
             volume = volume,
-            playbackModeOrdinal = PlaybackMode.ONE_SHOT.ordinal, // Default playback mode
-            ampEnvAttackMs = 5f,    // Default envelope settings
+            playbackModeOrdinal = PlaybackMode.ONE_SHOT.ordinal,
+            ampEnvAttackMs = 5f,
             ampEnvDecayMs = 100f,
             ampEnvSustainLevel = 1.0f,
             ampEnvReleaseMs = 100f
@@ -193,12 +179,9 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         pitchEnv: EnvelopeSettings?,
         lfos: List<LFOSettings>
     ): Boolean {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot play pad sample.")
-            return false
-        }
+        if (!checkInitialized("playPadSample")) return false
         Log.d("AudioEngine", "playPadSample called: sampleID='$sampleId', padID='$padId', instanceID='$noteInstanceId', mode=${playbackMode.name}")
-        return native_playPadSample(
+        return nativePlayPadSample(
             noteInstanceId = noteInstanceId,
             trackId = trackId,
             padId = padId,
@@ -214,7 +197,6 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             ampEnvDecayMs = ampEnv.decayMs,
             ampEnvSustainLevel = ampEnv.sustainLevel,
             ampEnvReleaseMs = ampEnv.releaseMs
-            // TODO: Pass filterEnv, pitchEnv, LFOs to native layer if native_playPadSample is extended
         )
     }
 
@@ -229,17 +211,14 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         loopEndMs: Long?,
         isLooping: Boolean
     ): Boolean {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot play sample slice.")
-            return false
-        }
-        val actualSampleRate = native_getSampleRate(sampleId)
+        if (!checkInitialized("playSampleSlice")) return false
+        val actualSampleRate = nativeGetSampleRate(sampleId)
         if (actualSampleRate <= 0) {
             Log.e("AudioEngine", "playSampleSlice: Failed to get valid sample rate for sample ID '$sampleId'. Received: $actualSampleRate.")
             return false
         }
         Log.d("AudioEngine", "playSampleSlice called: ID='$sampleId', SR=$actualSampleRate, trim[$trimStartMs-$trimEndMs], loop[$loopStartMs-$loopEndMs], looping=$isLooping")
-        return native_playSampleSlice(
+        return nativePlaySampleSlice(
             sampleId,
             noteInstanceId,
             volume,
@@ -261,50 +240,38 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         primarySoundSampleId: String,
         secondarySoundSampleId: String?
     ) {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set metronome state.")
-            return
-        }
+        if (!checkInitialized("setMetronomeState")) return
         Log.d("AudioEngine", "setMetronomeState: enabled=$isEnabled, bpm=$bpm")
         withContext(Dispatchers.IO) {
-            native_setMetronomeState(isEnabled, bpm, timeSignatureNum, timeSignatureDen, primarySoundSampleId, secondarySoundSampleId ?: "")
+            nativeSetMetronomeState(isEnabled, bpm, timeSignatureNum, timeSignatureDen, primarySoundSampleId, secondarySoundSampleId ?: "")
         }
     }
 
     override suspend fun setMetronomeVolume(volume: Float) {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set metronome volume.")
-            return
-        }
-        withContext(Dispatchers.IO) { native_setMetronomeVolume(volume) }
+        if (!checkInitialized("setMetronomeVolume")) return
+        withContext(Dispatchers.IO) { nativeSetMetronomeVolume(volume) }
     }
 
     override suspend fun startAudioRecording(
-        context: Context, // This context is for ContentResolver if filePathUri is a content URI
+        context: Context,
         filePathUri: String,
         sampleRate: Int,
         channels: Int,
-        inputDeviceId: String? // Currently unused in native, but kept for interface
+        inputDeviceId: String?
     ): Boolean {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot start recording.")
-            return false
-        }
+        if (!checkInitialized("startAudioRecording")) return false
         Log.d("AudioEngine", "startAudioRecording called: URI='$filePathUri', SR=$sampleRate, Ch=$channels")
 
         return withContext(Dispatchers.IO) {
             try {
                 val uri = filePathUri.toUri()
-                // Use the passed 'context' for ContentResolver if filePathUri is a content URI
-                // If filePathUri is a direct file path, this context might not be strictly necessary for 'w' mode
-                // but good practice to have it available.
                 this@AudioEngine.context.contentResolver.openFileDescriptor(uri, "w")?.use { pfd ->
                     val fd = pfd.fd
                     if (fd == -1) {
                         Log.e("AudioEngine", "Failed to get valid FileDescriptor for URI: $filePathUri")
                         return@withContext false
                     }
-                    val success = native_startAudioRecording(fd, filePathUri, sampleRate, channels)
+                    val success = nativeStartAudioRecording(fd, filePathUri, sampleRate, channels)
                     if (success) {
                         mRecordingParams = Pair(sampleRate, channels)
                     }
@@ -321,12 +288,9 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     }
 
     override suspend fun stopAudioRecording(): SampleMetadata? {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot stop recording.")
-            return null
-        }
+        if (!checkInitialized("stopAudioRecording")) return null
         return withContext(Dispatchers.IO) {
-            val recordingInfo = native_stopAudioRecording()
+            val recordingInfo = nativeStopAudioRecording()
             if (recordingInfo != null && recordingInfo.size == 2) {
                 val filePath = recordingInfo[0] as? String
                 val totalFrames = recordingInfo[1] as? Long
@@ -334,7 +298,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
                 mRecordingParams = null
 
                 if (filePath != null && totalFrames != null && recSampleRate > 0 && recChannels > 0) {
-                    val durationMs = if (recSampleRate > 0) (totalFrames * 1000) / recSampleRate else 0L
+                    val durationMs = (totalFrames * 1000) / recSampleRate
                     val id = UUID.randomUUID().toString()
                     val name = filePath.toUri().lastPathSegment ?: id
                     SampleMetadata(
@@ -348,81 +312,56 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
 
     override fun isRecordingActive(): Boolean {
         if (!initialized) return false
-        return native_isRecordingActive()
+        return nativeIsRecordingActive()
     }
 
     override fun getRecordingLevelPeak(): Float {
         if (!initialized) return 0.0f
-        return native_getRecordingLevelPeak()
+        return nativeGetRecordingLevelPeak()
     }
 
     override suspend fun shutdown() {
         if (initialized) {
-            native_shutdownOboe()
+            nativeShutdownOboe()
             initialized = false
             Log.d("AudioEngine", "Oboe shutdown.")
         }
     }
 
     override fun isInitialized(): Boolean {
-        val nativeState = if (initialized) native_isOboeInitialized() else false
+        if (!initialized) return false
+        val nativeState = nativeIsOboeInitialized()
         return initialized && nativeState
     }
 
     override fun getReportedLatencyMillis(): Float {
-        return if (initialized) native_getOboeReportedLatencyMillis() else -1.0f
+        return if (initialized) nativeGetOboeReportedLatencyMillis() else -1.0f
     }
 
     // --- New Sequencer Kotlin Methods ---
     override suspend fun loadSequenceData(sequence: com.example.theone.model.Sequence) {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot load sequence data.")
-            return
-        }
-        return withContext(Dispatchers.IO) {
-            native_loadSequenceData(sequence)
-        }
+        if (!checkInitialized("loadSequenceData")) return
+        nativeLoadSequenceData(sequence)
     }
 
     override suspend fun playSequence() {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot play sequence.")
-            return
-        }
-        return withContext(Dispatchers.IO) {
-            native_playSequence()
-        }
+        if (!checkInitialized("playSequence")) return
+        nativePlaySequence()
     }
 
     override suspend fun stopSequence() {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot stop sequence.")
-            return
-        }
-        return withContext(Dispatchers.IO) {
-            native_stopSequence()
-        }
+        if (!checkInitialized("stopSequence")) return
+        nativeStopSequence()
     }
 
     override suspend fun setSequencerBpm(bpm: Float) {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set sequencer BPM.")
-            return
-        }
-        return withContext(Dispatchers.IO) {
-            native_setSequencerBpm(bpm)
-        }
+        if (!checkInitialized("setSequencerBpm")) return
+        nativeSetSequencerBpm(bpm)
     }
 
     override suspend fun getSequencerPlayheadPosition(): Long {
-        if (!initialized) {
-            Log.e("AudioEngine", "AudioEngine not initialized. Cannot get playhead position.")
-            return 0L // This existing return is for the outer function if not initialized.
-        }
-        // The native call itself returns Long, so the withContext block will also return Long.
-        return withContext(Dispatchers.IO) {
-            native_getSequencerPlayheadPosition()
-        }
+        if (!checkInitialized("getSequencerPlayheadPosition")) return 0L
+        return nativeGetSequencerPlayheadPosition()
     }
     // --- End New Sequencer Kotlin Methods ---
 
