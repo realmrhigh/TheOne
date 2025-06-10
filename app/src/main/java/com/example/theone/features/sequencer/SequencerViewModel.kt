@@ -13,8 +13,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.model.Event
 import com.example.theone.model.EventType
-import com.example.theone.model.Sequence // Corrected import
-import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
+import com.example.theone.model.PlaybackMode // Added import
+import com.example.theone.model.Sequence
+import com.example.theone.model.SynthModels
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +35,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SequencerViewModel @Inject constructor(
-    @ApplicationContext private val applicationContext: Context,
+    @ApplicationContext private val applicationContext: Context, // Injected context
     private val audioEngine: AudioEngineControl,
     private val sequencerEventBus: SequencerEventBus
 ) : ViewModel() {
@@ -59,16 +60,16 @@ class SequencerViewModel @Inject constructor(
     val isPlayingState: StateFlow<Boolean> = _isPlayingState.asStateFlow()
 
     // Using the ppqn from the sequence object. Made a default value available.
-    val ticksPer16thNote: Long get() = (currentSequence?.ppqn ?: 96) / 4
+    val ticksPer16thNote: Long get() = (currentSequence?.ppqn?.toLong() ?: 96L) / 4L
 
     init {
+        // Create an initial default sequence
         val initialSeq = Sequence(
             id = UUID.randomUUID().toString(),
             name = "Sequence 1",
-            bpm = 120.0f,
-            // The 'ppqn' parameter was removed from the Sequence constructor.
-            // It's a property with a default value now.
+            bpm = 120.0f, // ppqn is a property with default value now
             events = mutableListOf()
+            // barLength, timeSignatureNumerator, timeSignatureDenominator use defaults
         )
         _sequences.value = listOf(initialSeq)
         setCurrentSequenceInternal(initialSeq)
@@ -91,8 +92,7 @@ class SequencerViewModel @Inject constructor(
 
         sequence?.let {
             viewModelScope.launch {
-                // Assuming AudioEngineControl has a method to load sequence data
-                (audioEngine as? com.example.theone.audio.AudioEngine)?.native_loadSequenceData(it)
+                audioEngine.loadSequenceData(it) // Changed: Direct call
                 Log.d("SequencerViewModel", "Loaded sequence ${it.name} into native layer.")
             }
         }
@@ -130,7 +130,7 @@ class SequencerViewModel @Inject constructor(
             currentSequence = updatedSequence
 
             viewModelScope.launch {
-                (audioEngine as? com.example.theone.audio.AudioEngine)?.native_setSequencerBpm(newBpm)
+                audioEngine.setSequencerBpm(newBpm)
             }
         }
     }
@@ -177,27 +177,59 @@ class SequencerViewModel @Inject constructor(
         if (_isPlayingState.value) return
 
         viewModelScope.launch {
-            (audioEngine as? com.example.theone.audio.AudioEngine)?.native_playSequence()
+            audioEngine.playSequence() // Changed: Direct call
             _isPlayingState.value = true
-            startPollingPlayhead()
+            // startPollingPlayhead() // Original logic for starting polling
+            // Cancel any existing polling job before starting a new one - diff moves this to play()
+            playbackJob?.cancel()
+            playbackJob = viewModelScope.launch {
+                try {
+                    while (isActive && _isPlayingState.value) { // Loop while coroutine is active and playing
+                        _playheadPositionTicks.value = audioEngine.getSequencerPlayheadPosition() // Changed: Direct call
+                        delay(50) // Poll every 50ms
+                    }
+                } finally {
+                    // This block executes when the job is cancelled or completes
+                    // Ensure playhead is reset only if stop was intended
+                    if (!_isPlayingState.value) { // Check if stop was called which sets isPlaying to false
+                        _playheadPositionTicks.value = 0L
+                        Log.d("SequencerViewModel", "Polling job cancelled and playhead reset due to stop.")
+                    } else {
+                        Log.d("SequencerViewModel", "Polling job finished or cancelled but not due to explicit stop.")
+                    }
+                }
+            }
+            Log.d("SequencerViewModel", "Playback started via native engine for sequence: ${seq.name}")
         }
     }
 
     fun stop() {
-        if (!_isPlayingState.value) return
-        viewModelScope.launch {
-            (audioEngine as? com.example.theone.audio.AudioEngine)?.native_stopSequence()
-            _isPlayingState.value = false
-            playbackJob?.cancel()
-            _playheadPositionTicks.value = 0L
-        }
+        currentSequence?.let {
+            viewModelScope.launch {
+                if (!_isPlayingState.value && playbackJob == null) {
+                    Log.d("SequencerViewModel", "Stop called but already stopped or polling job null.")
+                    // Ensure UI state is consistent even if called redundantly
+                    _isPlayingState.value = false
+                    _playheadPositionTicks.value = 0L
+                    return@launch
+                }
+                audioEngine.stopSequence() // Changed: Direct call
+                _isPlayingState.value = false // Set state before cancelling job to influence job's finally block
+                playbackJob?.cancel()
+                playbackJob = null
+                // _playheadPositionTicks.value = 0L // Reset in the polling job's finally or here. Redundant if also in finally.
+                // Set to 0L directly here to ensure it's immediate.
+                _playheadPositionTicks.value = 0L
+                Log.d("SequencerViewModel", "Playback stopped via native engine. Polling job cancelled.")
+            }
+        } ?: run { Log.w("SequencerViewModel", "Stop called but currentSequence is null.") }
     }
 
-    private fun startPollingPlayhead() {
+    private fun startPollingPlayhead() { // This function seems to be removed or integrated into play() in the diff
         playbackJob?.cancel()
         playbackJob = viewModelScope.launch {
             while (isActive && _isPlayingState.value) {
-                _playheadPositionTicks.value = (audioEngine as? com.example.theone.audio.AudioEngine)?.native_getSequencerPlayheadPosition() ?: 0L
+                _playheadPositionTicks.value = audioEngine.getSequencerPlayheadPosition() // Changed: Direct call
                 delay(50)
             }
         }

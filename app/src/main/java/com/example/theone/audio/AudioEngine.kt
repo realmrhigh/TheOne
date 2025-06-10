@@ -62,11 +62,11 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     external fun native_updatePadSettings(trackId: String, padId: String, padSettings: PadSettings)
 
     // --- New Sequencer JNI Declarations ---
-    private external fun native_loadSequenceData(sequence: com.example.theone.model.Sequence)
-    private external fun native_playSequence()
-    private external fun native_stopSequence()
-    private external fun native_setSequencerBpm(bpm: Float)
-    private external fun native_getSequencerPlayheadPosition(): Long
+    internal external fun native_loadSequenceData(sequence: com.example.theone.model.Sequence)
+    internal external fun native_playSequence()
+    internal external fun native_stopSequence()
+    internal external fun native_setSequencerBpm(bpm: Float)
+    internal external fun native_getSequencerPlayheadPosition(): Long
     // --- End New Sequencer JNI Declarations ---
 
     private var mRecordingParams: Pair<Int, Int>? = null
@@ -379,9 +379,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot load sequence data.")
             return
         }
-        withContext(Dispatchers.IO) {
-            native_loadSequenceData(sequence)
-        }
+        native_loadSequenceData(sequence)
     }
 
     override suspend fun playSequence() {
@@ -389,9 +387,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot play sequence.")
             return
         }
-        withContext(Dispatchers.IO) {
-            native_playSequence()
-        }
+        native_playSequence()
     }
 
     override suspend fun stopSequence() {
@@ -399,9 +395,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot stop sequence.")
             return
         }
-        withContext(Dispatchers.IO) {
-            native_stopSequence()
-        }
+        native_stopSequence()
     }
 
     override suspend fun setSequencerBpm(bpm: Float) {
@@ -409,9 +403,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot set sequencer BPM.")
             return
         }
-        withContext(Dispatchers.IO) {
-            native_setSequencerBpm(bpm)
-        }
+        native_setSequencerBpm(bpm)
     }
 
     override suspend fun getSequencerPlayheadPosition(): Long {
@@ -419,9 +411,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot get playhead position.")
             return 0L
         }
-        return withContext(Dispatchers.IO) {
-            native_getSequencerPlayheadPosition()
-        }
+        return native_getSequencerPlayheadPosition()
     }
     // --- End New Sequencer Kotlin Methods ---
 
