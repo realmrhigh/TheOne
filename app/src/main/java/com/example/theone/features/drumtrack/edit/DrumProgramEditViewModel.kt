@@ -221,4 +221,28 @@ class DrumProgramEditViewModel(
             currentSettings.copy(effects = updatedEffects)
         }
     }
+
+    fun toggleEffectEnabled(effectId: String) {
+        _padSettings.update { currentSettings ->
+            val updatedEffects = currentSettings.effects.map {
+                if (it.id == effectId) it.copy(isEnabled = !it.isEnabled) else it
+            }.toMutableList()
+            currentSettings.copy(effects = updatedEffects)
+        }
+    }
+
+    fun updateEffectMix(effectId: String, newMix: Float) {
+        _padSettings.update { currentSettings ->
+            val updatedEffects = currentSettings.effects.map {
+                if (it.id == effectId) it.copy(mix = newMix.coerceIn(0f, 1f)) else it
+            }.toMutableList()
+            currentSettings.copy(effects = updatedEffects)
+        }
+    }
+
+    fun removeEffect(effectId: String) {
+        _padSettings.update { currentSettings ->
+            currentSettings.copy(effects = currentSettings.effects.filterNot { it.id == effectId }.toMutableList())
+        }
+    }
 }

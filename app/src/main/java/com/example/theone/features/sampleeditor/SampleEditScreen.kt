@@ -13,11 +13,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
+import android.util.Log // Added for Log.d
 import com.example.theone.model.LoopMode
 import com.example.theone.model.SampleMetadata
-import com.example.theone.model.PlaybackMode // Added import
-import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.EnvelopeSettings // Changed from SynthModels
+import com.example.theone.model.LFOSettings // Added
+// Import for AudioEngineControl is via qualified name in class signature
+import kotlinx.coroutines.CoroutineScope // Added for MockProjectManager
+import kotlinx.coroutines.Dispatchers // Added for MockProjectManager
 import java.util.UUID
+
 
 // Mock AudioEngineControl for preview
 class MockAudioEngineControl : com.example.theone.audio.AudioEngineControl {
@@ -29,17 +35,26 @@ class MockAudioEngineControl : com.example.theone.audio.AudioEngineControl {
     override fun isSampleLoaded(sampleId: String): Boolean = true
     override suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean = true
 
-    // Add missing interface methods
     override suspend fun playPadSample(
-        noteInstanceId: String, trackId: String, padId: String, sampleId: String,
-        sliceId: String?, velocity: Float,
-        playbackMode: com.example.theone.model.PlaybackMode, // Corrected type
-        coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        ampEnv: com.example.theone.model.SynthModels.EnvelopeSettings, // Corrected type
-        filterEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
-        pitchEnv: com.example.theone.model.SynthModels.EnvelopeSettings?, // Corrected type
-        lfos: List<Any> // Matches interface
-    ): Boolean = true
+        noteInstanceId: String,
+        trackId: String,
+        padId: String,
+        sampleId: String,
+        sliceId: String?,
+        velocity: Float,
+        playbackMode: PlaybackMode,
+        coarseTune: Int,
+        fineTune: Int,
+        pan: Float,
+        volume: Float,
+        ampEnv: EnvelopeSettings,
+        filterEnv: EnvelopeSettings?,
+        pitchEnv: EnvelopeSettings?,
+        lfos: List<LFOSettings>
+    ): Boolean {
+        Log.d("MockAudioEngine", "playPadSample called with sampleId: $sampleId")
+        return true
+    }
 
     override suspend fun playSampleSlice(
         sampleId: String, noteInstanceId: String, volume: Float, pan: Float,
@@ -62,12 +77,26 @@ class MockAudioEngineControl : com.example.theone.audio.AudioEngineControl {
 // Mock ProjectManager for preview
 class MockProjectManager : com.example.theone.domain.ProjectManager {
     private val samples = mutableMapOf<String, SampleMetadata>()
-    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata? {
-        val id = UUID.randomUUID().toString()
-        val meta = SampleMetadata(id, name, sourceFileUri, 1000L, 44100, 1)
-        samples[id] = meta
-        return meta
+    // Assuming ProjectManager interface allows non-nullable return if this mock is to be used widely.
+    // Or, this mock might be specific to previews where non-null is guaranteed/expected.
+    override suspend fun addSampleToPool(
+        name: String,
+        sourceFileUri: String,
+        copyToProjectDir: Boolean
+    ): SampleMetadata { // Changed to non-nullable return type
+        return SampleMetadata(
+            id = "new_sample_${System.currentTimeMillis()}",
+            name = name,
+            uri = sourceFileUri, // Adapted to SampleMetadata constructor
+            duration = 1000L, // Adapted from durationMs: Float
+            sampleRate = 44100,
+            channels = 1, // Adapted from numChannels
+            bitDepth = 16
+            // Other fields will use default values from SampleMetadata constructor
+        )
+        // This mock no longer stores the sample in its 'samples' map with this new implementation
     }
+
     override suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean {
         samples[sample.id] = sample
         return true

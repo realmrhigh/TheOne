@@ -1,6 +1,6 @@
 package com.example.theone.model
 import kotlinx.serialization.Serializable // Ensure this import is present
-import com.example.theone.model.SampleModels.SampleMetadata // Added import
+import com.example.theone.model.SampleModels.* // Added import
 
 // Duplicate SampleMetadata class removed
 
