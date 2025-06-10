@@ -54,7 +54,8 @@ class DrumProgramEditViewModel(
             sampleNameCache = sample.name
         )
         _padSettings.update { currentSettings ->
-            currentSettings.copy(layers = (currentSettings.layers.toMutableList() + newLayer))
+            // FIX: Ensure a new mutable list is created.
+            currentSettings.copy(layers = (currentSettings.layers + newLayer).toMutableList())
         }
         _selectedLayerIndex.value = _padSettings.value.layers.size - 1
     }
@@ -81,6 +82,7 @@ class DrumProgramEditViewModel(
         if (layerIndex < 0 || layerIndex >= _padSettings.value.layers.size) return
 
         _padSettings.update { currentSettings ->
+            // FIX: Create a new mutable list that can be modified.
             val updatedLayers = currentSettings.layers.toMutableList()
             val layerToUpdate = updatedLayers[layerIndex]
 
@@ -93,7 +95,8 @@ class DrumProgramEditViewModel(
                         _padSettings.update { settings ->
                             val layers = settings.layers.toMutableList()
                             if (layerIndex < layers.size && layers[layerIndex].sampleId == newSampleId) {
-                                layers[layerIndex] = layers[layerIndex].copy(sampleNameCache = sampleInfo?.name ?: "N/A")
+                                val finalLayer = layers[layerIndex].copy(sampleNameCache = sampleInfo?.name ?: "N/A")
+                                layers[layerIndex] = finalLayer
                                 settings.copy(layers = layers)
                             } else {
                                 settings
@@ -130,7 +133,11 @@ class DrumProgramEditViewModel(
     fun updateLfo(lfoIndex: Int, newSettings: LFOSettings) {
         if (lfoIndex < 0 || lfoIndex >= _padSettings.value.lfos.size) return
         _padSettings.update { currentSettings ->
-            val updatedLfos = currentSettings.lfos.toMutableList().apply { this[lfoIndex] = newSettings }
+            // Create a new mutable list from the current state
+            val updatedLfos = currentSettings.lfos.toMutableList()
+            // Directly set the item at the specified index
+            updatedLfos[lfoIndex] = newSettings
+            // Pass the modified list to the copy function
             currentSettings.copy(lfos = updatedLfos)
         }
     }
@@ -175,8 +182,12 @@ class DrumProgramEditViewModel(
     // --- Modulation Functions ---
     fun addModulationRouting() {
         _padSettings.update { currentSettings ->
-            val newModRoutings = currentSettings.modulations.toMutableList() + ModulationRouting()
-            currentSettings.copy(modulations = newModRoutings)
+            // Create a new mutable list from the current state.
+            val updatedModRoutings = currentSettings.modulations.toMutableList()
+            // Directly add the new item to the list.
+            updatedModRoutings.add(ModulationRouting())
+            // Pass the now-modified list to the copy function.
+            currentSettings.copy(modulations = updatedModRoutings)
         }
     }
 
@@ -202,30 +213,11 @@ class DrumProgramEditViewModel(
         }
         val newEffect = EffectSetting(type = type, parameters = defaultParams)
         _padSettings.update { currentSettings ->
-            currentSettings.copy(effects = (currentSettings.effects.toMutableList() + newEffect))
-        }
-    }
-
-    fun removeEffect(id: String) {
-        _padSettings.update { currentSettings ->
-            currentSettings.copy(effects = currentSettings.effects.filterNot { it.id == id }.toMutableList())
-        }
-    }
-
-    fun updateEffectMix(effectId: String, mix: Float) {
-        _padSettings.update { currentSettings ->
-            val updatedEffects = currentSettings.effects.map { effect ->
-                if (effect.id == effectId) effect.copy(mix = mix.coerceIn(0f, 1f)) else effect
-            }.toMutableList()
-            currentSettings.copy(effects = updatedEffects)
-        }
-    }
-
-    fun toggleEffectEnabled(effectId: String) {
-        _padSettings.update { currentSettings ->
-            val updatedEffects = currentSettings.effects.map { effect ->
-                if (effect.id == effectId) effect.copy(isEnabled = !effect.isEnabled) else effect
-            }.toMutableList()
+            // Create a new mutable list from the current state.
+            val updatedEffects = currentSettings.effects.toMutableList()
+            // Directly add the new item to the list.
+            updatedEffects.add(newEffect)
+            // Pass the now-modified list to the copy function.
             currentSettings.copy(effects = updatedEffects)
         }
     }
