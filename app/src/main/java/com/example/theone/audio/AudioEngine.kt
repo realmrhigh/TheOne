@@ -2,18 +2,16 @@ package com.example.theone.audio
 
 import android.content.Context
 import android.util.Log
+import androidx.core.net.toUri
+import com.example.theone.features.drumtrack.model.PadSettings
+import com.example.theone.model.EnvelopeSettings // Corrected import
+import com.example.theone.model.LFOSettings // Corrected import
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.SampleMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.UUID
-import androidx.core.net.toUri
-import com.example.theone.model.SampleMetadata
-import com.example.theone.model.AudioInputSource // Keep this if used by other methods in full file
-import com.example.theone.features.drumtrack.model.PadSettings // Keep this if used by other methods
-import com.example.theone.model.SynthModels.LFOSettings
-import com.example.theone.model.SynthModels.EnvelopeSettings // Added for playPadSample
-import com.example.theone.model.PlaybackMode // Added for playPadSample
-import java.io.File // Keep this if used by other methods
 
 class AudioEngine(private val context: Context) : AudioEngineControl {
 
@@ -41,8 +39,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     ): Boolean
 
     // JNI declaration for sample playback (Slice related)
-    private external fun native_playSampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, sampleRate: Int, trimStartMs: Long, trimEndMs: Long, loopStartMs: Long, loopEndMs: Boolean, isLooping: Boolean): Boolean
-
+    private external fun native_playSampleSlice(sampleId: String, noteInstanceId: String, volume: Float, pan: Float, sampleRate: Int, trimStartMs: Long, trimEndMs: Long, loopStartMs: Long, loopEndMs: Long, isLooping: Boolean): Boolean
 
     // JNI declarations for metronome
     private external fun native_setMetronomeState(
@@ -62,13 +59,13 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     private external fun native_getRecordingLevelPeak(): Float
 
     // JNI declaration for updating PadSettings
-    external fun native_updatePadSettings(trackId: String, padId: String, padSettings: PadSettings): Unit
+    external fun native_updatePadSettings(trackId: String, padId: String, padSettings: PadSettings)
 
     // --- New Sequencer JNI Declarations ---
-    private external fun native_loadSequenceData(sequence: com.example.theone.model.Sequence): Unit
-    private external fun native_playSequence(): Unit
-    private external fun native_stopSequence(): Unit
-    private external fun native_setSequencerBpm(bpm: Float): Unit
+    private external fun native_loadSequenceData(sequence: com.example.theone.model.Sequence)
+    private external fun native_playSequence()
+    private external fun native_stopSequence()
+    private external fun native_setSequencerBpm(bpm: Float)
     private external fun native_getSequencerPlayheadPosition(): Long
     // --- End New Sequencer JNI Declarations ---
 
@@ -90,7 +87,7 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
 
     // Using context provided at construction time for ContentResolver
     suspend fun loadSampleToMemory(contextForContentResolver: Context, sampleId: String, filePathUri: String): Boolean {
-         if (!initialized) {
+        if (!initialized) {
             Log.e("AudioEngine", "AudioEngine not initialized. Cannot load sample.")
             return false
         }
@@ -243,8 +240,16 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         }
         Log.d("AudioEngine", "playSampleSlice called: ID='$sampleId', SR=$actualSampleRate, trim[$trimStartMs-$trimEndMs], loop[$loopStartMs-$loopEndMs], looping=$isLooping")
         return native_playSampleSlice(
-            sampleId, noteInstanceId, volume, pan, actualSampleRate,
-            trimStartMs, trimEndMs, loopStartMs ?: 0L, loopEndMs ?: 0L, isLooping, isLooping // Last parameter name corrected in JNI side if needed
+            sampleId,
+            noteInstanceId,
+            volume,
+            pan,
+            actualSampleRate,
+            trimStartMs,
+            trimEndMs,
+            loopStartMs ?: 0L,
+            loopEndMs ?: 0L,
+            isLooping
         )
     }
 
@@ -314,7 +319,6 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             }
         }
     }
-
 
     override suspend fun stopAudioRecording(): SampleMetadata? {
         if (!initialized) {
@@ -420,11 +424,6 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         }
     }
     // --- End New Sequencer Kotlin Methods ---
-
-    // Other methods like startAudioRecording (simulated), playSampleSlice (simulated) etc.
-    // from the original file should be here if they are still needed.
-    // For this subtask, we are focusing on the JNI bindings.
-    // The provided code above is a more complete AudioEngine structure.
 
     companion object {
         init {

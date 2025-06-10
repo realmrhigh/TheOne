@@ -2,9 +2,10 @@ package com.example.theone.audio
 
 import android.content.Context
 import com.example.theone.model.SampleMetadata
-import com.example.theone.model.SynthModels.EnvelopeSettings
-import com.example.theone.model.SynthModels.LFOSettings
+import com.example.theone.model.EnvelopeSettings // Corrected import
+import com.example.theone.model.LFOSettings      // Corrected import
 import com.example.theone.model.PlaybackMode
+import com.example.theone.model.Sequence
 
 interface AudioEngineControl {
     suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean
@@ -63,7 +64,7 @@ interface AudioEngineControl {
     fun getReportedLatencyMillis(): Float
 
     // --- New Sequencer Control Methods ---
-    suspend fun loadSequenceData(sequence: com.example.theone.model.Sequence)
+    suspend fun loadSequenceData(sequence: Sequence)
     suspend fun playSequence()
     suspend fun stopSequence()
     suspend fun setSequencerBpm(bpm: Float)
