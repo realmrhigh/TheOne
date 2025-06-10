@@ -2,12 +2,12 @@ package com.example.theone.features.drumtrack.model
 
 import com.example.theone.model.SampleLayer // Added import
 import com.example.theone.model.LayerTriggerRule // Added import
-import com.example.theone.model.SynthModels.EnvelopeSettings
-import com.example.theone.model.SynthModels.LFOSettings
 // import com.example.theone.model.SynthModels.EnvelopeType // This was ModelEnvelopeTypeInternal, not directly used by PadSettings itself
 import com.example.theone.model.PlaybackMode
-import com.example.theone.model.SynthModels.ModulationRouting // Added import
-import com.example.theone.model.SynthModels.EffectSetting // Added import
+import com.example.theone.model.EffectSetting
+import com.example.theone.model.EnvelopeSettings
+import com.example.theone.model.LFOSettings
+import com.example.theone.model.ModulationRouting
 
 // PlaybackMode is now defined in com.example.theone.model.SharedModels
 

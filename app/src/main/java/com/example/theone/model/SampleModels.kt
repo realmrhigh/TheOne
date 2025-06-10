@@ -1,7 +1,9 @@
 package com.example.theone.model
 
+import kotlinx.serialization.Serializable // Ensure this import is present
 import java.util.UUID // For generating unique IDs
 
+@Serializable
 data class SampleMetadata(
     val id: String, // Unique ID for the sample
     var name: String, // User-defined name
