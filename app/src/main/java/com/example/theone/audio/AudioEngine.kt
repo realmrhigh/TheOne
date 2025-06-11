@@ -72,6 +72,9 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     private external fun native_getSequencerPlayheadPosition(): Long
     // --- End New Sequencer JNI Declarations ---
 
+    private external fun native_setPadVolume(trackId: String, padId: String, volume: Float)
+    private external fun native_setPadPan(trackId: String, padId: String, pan: Float)
+
     private var mRecordingParams: Pair<Int, Int>? = null
 
     override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean {
@@ -420,6 +423,26 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         }
     }
     // --- End New Sequencer Kotlin Methods ---
+
+    override suspend fun setPadVolume(trackId: String, padId: String, volume: Float) {
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set pad volume.")
+            return
+        }
+        withContext(Dispatchers.IO) {
+            native_setPadVolume(trackId, padId, volume)
+        }
+        Log.d("AudioEngine", "setPadVolume called: trackId=$trackId, padId=$padId, volume=$volume")
+    }
+
+    override fun setPadPan(trackId: String, padId: String, pan: Float) { // non-suspend
+        if (!initialized) {
+            Log.e("AudioEngine", "AudioEngine not initialized. Cannot set pad pan.")
+            return
+        }
+        native_setPadPan(trackId, padId, pan)
+        Log.d("AudioEngine", "setPadPan called: trackId=$trackId, padId=$padId, pan=$pan")
+    }
 
     // Other methods like startAudioRecording (simulated), playSampleSlice (simulated) etc.
     // from the original file should be here if they are still needed.

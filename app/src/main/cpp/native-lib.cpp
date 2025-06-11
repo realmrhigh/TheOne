@@ -22,10 +22,12 @@
 #include <memory>   // For std::unique_ptr, std::make_unique (used by audio_sample.h)
 #include <random>   // For std::mt19937, std::random_device
 #include <iterator> // For std::make_move_iterator
+#include <algorithm> // For std::max and std::min
 
 #include "EnvelopeGenerator.h"
 #include "LfoGenerator.h"
 #include "PadSettings.h"
+#include "AudioEngine.h" // Include the new AudioEngine header
 
 
 #ifndef M_PI // Define M_PI if not defined by cmath (common on some compilers)
@@ -96,10 +98,15 @@ static std::map<std::string, theone::audio::PadSettingsCpp> gPadSettingsMap;
 static std::mutex gPadSettingsMutex; // Mutex for gPadSettingsMap
 
 // Random number generator for layer selection
-static std::mt19937 gRandomEngine{std::random_device{}()};
+// static std::mt19937 gRandomEngine{std::random_device{}()}; // Moved to AudioEngine class
+
+// Global AudioEngine instance
+static std::unique_ptr<theone::audio::AudioEngine> audioEngineInstance;
 
 
-// --- C++ Sequencer Data Structures ---
+// --- C++ Sequencer Data Structures (Potentially moved to AudioEngine or remain global if engine doesn't manage them directly) ---
+// For now, assuming these might still be global or passed to AudioEngine methods if not fully encapsulated.
+// If AudioEngine fully encapsulates sequencer, these statics would be removed or wrapped.
 enum class EventTriggerTypeCpp {
     PAD_TRIGGER // Initially, only pad triggers
 };
@@ -627,11 +634,13 @@ public:
     }
 };
 
-static MyAudioCallback myCallback;
-static oboe::ManagedStream outStream;
-static bool oboeInitialized = false;
+// static MyAudioCallback myCallback; // Replaced by AudioEngine instance as callback
+// static oboe::ManagedStream outStream; // Managed by AudioEngine instance
+// static bool oboeInitialized = false; // Managed by AudioEngine instance
 
-// Define the Audio Input Callback class
+// Define the Audio Input Callback class (if not part of AudioEngine)
+// If AudioEngine handles input callback as well, this might be removed or adapted.
+// For this step, assuming AudioEngine might use a separate input callback or this remains for now.
 class MyAudioInputCallback : public oboe::AudioStreamCallback {
 public:
     oboe::DataCallbackResult onAudioReady(
@@ -831,37 +840,21 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1initOboe(
         JNIEnv* env,
         jobject /* this */) {
-    if (oboeInitialized) {
+    if (audioEngineInstance && audioEngineInstance->isOboeInitialized()) {
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine already initialized.");
         return JNI_TRUE;
     }
-    oboe::AudioStreamBuilder builder;
-    builder.setDirection(oboe::Direction::Output)
-            ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-            ->setSharingMode(oboe::SharingMode::Exclusive)
-            ->setFormat(oboe::AudioFormat::Float)
-            ->setChannelCount(oboe::ChannelCount::Stereo)
-            ->setSampleRate(oboe::kUnspecified)
-            ->setCallback(&myCallback);
-
-    oboe::Result result = builder.openManagedStream(outStream);
-    if (result == oboe::Result::OK) {
-        result = outStream->requestStart();
-        if (result != oboe::Result::OK) {
-            outStream->close();
-            return JNI_FALSE;
-        }
-        oboeInitialized = true;
-        // Set global audio stream sample rate, used by sequencer and potentially other components
-        gAudioStreamSampleRate = static_cast<uint32_t>(outStream->getSampleRate());
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Oboe initialized. Global Sample Rate: %u Hz", gAudioStreamSampleRate);
-
-        { // Scope for metronomeLock to ensure it's released
-            std::lock_guard<std::mutex> metronomeLock(gMetronomeStateMutex);
-            gMetronomeState.audioStreamSampleRate = gAudioStreamSampleRate; // Update metronome's copy too
-            gMetronomeState.updateSchedulingParameters();
-        }
+    audioEngineInstance = std::make_unique<theone::audio::AudioEngine>();
+    if (audioEngineInstance && audioEngineInstance->initialize()) {
+        // If global gAudioStreamSampleRate is still used by parts of native-lib.cpp not yet refactored:
+        // gAudioStreamSampleRate = static_cast<uint32_t>(audioEngineInstance->getOboeReportedSampleRate()); // You'd need a getter in AudioEngine
+        // Same for gMetronomeState if it's still global and needs the sample rate.
+        // For now, assuming AudioEngine internally manages what it needs.
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine initialized via native_initOboe.");
         return JNI_TRUE;
     }
+    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize AudioEngine via native_initOboe.");
+    audioEngineInstance.reset(); // Ensure cleanup if init failed
     return JNI_FALSE;
 }
 
@@ -1437,34 +1430,33 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1shutdownOboe(
         JNIEnv* env,
         jobject /* this */) {
-    if (outStream && oboeInitialized) {
-        outStream->requestStop();
-        outStream->close();
+    if (audioEngineInstance) {
+        audioEngineInstance->shutdown();
+        audioEngineInstance.reset(); // Release the instance
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine shutdown complete via native_shutdownOboe.");
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_shutdownOboe: audioEngineInstance is null.");
     }
-    if (mInputStream) { // Also close input stream if it was opened
-        mInputStream->requestStop();
-        mInputStream->close();
-    }
-    oboeInitialized = false;
-    __android_log_print(ANDROID_LOG_INFO, "TheOneNative", "Oboe shutdown complete.");
+    // Clear any remaining global state if it's being phased out.
+    // oboeInitialized = false; // This global would be removed if fully refactored.
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1isOboeInitialized(
         JNIEnv* env,
         jobject /* this */) {
-    return static_cast<jboolean>(oboeInitialized && outStream && outStream->getState() != oboe::StreamState::Closed);
+    if (audioEngineInstance) {
+        return static_cast<jboolean>(audioEngineInstance->isOboeInitialized());
+    }
+    return JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1getOboeReportedLatencyMillis(
         JNIEnv* env,
         jobject /* this */) {
-    if (oboeInitialized && outStream) {
-        oboe::ResultWithValue<double> latency = outStream->calculateLatencyMillis();
-        if (latency) {
-            return static_cast<jfloat>(latency.value());
-        }
+    if (audioEngineInstance) {
+        return audioEngineInstance->getOboeReportedLatencyMillis();
     }
     return -1.0f;
 }
@@ -1473,22 +1465,35 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1stringFromJNI(
         JNIEnv* env,
         jobject /* this */) {
-    std::string hello = "Hello from C++ (AudioEngine)";
-    return env->NewStringUTF(hello.c_str());
+    // std::string hello = "Hello from C++ (AudioEngine)"; // This is just a test JNI
+    // return env->NewStringUTF(hello.c_str());
+    if (audioEngineInstance) {
+         // Example: if AudioEngine had a similar test method
+         // return env->NewStringUTF(audioEngineInstance->getTestString().c_str());
+    }
+    return env->NewStringUTF("Hello from C++ (AudioEngine - instance not fully integrated yet)");
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1isRecordingActive(
         JNIEnv *env,
         jobject /* thiz */) {
-    return static_cast<jboolean>(mIsRecording.load());
+    // return static_cast<jboolean>(mIsRecording.load()); // Old global way
+    if (audioEngineInstance) {
+        return static_cast<jboolean>(audioEngineInstance->isRecordingActive());
+    }
+    return JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1getRecordingLevelPeak(
         JNIEnv *env,
         jobject /* thiz */) {
-    return mPeakRecordingLevel.exchange(0.0f);
+    // return mPeakRecordingLevel.exchange(0.0f); // Old global way
+    if (audioEngineInstance) {
+        return audioEngineInstance->getRecordingLevelPeak();
+    }
+    return 0.0f;
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1496,25 +1501,22 @@ Java_com_example_theone_audio_AudioEngine_native_1getSampleRate(
         JNIEnv *env,
         jobject /* thiz */,
         jstring jSampleId) {
-    const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
-    SampleId sampleIdStr(nativeSampleId);
-    env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
-
-    auto it = gSampleMap.find(sampleIdStr);
-    if (it != gSampleMap.end()) {
-        const theone::audio::LoadedSample* loadedSample = &(it->second);
-        if (loadedSample && loadedSample->format.sampleRate > 0) {
-            return static_cast<jint>(loadedSample->format.sampleRate);
-        } else {
-            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_getSampleRate: Sample '%s' found but has invalid sample rate: %u", sampleIdStr.c_str(), loadedSample ? loadedSample->format.sampleRate : 0);
-            return 0; // Indicate error or invalid rate
-        }
+    // const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr); // Old global way
+    // SampleId sampleIdStr(nativeSampleId);
+    // env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
+    // auto it = gSampleMap.find(sampleIdStr);
+    // ... (old global logic)
+    if (audioEngineInstance) {
+        std::string sampleIdStr = JStringToString(env, jSampleId);
+        return audioEngineInstance->getSampleRate(sampleIdStr);
     }
-    __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_getSampleRate: Sample ID '%s' not found.", sampleIdStr.c_str());
-    return 0; // Indicate error (sample not found)
+    return 0;
 }
 
 // ... Any other JNI functions needed ...
+// TODO: Refactor native_loadSampleToMemory, native_isSampleLoaded, native_unloadSample,
+// native_playPadSample, native_playSampleSlice, native_setMetronomeState, native_setMetronomeVolume,
+// native_startAudioRecording, native_stopAudioRecording, etc. to use audioEngineInstance
 
 // Helper function to convert Kotlin SampleLayer to SampleLayerCpp
 theone::audio::SampleLayerCpp ConvertKotlinSampleLayer(JNIEnv* env, jobject kotlinLayer) {
@@ -1779,9 +1781,9 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
     std::string padIdStr = JStringToString(env, jPadId);
     std::string padKey = trackIdStr + "_" + padIdStr;
 
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Called for padKey: %s", padKey.c_str());
+    // __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Called for padKey: %s", padKey.c_str()); // Original Log
 
-    theone::audio::PadSettingsCpp cppSettings; // Create a new C++ settings object
+    theone::audio::PadSettingsCpp cppSettings; // Create a new C++ settings object to convert Kotlin object
 
     // Get PadSettings Kotlin class and field IDs
     jclass padSettingsClass = env->GetObjectClass(jPadSettings);
@@ -1982,11 +1984,18 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
     // Clean up PadSettings class reference
     env->DeleteLocalRef(padSettingsClass);
 
-    // --- Update Map ---
-    {
-        std::lock_guard<std::mutex> lock(gPadSettingsMutex);
-        gPadSettingsMap[padKey] = std::move(cppSettings); // Move constructed CppSettings into map
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Successfully updated PadSettings for key: %s. Map size: %zu", padKey.c_str(), gPadSettingsMap.size());
+    // --- Update Map --- // This part is now handled by AudioEngine class
+    // {
+    //     std::lock_guard<std::mutex> lock(gPadSettingsMutex);
+    //     gPadSettingsMap[padKey] = std::move(cppSettings); // Move constructed CppSettings into map
+    //     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Successfully updated PadSettings for key: %s. Map size: %zu", padKey.c_str(), gPadSettingsMap.size());
+    // }
+
+    if (audioEngineInstance) {
+        audioEngineInstance->updatePadSettings(padKey, cppSettings);
+         __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Delegated to AudioEngine for key: %s", padKey.c_str());
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_updatePadSettings: audioEngineInstance is null for key: %s", padKey.c_str());
     }
 
     // JNI resources like jTrackId, jPadId, jPadSettings are managed by JNI (caller releases them or they are arguments)
@@ -2313,3 +2322,48 @@ Java_com_example_theone_audio_AudioEngine_native_1getSequencerPlayheadPosition(
     return 0L;
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1setPadPan(
+        JNIEnv *env,
+        jobject /* this */,
+        jstring jTrackId,
+        jstring jPadId,
+        jfloat pan) {
+    std::string trackIdStr = JStringToString(env, jTrackId);
+    std::string padIdStr = JStringToString(env, jPadId);
+
+    if (trackIdStr.empty() || padIdStr.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_setPadPan JNI: trackId or padId is empty");
+        return;
+    }
+    std::string padKey = trackIdStr + "_" + padIdStr;
+
+    if (audioEngineInstance) {
+        audioEngineInstance->setPadPan(padKey, static_cast<float>(pan));
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_setPadPan JNI: audioEngineInstance is null for padKey '%s'", padKey.c_str());
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1setPadVolume(
+        JNIEnv *env,
+        jobject /* this */,
+        jstring jTrackId,
+        jstring jPadId,
+        jfloat volume) {
+    std::string trackIdStr = JStringToString(env, jTrackId);
+    std::string padIdStr = JStringToString(env, jPadId);
+
+    if (trackIdStr.empty() || padIdStr.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_setPadVolume JNI: trackId or padId is empty");
+        return;
+    }
+    std::string padKey = trackIdStr + "_" + padIdStr;
+
+    if (audioEngineInstance) {
+        audioEngineInstance->setPadVolume(padKey, static_cast<float>(volume));
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_setPadVolume JNI: audioEngineInstance is null for padKey '%s'", padKey.c_str());
+    }
+}
