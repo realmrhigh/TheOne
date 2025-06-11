@@ -7,6 +7,10 @@ import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 import com.example.theone.features.drumtrack.model.PadSettings
 import com.example.theone.model.*
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,11 +23,16 @@ enum class EditorTab { SAMPLES, ENVELOPES, LFO, MODULATION, EFFECTS }
 enum class LayerParameter { SAMPLE_ID, TUNING_SEMI, TUNING_FINE, VOLUME, PAN, START_POINT, END_POINT, LOOP_POINT, LOOP_ENABLED, REVERSE }
 enum class EnvelopeType { AMP, PITCH, FILTER }
 
+@AssistedFactory
+interface DrumProgramEditViewModelFactory {
+    fun create(initialPadSettings: PadSettings): DrumProgramEditViewModel
+}
 
-class DrumProgramEditViewModel(
+@HiltViewModel(assistedFactory = DrumProgramEditViewModelFactory::class)
+class DrumProgramEditViewModel @AssistedInject constructor(
     private val audioEngine: AudioEngineControl,
     val projectManager: ProjectManager,
-    initialPadSettings: PadSettings
+    @Assisted initialPadSettings: PadSettings
 ) : ViewModel() {
 
     private val _padSettings = MutableStateFlow(initialPadSettings)
@@ -54,7 +63,6 @@ class DrumProgramEditViewModel(
             sampleNameCache = sample.name
         )
         _padSettings.update { currentSettings ->
-            // FIX: Ensure a new mutable list is created.
             currentSettings.copy(layers = (currentSettings.layers + newLayer).toMutableList())
         }
         _selectedLayerIndex.value = _padSettings.value.layers.size - 1
@@ -66,7 +74,6 @@ class DrumProgramEditViewModel(
             val updatedLayers = currentSettings.layers.toMutableList().apply { removeAt(layerIndex) }
             currentSettings.copy(layers = updatedLayers)
         }
-        // Adjust selectedLayerIndex
         val currentSelection = _selectedLayerIndex.value
         val newSize = _padSettings.value.layers.size
         if (newSize == 0) {
@@ -82,14 +89,12 @@ class DrumProgramEditViewModel(
         if (layerIndex < 0 || layerIndex >= _padSettings.value.layers.size) return
 
         _padSettings.update { currentSettings ->
-            // FIX: Create a new mutable list that can be modified.
             val updatedLayers = currentSettings.layers.toMutableList()
             val layerToUpdate = updatedLayers[layerIndex]
 
             val updatedLayer = when (parameter) {
                 LayerParameter.SAMPLE_ID -> {
                     val newSampleId = value as String
-                    // Asynchronously fetch sample name
                     viewModelScope.launch {
                         val sampleInfo = projectManager.getSampleById(newSampleId)
                         _padSettings.update { settings ->
@@ -133,11 +138,8 @@ class DrumProgramEditViewModel(
     fun updateLfo(lfoIndex: Int, newSettings: LFOSettings) {
         if (lfoIndex < 0 || lfoIndex >= _padSettings.value.lfos.size) return
         _padSettings.update { currentSettings ->
-            // Create a new mutable list from the current state
             val updatedLfos = currentSettings.lfos.toMutableList()
-            // Directly set the item at the specified index
             updatedLfos[lfoIndex] = newSettings
-            // Pass the modified list to the copy function
             currentSettings.copy(lfos = updatedLfos)
         }
     }
@@ -179,14 +181,10 @@ class DrumProgramEditViewModel(
         return _padSettings.value
     }
 
-    // --- Modulation Functions ---
     fun addModulationRouting() {
         _padSettings.update { currentSettings ->
-            // Create a new mutable list from the current state.
             val updatedModRoutings = currentSettings.modulations.toMutableList()
-            // Directly add the new item to the list.
             updatedModRoutings.add(ModulationRouting())
-            // Pass the now-modified list to the copy function.
             currentSettings.copy(modulations = updatedModRoutings)
         }
     }
@@ -197,7 +195,6 @@ class DrumProgramEditViewModel(
         }
     }
 
-    // --- Effects Functions ---
     fun addEffect(type: EffectType) {
         val defaultParams = mutableMapOf<String, Float>()
         when (type) {
@@ -209,16 +206,37 @@ class DrumProgramEditViewModel(
                 defaultParams["size"] = 0.7f
                 defaultParams["decayMs"] = 1000f
             }
-            else -> {}
+            else -> { /* No specific default params for other types */ }
         }
         val newEffect = EffectSetting(type = type, parameters = defaultParams)
         _padSettings.update { currentSettings ->
-            // Create a new mutable list from the current state.
             val updatedEffects = currentSettings.effects.toMutableList()
-            // Directly add the new item to the list.
             updatedEffects.add(newEffect)
-            // Pass the now-modified list to the copy function.
             currentSettings.copy(effects = updatedEffects)
+        }
+    }
+
+    fun toggleEffectEnabled(effectId: String) {
+        _padSettings.update { currentSettings ->
+            val updatedEffects = currentSettings.effects.map {
+                if (it.id == effectId) it.copy(isEnabled = !it.isEnabled) else it
+            }
+            currentSettings.copy(effects = updatedEffects.toMutableList())
+        }
+    }
+
+    fun updateEffectMix(effectId: String, mix: Float) {
+        _padSettings.update { currentSettings ->
+            val updatedEffects = currentSettings.effects.map {
+                if (it.id == effectId) it.copy(mix = mix) else it
+            }
+            currentSettings.copy(effects = updatedEffects.toMutableList())
+        }
+    }
+
+    fun removeEffect(effectId: String) {
+        _padSettings.update { currentSettings ->
+            currentSettings.copy(effects = currentSettings.effects.filterNot { it.id == effectId }.toMutableList())
         }
     }
 }

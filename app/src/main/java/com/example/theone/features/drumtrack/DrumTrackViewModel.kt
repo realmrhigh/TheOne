@@ -4,11 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
+// Import the factory
+import com.example.theone.features.drumtrack.edit.DrumProgramEditViewModelFactory
 import com.example.theone.features.drumtrack.model.PadSettings
 import com.example.theone.features.sequencer.PadTriggerEvent
 import com.example.theone.features.sequencer.SequencerEventBus
 import com.example.theone.model.SampleMetadata
-// CORRECTED IMPORT: Import the data class directly
 import com.example.theone.model.SampleLayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +23,9 @@ import javax.inject.Inject
 class DrumTrackViewModel @Inject constructor(
     val audioEngine: AudioEngineControl,
     val projectManager: ProjectManager,
-    private val sequencerEventBus: SequencerEventBus
+    private val sequencerEventBus: SequencerEventBus,
+    // Add the factory here
+    val drumProgramEditViewModelFactory: DrumProgramEditViewModelFactory
 ) : ViewModel() {
 
     private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())
@@ -35,7 +38,7 @@ class DrumTrackViewModel @Inject constructor(
 
     init {
         val initialPads = (0 until NUM_PADS).associate { index ->
-            val padId = "Pad$index"
+            val padId = "Pad${index}" // Escaped for subtask, will be "Pad${index}" in Kotlin
             padId to PadSettings(id = padId)
         }
         _padSettingsMap.value = initialPads
@@ -52,7 +55,6 @@ class DrumTrackViewModel @Inject constructor(
 
         val layers = existingPadSetting.layers.toMutableList()
         if (layers.isEmpty()) {
-            // CORRECTED USAGE: Call the constructor directly
             layers.add(SampleLayer(id = "layer_0", sampleId = sample.id, sampleNameCache = sample.name))
         } else {
             layers[0] = layers[0].copy(
@@ -125,10 +127,10 @@ class DrumTrackViewModel @Inject constructor(
                     sequencerEventBus.emitPadTriggerEvent(PadTriggerEvent(padId = padId, velocity = 127))
                 }
             } else {
-                println("DrumTrackViewModel: Pad $padId triggered, but no sample assigned to its first layer.")
+                println("DrumTrackViewModel: Pad ${padId} triggered, but no sample assigned to its first layer.")
             }
         } else {
-            println("DrumTrackViewModel: Pad $padId triggered, but no settings found.")
+            println("DrumTrackViewModel: Pad ${padId} triggered, but no settings found.")
         }
     }
 
@@ -141,13 +143,13 @@ class DrumTrackViewModel @Inject constructor(
             try {
                 projectManager.savePadSettings(padId, newSettings).let { result ->
                     if (result.isSuccess) {
-                        android.util.Log.d("DrumTrackViewModel", "Pad settings persistence successful for $padId.")
+                        android.util.Log.d("DrumTrackViewModel", "Pad settings persistence successful for ${padId}.")
                     } else {
-                        android.util.Log.e("DrumTrackViewModel", "Pad settings persistence failed for $padId: ${result.exceptionOrNull()?.message}")
+                        android.util.Log.e("DrumTrackViewModel", "Pad settings persistence failed for ${padId}: ${result.exceptionOrNull()?.message}")
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("DrumTrackViewModel", "Error saving pad settings for $padId", e)
+                android.util.Log.e("DrumTrackViewModel", "Error saving pad settings for ${padId}", e)
             }
         }
     }

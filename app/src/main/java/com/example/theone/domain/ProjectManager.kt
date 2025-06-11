@@ -32,9 +32,11 @@ interface ProjectManager {
 
     // --- Expose the sample pool as a StateFlow ---
     val samplePool: StateFlow<List<SampleMetadata>>
+import javax.inject.Inject
+
 }
 
-class ProjectManagerImpl : ProjectManager {
+class ProjectManagerImpl @Inject constructor() : ProjectManager {
 
     private val _samplePool = MutableStateFlow<List<SampleMetadata>>(emptyList())
     // Use 'override' because this property is now defined in the interface

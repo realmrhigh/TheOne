@@ -5,8 +5,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-//import androidx.compose.material.Text
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text // Ensure this is Material3 Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,42 +15,32 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.theone.features.drumtrack.DrumTrackViewModel
-// Now using consolidated models directly
+// Import for DrumProgramEditViewModel might be removed by IDE if not directly used.
+// import com.example.theone.features.drumtrack.edit.DrumProgramEditViewModel
 import com.example.theone.features.drumtrack.edit.DrumProgramEditDialog
-import com.example.theone.features.drumtrack.edit.DrumProgramEditViewModel
-import com.example.theone.features.drumtrack.model.PadSettings // Consolidated PadSettings
-// Removed imports for placeholder/dummy AudioEngine and ProjectManager from .edit package
-// Real instances will be passed from drumTrackViewModel
+import com.example.theone.features.drumtrack.model.PadSettings
 
-// PlaceholderAudioEngine object definition removed.
-// localProjectManager instantiation using DummyProjectManagerImpl from .edit package removed.
-
-// Mapper functions are no longer needed as DrumProgramEditViewModel now uses consolidated models.
 
 @Composable
 fun DrumPadScreen(
-    drumTrackViewModel: DrumTrackViewModel // Assuming this is HiltViewModel or passed down
+    drumTrackViewModel: DrumTrackViewModel
 ) {
     val padSettingsMap by drumTrackViewModel.padSettingsMap.collectAsState()
     var showEditDialog by remember { mutableStateOf(false) }
-    // padToEdit will now directly store the consolidated PadSettings type
     var padToEdit by remember { mutableStateOf<PadSettings?>(null) }
 
-    // localProjectManager removed, will use drumTrackViewModel.projectManager
-
-    // Convert map to a list of pairs for LazyVerticalGrid, sorted by a conventional pad order if possible
     val padList = remember(padSettingsMap) {
-        padSettingsMap.values.toList().sortedBy { it.id } // Simple sort by ID
+        padSettingsMap.values.toList().sortedBy { it.id }
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(4), // 4x4 grid
+        columns = GridCells.Fixed(4),
         modifier = Modifier.fillMaxSize().padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         items(padList.size) { index ->
-            val currentPad = padList[index] // This is already the consolidated PadSettings
+            val currentPad = padList[index]
             PadView(
                 padModel = currentPad,
                 onLongPress = {
@@ -66,22 +55,21 @@ fun DrumPadScreen(
     }
 
     if (showEditDialog && padToEdit != null) {
-        // DrumProgramEditViewModel now takes the consolidated PadSettings directly.
-        // No mapping needed for initialEditSettings.
-        val drumProgramEditViewModel = remember(padToEdit) { // Re-remember if padToEdit changes
-            DrumProgramEditViewModel(
-                initialPadSettings = padToEdit!!,
-                audioEngine = drumTrackViewModel.audioEngine, // Pass real AudioEngine
-                projectManager = drumTrackViewModel.projectManager // Pass real ProjectManager
-            )
+        val currentPadToEdit = padToEdit!!
+        // Use the factory from DrumTrackViewModel to create DrumProgramEditViewModel
+        val drumProgramEditViewModel = remember(currentPadToEdit, drumTrackViewModel.drumProgramEditViewModelFactory) {
+            drumTrackViewModel.drumProgramEditViewModelFactory.create(currentPadToEdit)
         }
 
         DrumProgramEditDialog(
             viewModel = drumProgramEditViewModel,
-            onDismiss = { updatedSettings -> // updatedSettings is now consolidated PadSettings?
+            onDismiss = { updatedSettings ->
                 if (updatedSettings != null && padToEdit != null) {
-                    // No mapping needed for updatedModelSettings
-                    drumTrackViewModel.updatePadSetting(padToEdit!!.id, updatedSettings)
+                    // Ensure padToEdit is not null again before using its id
+                    val currentPadId = padToEdit?.id
+                    if (currentPadId != null) {
+                        drumTrackViewModel.updatePadSetting(currentPadId, updatedSettings)
+                    }
                 }
                 showEditDialog = false
                 padToEdit = null
@@ -92,15 +80,15 @@ fun DrumPadScreen(
 
 @Composable
 fun PadView(
-    padModel: PadSettings, // Now uses consolidated PadSettings
+    padModel: PadSettings,
     onLongPress: () -> Unit,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .aspectRatio(1f) // Square pads
+            .aspectRatio(1f)
             .background(Color.DarkGray)
-            .pointerInput(padModel) { // Keyed to padModel for robustness
+            .pointerInput(padModel) {
                 detectTapGestures(
                     onLongPress = { onLongPress() },
                     onTap = { onClick() }
@@ -110,13 +98,10 @@ fun PadView(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = padModel.name, // Display name or ID
+            text = padModel.name,
             color = Color.White,
             fontSize = 10.sp,
             textAlign = TextAlign.Center
         )
-        // TODO: Display sample name if available on padModel.sampleName
     }
 }
-
-// FIX: Add missing closing brace for the package
