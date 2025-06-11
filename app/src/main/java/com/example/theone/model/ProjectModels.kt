@@ -1,21 +1,10 @@
 package com.example.theone.model
-import kotlinx.serialization.Serializable // Ensure this import is present
-import com.example.theone.model.SampleModels.* // Added import
 
-// Duplicate SampleMetadata class removed
+import com.example.theone.model.SampleMetadata // Corrected import
 
-@Serializable
-data class Track(
-    val id: String,
-    var name: String,
-    // Add other track-specific properties here, e.g., volume, pan, etc.
-)
-
-@Serializable
 data class Project(
-    val id: String,
-    var name: String,
-    val tracks: MutableList<Track> = mutableListOf(),
-    val sequences: MutableList<com.example.theone.model.Sequence> = mutableListOf(),
-    val samplePool: MutableList<SampleMetadata> = mutableListOf(),
+    val name: String,
+    val samples: List<SampleMetadata>,
+    val sequences: List<Sequence>
+    // Add other project-related data here
 )

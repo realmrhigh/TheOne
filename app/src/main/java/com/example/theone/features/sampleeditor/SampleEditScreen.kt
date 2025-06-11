@@ -1,269 +1,112 @@
 package com.example.theone.features.sampleeditor
 
-import androidx.compose.foundation.border
+import android.net.Uri
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
-import android.util.Log // Added for Log.d
+import androidx.compose.ui.unit.dp
+import com.example.theone.audio.AudioEngineControl
+import com.example.theone.domain.ProjectManager
 import com.example.theone.model.LoopMode
 import com.example.theone.model.SampleMetadata
-import com.example.theone.model.PlaybackMode
-import com.example.theone.model.EnvelopeSettings // Changed from SynthModels
-import com.example.theone.model.LFOSettings // Added
-// Import for AudioEngineControl is via qualified name in class signature
-import kotlinx.coroutines.CoroutineScope // Added for MockProjectManager
-import kotlinx.coroutines.Dispatchers // Added for MockProjectManager
-import java.util.UUID
-
-
-// Mock AudioEngineControl for preview
-class MockAudioEngineControl : com.example.theone.audio.AudioEngineControl {
-    override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean = true
-    override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean = true // This is on interface
-    // This overload is not in AudioEngineControl interface, so remove override
-    suspend fun loadSampleToMemory(context: android.content.Context, sampleId: String, filePathUri: String): Boolean = true
-    override suspend fun unloadSample(sampleId: String) {}
-    override fun isSampleLoaded(sampleId: String): Boolean = true
-    override suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean = true
-
-    override suspend fun playPadSample(
-        noteInstanceId: String,
-        trackId: String,
-        padId: String,
-        sampleId: String,
-        sliceId: String?,
-        velocity: Float,
-        playbackMode: PlaybackMode,
-        coarseTune: Int,
-        fineTune: Int,
-        pan: Float,
-        volume: Float,
-        ampEnv: EnvelopeSettings,
-        filterEnv: EnvelopeSettings?,
-        pitchEnv: EnvelopeSettings?,
-        lfos: List<LFOSettings>
-    ): Boolean {
-        Log.d("MockAudioEngine", "playPadSample called with sampleId: $sampleId")
-        return true
-    }
-
-    override suspend fun playSampleSlice(
-        sampleId: String, noteInstanceId: String, volume: Float, pan: Float,
-        trimStartMs: Long, trimEndMs: Long,
-        loopStartMs: Long?, loopEndMs: Long?,
-        isLooping: Boolean
-    ): Boolean = true
-
-    override suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, primarySoundSampleId: String, secondarySoundSampleId: String?) {}
-    override suspend fun setMetronomeVolume(volume: Float) {}
-    override suspend fun startAudioRecording(context: android.content.Context, filePathUri: String, sampleRate: Int, channels: Int, inputDeviceId: String?): Boolean = true
-    override suspend fun stopAudioRecording(): com.example.theone.model.SampleMetadata? = null // Use com.example.theone.model.SampleMetadata
-    override fun isRecordingActive(): Boolean = false
-    override fun getRecordingLevelPeak(): Float = 0.0f
-    override suspend fun shutdown() {}
-    override fun isInitialized(): Boolean = true
-    override fun getReportedLatencyMillis(): Float = 0.0f
-}
-
-// Mock ProjectManager for preview
-class MockProjectManager : com.example.theone.domain.ProjectManager {
-    private val samples = mutableMapOf<String, SampleMetadata>()
-    // Assuming ProjectManager interface allows non-nullable return if this mock is to be used widely.
-    // Or, this mock might be specific to previews where non-null is guaranteed/expected.
-    override suspend fun addSampleToPool(
-        name: String,
-        sourceFileUri: String,
-        copyToProjectDir: Boolean
-    ): SampleMetadata { // Changed to non-nullable return type
-        return SampleMetadata(
-            id = "new_sample_${System.currentTimeMillis()}",
-            name = name,
-            uri = sourceFileUri, // Adapted to SampleMetadata constructor
-            duration = 1000L, // Adapted from durationMs: Float
-            sampleRate = 44100,
-            channels = 1, // Adapted from numChannels
-            bitDepth = 16
-            // Other fields will use default values from SampleMetadata constructor
-        )
-        // This mock no longer stores the sample in its 'samples' map with this new implementation
-    }
-
-    override suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean {
-        samples[sample.id] = sample
-        return true
-    }
-    override suspend fun getSampleById(sampleId: String): SampleMetadata? = samples[sampleId]
-}
 
 @Composable
 fun SampleEditScreen(viewModel: SampleEditViewModel) {
-    val sampleMetadata by viewModel.currentSample.collectAsState()
+    val currentSample by viewModel.currentSample.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
-    // Local states for text fields to allow user typing before parsing
-    var trimStartMsString by remember(sampleMetadata.trimStartMs) { mutableStateOf(sampleMetadata.trimStartMs.toString()) }
-    var trimEndMsString by remember(sampleMetadata.trimEndMs) { mutableStateOf(sampleMetadata.trimEndMs.toString()) }
-    var loopStartMsString by remember(sampleMetadata.loopStartMs) { mutableStateOf(sampleMetadata.loopStartMs?.toString() ?: "") }
-    var loopEndMsString by remember(sampleMetadata.loopEndMs) { mutableStateOf(sampleMetadata.loopEndMs?.toString() ?: "") }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(userMessage) {
-        // Optionally, auto-dismiss message after some time
-        // if (userMessage != null) {
-        //     kotlinx.coroutines.delay(3000)
-        //     viewModel.consumedUserMessage()
-        // }
+        userMessage?.let {
+            snackbarHostState.showSnackbar(it)
+        }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(title = { Text("Edit Sample: ${sampleMetadata.name}") })
-        },
-        snackbarHost = {
-            SnackbarHost(hostState = LocalSnackbarHostState.current) { data ->
-                Snackbar(snackbarData = data)
-            }
+            TopAppBar(title = { Text("Edit Sample: ${currentSample.name}") })
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .padding(paddingValues)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState())
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-
-            Text("Sample: ${sampleMetadata.name}", style = MaterialTheme.typography.titleMedium)
-            Text("Duration: ${sampleMetadata.durationMs} ms")
-            Text("Effective Duration (Trimmed): ${sampleMetadata.getEffectiveDuration()} ms")
-
-            // Waveform Placeholder
-            Box(
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            Column(
                 modifier = Modifier
+                    .padding(paddingValues)
+                    .padding(16.dp)
                     .fillMaxWidth()
-                    .height(100.dp)
-                    .border(1.dp, Color.Gray),
-                contentAlignment = Alignment.Center
             ) {
-                Text("Waveform Display Area (C4)")
-            }
+                Text("Duration: ${currentSample.durationMs}ms")
+                Text("Effective Duration: ${currentSample.getEffectiveDuration()}ms")
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Trim Points
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = trimStartMsString,
-                    onValueChange = { trimStartMsString = it },
-                    label = { Text("Trim Start (ms)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
+                // Trim Points
+                var trimStart by remember { mutableStateOf(currentSample.trimStartMs) }
+                var trimEnd by remember { mutableStateOf(currentSample.trimEndMs) }
+                RangeSlider(
+                    value = trimStart..trimEnd,
+                    onValueChange = { range ->
+                        trimStart = range.start
+                        trimEnd = range.end
+                    },
+                    valueRange = 0f..currentSample.durationMs.toFloat(),
+                    onValueChangeFinished = {
+                        viewModel.updateTrimPoints(trimStart, trimEnd)
+                    }
                 )
-                OutlinedTextField(
-                    value = trimEndMsString,
-                    onValueChange = { trimEndMsString = it },
-                    label = { Text("Trim End (ms)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Button(
-                onClick = {
-                    val start = trimStartMsString.toLongOrNull() ?: 0L
-                    val end = trimEndMsString.toLongOrNull() ?: sampleMetadata.durationMs
-                    viewModel.updateTrimPoints(start, end)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Apply Trim Points")
-            }
+                Text("Trim: ${trimStart.toInt()}ms - ${trimEnd.toInt()}ms")
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { viewModel.auditionSelection(trimStart, trimEnd) }) {
+                    Text("Audition Trim")
+                }
 
-            Divider()
+                Spacer(modifier = Modifier.height(16.dp))
+                Divider()
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Loop Mode
-            Text("Loop Mode", style = MaterialTheme.typography.titleSmall)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LoopMode.values().forEach { mode ->
-                    Button(
-                        onClick = { viewModel.setLoopMode(mode) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (sampleMetadata.loopMode == mode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                        )
+
+                // Loop Mode Dropdown
+                var expanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    TextField(
+                        value = currentSample.loopMode.name,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Loop Mode") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
                     ) {
-                        Text(mode.name)
+                        LoopMode.values().forEach { mode ->
+                            DropdownMenuItem(
+                                text = { Text(mode.name) },
+                                onClick = {
+                                    viewModel.setLoopMode(mode)
+                                    expanded = false
+                                }
+                            )
+                        }
                     }
                 }
-            }
 
-            // Loop Points (enabled only if loop mode is not NONE)
-            val loopControlsEnabled = sampleMetadata.loopMode != LoopMode.NONE
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = loopStartMsString,
-                    onValueChange = { loopStartMsString = it },
-                    label = { Text("Loop Start (ms)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                    enabled = loopControlsEnabled
-                )
-                OutlinedTextField(
-                    value = loopEndMsString,
-                    onValueChange = { loopEndMsString = it },
-                    label = { Text("Loop End (ms)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                    enabled = loopControlsEnabled
-                )
-            }
-             Button(
-                onClick = {
-                    val start = loopStartMsString.toLongOrNull()
-                    val end = loopEndMsString.toLongOrNull()
-                    viewModel.updateLoopPoints(start, end)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = loopControlsEnabled
-            ) {
-                Text("Apply Loop Points")
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { viewModel.auditionSelection() },
-                    modifier = Modifier.weight(1f),
-                    enabled = !isLoading
-                ) {
-                    Text("Audition")
-                }
-                Button(
-                    onClick = { viewModel.saveChanges() },
-                    modifier = Modifier.weight(1f),
-                    enabled = !isLoading
-                ) {
-                    if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp)) else Text("Save Changes")
-                }
-            }
-
-            userMessage?.let {
-                Text(
-                    text = it,
-                    color = if (it.startsWith("Failed")) MaterialTheme.colorScheme.error else LocalContentColor.current,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                LaunchedEffect(it) { // Allows message to be re-displayed if it changes
-                     // You might want a Snackbar here instead for non-modal messages
-                     // For now, just clear it after a delay or let user clear it
-                     // viewModel.consumedUserMessage() // Or handled by a dismiss button
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = { viewModel.saveChanges() }) {
+                    Text("Save Changes")
                 }
             }
         }
@@ -272,35 +115,34 @@ fun SampleEditScreen(viewModel: SampleEditViewModel) {
 
 @Preview(showBackground = true)
 @Composable
-fun PreviewSampleEditScreen() {
-    val mockAudioEngine = MockAudioEngineControl()
-    val mockProjectManager = MockProjectManager()
-    val initialSample = SampleMetadata(
-        id = "previewSample1",
-        name = "Kick Drum",
-        uri = "file:///dev/null/kick.wav", // Changed from filePathUri
-        duration = 1200L,                   // Changed from durationMs
-        sampleRate = 44100,
-        channels = 1,
-        trimStartMs = 100L,
-        trimEndMs = 1000L
-        // loopMode is not part of SampleMetadata
+fun SampleEditScreenPreview() {
+    val previewSample = SampleMetadata(
+        id = "1",
+        name = "preview_kick.wav",
+        uri = Uri.EMPTY,
+        durationMs = 1000L
     )
-    // Populate mock project manager for preview
-    LaunchedEffect(Unit) {
-        mockProjectManager.addSampleToPool(initialSample.name, initialSample.uri, false) // use uri
-    }
+    val viewModel = SampleEditViewModel(initialSampleMetadata = previewSample)
+    SampleEditScreen(viewModel = viewModel)
+}
 
-    val viewModel = SampleEditViewModel(mockAudioEngine, mockProjectManager, initialSample)
+// Keep the mock classes for now if they are used in other previews,
+// but they are not used for the SampleEditScreen preview itself.
+class MockAudioEngineControl : AudioEngineControl {
+    override fun loadSample(filePath: String): Int = 0
+    override fun playSample(sampleId: Int) {}
+    override fun stopSample(sampleId: Int) {}
+    override fun unloadSample(sampleId: Int) {}
+    override fun setSampleVolume(sampleId: Int, volume: Float) {}
+    override fun setSampleLooping(sampleId: Int, isLooping: Boolean) {}
+    override fun loadSequenceData(sequenceData: ByteArray) {}
+}
 
-    // Simulate a user message for preview
-    // LaunchedEffect(Unit) {
-    //     kotlinx.coroutines.delay(1000)
-    //     viewModel.forceUserMessageForPreview("Preview: Sample loaded for editing.")
-    // }
-
-
-    MaterialTheme { // Replace with your app's theme if it's different
-        SampleEditScreen(viewModel = viewModel)
+class MockProjectManager : ProjectManager {
+    override suspend fun createNewProject(name: String) {}
+    override suspend fun loadProject(uri: String) {}
+    override suspend fun saveProject() {}
+    override suspend fun addSampleToPool(name: String, sourceFileUri: String, copyToProjectDir: Boolean): SampleMetadata {
+        return SampleMetadata("id", name, Uri.parse(sourceFileUri), 0)
     }
 }
