@@ -10,7 +10,6 @@ import com.example.theone.model.*
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,16 +22,10 @@ enum class EditorTab { SAMPLES, ENVELOPES, LFO, MODULATION, EFFECTS }
 enum class LayerParameter { SAMPLE_ID, TUNING_SEMI, TUNING_FINE, VOLUME, PAN, START_POINT, END_POINT, LOOP_POINT, LOOP_ENABLED, REVERSE }
 enum class EnvelopeType { AMP, PITCH, FILTER }
 
-@AssistedFactory
-interface DrumProgramEditViewModelFactory {
-    fun create(initialPadSettings: PadSettings): DrumProgramEditViewModel
-}
-
-@HiltViewModel(assistedFactory = DrumProgramEditViewModelFactory::class)
 class DrumProgramEditViewModel @AssistedInject constructor(
     private val audioEngine: AudioEngineControl,
     val projectManager: ProjectManager,
-    @Assisted initialPadSettings: PadSettings
+    @Assisted("padSettings") initialPadSettings: PadSettings
 ) : ViewModel() {
 
     private val _padSettings = MutableStateFlow(initialPadSettings)

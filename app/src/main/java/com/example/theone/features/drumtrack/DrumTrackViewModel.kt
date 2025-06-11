@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 // Import the factory
-import com.example.theone.features.drumtrack.edit.DrumProgramEditViewModelFactory
+import com.example.theone.features.drumtrack.edit.DrumProgramEditViewModelAssistedFactory
 import com.example.theone.features.drumtrack.model.PadSettings
 import com.example.theone.features.sequencer.PadTriggerEvent
 import com.example.theone.features.sequencer.SequencerEventBus
@@ -25,7 +25,7 @@ class DrumTrackViewModel @Inject constructor(
     val projectManager: ProjectManager,
     private val sequencerEventBus: SequencerEventBus,
     // Add the factory here
-    val drumProgramEditViewModelFactory: DrumProgramEditViewModelFactory
+    val drumProgramEditViewModelAssistedFactory: DrumProgramEditViewModelAssistedFactory
 ) : ViewModel() {
 
     private val _padSettingsMap = MutableStateFlow<Map<String, PadSettings>>(emptyMap())

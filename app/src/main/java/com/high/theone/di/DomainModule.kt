@@ -1,4 +1,4 @@
-package com.example.theone.di
+package com.high.theone.di;
 
 import com.example.theone.domain.ProjectManager
 import com.example.theone.domain.ProjectManagerImpl

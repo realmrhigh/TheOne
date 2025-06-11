@@ -33,9 +33,11 @@ interface ProjectManager {
     // --- Expose the sample pool as a StateFlow ---
     val samplePool: StateFlow<List<SampleMetadata>>
 import javax.inject.Inject
+import javax.inject.Singleton
 
 }
 
+@Singleton
 class ProjectManagerImpl @Inject constructor() : ProjectManager {
 
     private val _samplePool = MutableStateFlow<List<SampleMetadata>>(emptyList())

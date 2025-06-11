@@ -15,6 +15,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.theone.features.drumtrack.DrumTrackViewModel
+import com.example.theone.features.drumtrack.edit.DrumProgramEditViewModel // Added import
+import androidx.lifecycle.viewmodel.compose.viewModel // Added import
 // Import for DrumProgramEditViewModel might be removed by IDE if not directly used.
 // import com.example.theone.features.drumtrack.edit.DrumProgramEditViewModel
 import com.example.theone.features.drumtrack.edit.DrumProgramEditDialog
@@ -56,10 +58,10 @@ fun DrumPadScreen(
 
     if (showEditDialog && padToEdit != null) {
         val currentPadToEdit = padToEdit!!
-        // Use the factory from DrumTrackViewModel to create DrumProgramEditViewModel
-        val drumProgramEditViewModel = remember(currentPadToEdit, drumTrackViewModel.drumProgramEditViewModelFactory) {
-            drumTrackViewModel.drumProgramEditViewModelFactory.create(currentPadToEdit)
+        val viewModelFactory = remember(currentPadToEdit, drumTrackViewModel.drumProgramEditViewModelAssistedFactory) {
+            drumTrackViewModel.drumProgramEditViewModelAssistedFactory.create(currentPadToEdit)
         }
+        val drumProgramEditViewModel: DrumProgramEditViewModel = viewModel(factory = viewModelFactory)
 
         DrumProgramEditDialog(
             viewModel = drumProgramEditViewModel,
