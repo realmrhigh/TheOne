@@ -68,4 +68,6 @@ interface AudioEngineControl {
     suspend fun stopSequence()
     suspend fun setSequencerBpm(bpm: Float)
     suspend fun getSequencerPlayheadPosition(): Long
+    suspend fun setPadVolume(trackId: String, padId: String, volume: Float)
+    fun setPadPan(trackId: String, padId: String, pan: Float)
 }

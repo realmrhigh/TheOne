@@ -22,6 +22,7 @@ import com.example.theone.model.SynthModels.EffectType
 // Real AudioEngineControl and ProjectManager interfaces
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
+import com.example.theone.features.drumtrack.edit.DrumProgramEditEvent
 
 // AndroidX ViewModel and scope for coroutines
 import androidx.lifecycle.ViewModel
@@ -363,4 +364,39 @@ class DrumProgramEditViewModel(
     // TODO: Implement reorderEffect(fromIndex: Int, toIndex: Int) if needed.
     // This would typically involve removing and inserting at specific indices,
     // and ensuring the underlying list in PadSettings is updated accordingly.
+
+    fun onEvent(event: DrumProgramEditEvent) {
+        when (event) {
+            is DrumProgramEditEvent.OnPadVolumeChange -> {
+                viewModelScope.launch {
+                    // Assuming the audioEngine is already a constructor parameter and available.
+                    // The padId from the event should correspond to the ID of the pad this ViewModel instance is managing.
+                    // The trackId might be a broader context (e.g., if multiple drum tracks exist).
+                    audioEngine.setPadVolume(event.trackId, event.padId, event.volume)
+                }
+                // Update local state to reflect this change in the UI immediately.
+                // This assumes that the current ViewModel's _padSettings.value.id is the one being changed.
+                if (_padSettings.value.id == event.padId) {
+                    _padSettings.update { currentSettings ->
+                        currentSettings.copy(volume = event.volume)
+                    }
+                }
+                Log.d("DrumProgramEditVM", "Handled OnPadVolumeChange: trackId=${event.trackId}, padId=${event.padId}, volume=${event.volume}")
+            }
+            is DrumProgramEditEvent.OnPadPanChange -> {
+                // audioEngine.setPadPan is non-suspend
+                audioEngine.setPadPan(event.trackId, event.padId, event.pan)
+
+                // Update local state, assuming _padSettings is StateFlow<PadSettings> for a single pad context
+                if (_padSettings.value.id == event.padId) {
+                   _padSettings.update { currentSettings ->
+                       currentSettings.copy(pan = event.pan)
+                   }
+                }
+                Log.d("DrumProgramEditVM", "Handled OnPadPanChange: trackId=${event.trackId}, padId=${event.padId}, pan=${event.pan}")
+            }
+            // Add other event types here if the sealed class grows
+            // else -> { /* Log or ignore unhandled events */ }
+        }
+    }
 }

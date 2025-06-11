@@ -80,23 +80,8 @@ fun StepSequencerScreen(
                         padId = "Pad$padRow", // Example padId
                         step = stepCol,
                         isEventPresent = eventExists,
-                        onCellClick = { pad, step ->
-                            // Logic to add or remove event
-                            // This will call a method in SequencerViewModel
-                            println("Cell clicked: Pad $pad, Step $step. Event present: $eventExists")
-                            // sequencerViewModel.toggleEventAt(pad, step) // Future method
-                            // For now, let's make it call recordPadTrigger as a test if no event,
-                            // or a conceptual removeEvent if event exists.
-                            if (eventExists) {
-                                // sequencerViewModel.removeEventAt(pad, step) // Conceptual
-                            } else {
-                                // Calculate startTimeTicks for this step
-                                val startTimeTicks = step * sequencerViewModel.ticksPer16thNote // Assuming public access or getter
-                                // sequencerViewModel.addPadTriggerEvent(pad, 127, startTimeTicks) // Conceptual
-                                 sequencerViewModel.recordPadTrigger(padId = pad, velocity = 100) // Using existing for now
-                                // Note: recordPadTrigger uses "current time", not step-based time.
-                                // This interaction will need refinement.
-                            }
+                        onCellClick = { pad, step -> // 'pad' is padId, 'step' is stepIndex
+                            sequencerViewModel.toggleStep(padId = pad, stepIndex = step)
                         }
                     )
                 }

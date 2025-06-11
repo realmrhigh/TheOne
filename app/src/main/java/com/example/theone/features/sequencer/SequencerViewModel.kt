@@ -189,48 +189,62 @@ class SequencerViewModel @Inject constructor(
 
     // Method to record a pad trigger event
     fun recordPadTrigger(padId: String, velocity: Int) {
-        if (!isRecording) return
-        val targetSequence = currentSequence // Capture currentSequence
+        if (!isRecording) return // isRecording is the ViewModel's recording flag
+        val targetSequence = currentSequence
         if (targetSequence == null) {
-            println("SequencerViewModel: No current sequence to record into.")
+            Log.w("SequencerViewModel", "No current sequence to record into.")
             return
         }
 
-        targetSequence.let { seq -> // Use targetSequence, which is effectively currentSequence
-            // 1. Get current timestamp (placeholder - this needs a real time source from playback engine)
-            // For now, let's simulate a simple incrementing time or use System.currentTimeMillis()
-            // This should eventually be replaced by the playhead position from M2.4
-            val currentTimeTicks = System.currentTimeMillis() // THIS IS A VERY CRUDE PLACEHOLDER
+        viewModelScope.launch { // Use viewModelScope as getSequencerPlayheadPosition is suspend
+            val currentPlayheadTicks = audioEngine.getSequencerPlayheadPosition()
 
-            // 2. Quantize the timestamp
-            // Example: Round to the nearest 16th note.
-            // This is a simplified quantization logic. Real quantization can be more complex.
-            val quantizedTimeTicks = (currentTimeTicks / ticksPer16thNote) * ticksPer16thNote
+            // Quantization Logic
+            val ppqn = targetSequence.ppqn // Assuming ppqn is part of your Sequence model
+            val quantizationResolution = 4 // For 16th notes (i.e., quarter note / 4)
 
-            // 3. Create a new Event
+            if (ppqn <= 0 || quantizationResolution <= 0) {
+                Log.e("SequencerViewModel", "Cannot quantize: PPQN or quantization resolution is invalid. ppqn=$ppqn, resolution=$quantizationResolution")
+                return@launch
+            }
+            val ticksPerStep = ppqn / quantizationResolution // Ticks per 16th note (if ppqn is per quarter)
+
+            if (ticksPerStep <= 0) {
+                 Log.e("SequencerViewModel", "Cannot quantize: ticksPerStep is zero or negative. ppqn=$ppqn, resolution=$quantizationResolution")
+                return@launch
+            }
+
+            // Simpler floor quantization (quantize to start of current step):
+            val quantizedTimeTicks = (currentPlayheadTicks / ticksPerStep) * ticksPerStep
+
+            Log.d("SequencerViewModel", "Recording event: Raw ticks: $currentPlayheadTicks, Quantized ticks: $quantizedTimeTicks, PPQN: $ppqn, Step: $ticksPerStep")
+
             val newEvent = Event(
-                id = UUID.randomUUID().toString(), // Generate a unique ID for the event
-                trackId = "", // Placeholder: associate with a track if necessary, or remove if not used
+                id = UUID.randomUUID().toString(),
+                trackId = targetSequence.id, // Use sequence ID as track ID, or a dedicated track concept
                 startTimeTicks = quantizedTimeTicks,
                 type = EventType.PadTrigger(
                     padId = padId,
                     velocity = velocity,
-                    durationTicks = ticksPer16thNote // Default duration, might be configurable
+                    durationTicks = ticksPerStep // Default duration to one quantization step (e.g., a 16th note)
                 )
             )
 
-            // 4. Add this new Event to the events list of the current Sequence
-            // If seq.events is not a snapshot state list, UI might not update.
-            // For now, direct mutation.
-            seq.events.add(newEvent)
-            // To trigger UI update if events list is observed as state:
-            // currentSequence = seq.copy(events = seq.events.toMutableList().apply { add(newEvent) })
-            // _sequences.value = _sequences.value.map { s -> if (s.id == seq.id) currentSequence!! else s }
+            // Update the sequence's event list
+            val updatedEvents = targetSequence.events.toMutableList().apply { add(newEvent) }
 
+            currentSequence = targetSequence.copy(events = updatedEvents)
 
-            // For debugging:
-            println("Recorded event: $newEvent to sequence ${seq.name}")
-            println("Total events in ${seq.name}: ${seq.events.size}")
+            _sequences.update { currentList ->
+                currentList.map { if (it.id == targetSequence.id) currentSequence!! else it }
+            }
+
+            currentSequence?.let {
+                audioEngine.loadSequenceData(it) // Send the updated sequence to native layer
+                Log.d("SequencerViewModel", "Updated sequence ${it.id} sent to native layer after recording event.")
+            }
+
+            Log.d("SequencerViewModel", "Recorded event: $newEvent to sequence ${targetSequence.name}. Total events: ${currentSequence?.events?.size}")
         }
     }
 
@@ -316,6 +330,78 @@ class SequencerViewModel @Inject constructor(
         // Similar to recordPadTrigger, if events list is not a snapshot state list, UI might not update.
         // currentSequence = targetSequence?.copy(events = mutableListOf())
         // _sequences.value = _sequences.value.map { s -> if (s.id == targetSequence?.id) currentSequence!! else s }
+    }
+
+    fun toggleStep(padId: String, stepIndex: Int) { // Simplified: trackId will be currentSequence.id
+        val targetSequence = currentSequence
+        if (targetSequence == null) {
+            Log.w("SequencerViewModel", "toggleStep: No current sequence.")
+            return
+        }
+
+        val ppqn = targetSequence.ppqn
+        val stepsPerQuarterNote = 4 // Assuming 16th notes, so 4 steps per quarter note
+
+        if (ppqn <= 0 || stepsPerQuarterNote <= 0) {
+            Log.e("SequencerViewModel", "toggleStep: Invalid PPQN ($ppqn) or stepsPerQuarterNote ($stepsPerQuarterNote). Cannot calculate ticks per step.")
+            return
+        }
+        val ticksPerStep = ppqn / stepsPerQuarterNote // e.g., 96 / 4 = 24 ticks for a 16th note
+
+        if (ticksPerStep <= 0) {
+            Log.e("SequencerViewModel", "toggleStep: Calculated ticksPerStep is zero or negative ($ticksPerStep). PPQN=$ppqn")
+            return
+        }
+
+        val targetStartTimeTicks = stepIndex * ticksPerStep.toLong() // Ensure Long for comparison with Event.startTimeTicks
+        val currentTrackId = targetSequence.id // Use sequence ID as the track ID for now
+
+        val events = targetSequence.events
+        val eventIndex = events.indexOfFirst { event ->
+            event.startTimeTicks == targetStartTimeTicks &&
+            (event.type as? EventType.PadTrigger)?.padId == padId &&
+            event.trackId == currentTrackId // Ensure we match the track context
+        }
+
+        val modifiedEvents = events.toMutableList()
+        var eventToggledState = ""
+
+        if (eventIndex != -1) {
+            // Event exists, remove it
+            modifiedEvents.removeAt(eventIndex)
+            eventToggledState = "REMOVED"
+        } else {
+            // Event does not exist, add it
+            val newEvent = Event(
+                id = UUID.randomUUID().toString(),
+                trackId = currentTrackId, // Associate with the current sequence/track
+                startTimeTicks = targetStartTimeTicks,
+                type = EventType.PadTrigger(
+                    padId = padId,
+                    velocity = 100, // Default velocity
+                    durationTicks = ticksPerStep.toLong() // Default duration to one step
+                )
+            )
+            modifiedEvents.add(newEvent)
+            modifiedEvents.sortBy { it.startTimeTicks } // Keep events sorted by time
+            eventToggledState = "ADDED"
+        }
+
+        // Update currentSequence with the new list of events to trigger recomposition
+        currentSequence = targetSequence.copy(events = modifiedEvents)
+
+        // Update the sequence in the main _sequences list as well
+        _sequences.update { currentList ->
+            currentList.map { if (it.id == targetSequence.id) currentSequence!! else it }
+        }
+
+        // Sync with native engine
+        currentSequence?.let {
+            viewModelScope.launch { // loadSequenceData is suspend
+                audioEngine.loadSequenceData(it)
+                Log.d("SequencerViewModel", "toggleStep: Synced sequence ${it.id} with native engine. Event for pad $padId at step $stepIndex ($targetStartTimeTicks ticks) $eventToggledState. Total events: ${it.events.size}")
+            }
+        }
     }
 
     // Call this when ViewModel is cleared

@@ -12,7 +12,10 @@
 // Define this in exactly one .c or .cpp file
 #define DR_WAV_IMPLEMENTATION
 // In a .h or .cpp file
-#define APP_NAME "TheOne"
+#define APP_NAME "TheOne" // Existing app name
+#ifndef NATIVE_LIB_APP_NAME
+#define NATIVE_LIB_APP_NAME "TheOneNativeLib" // For JNI specific logs
+#endif
 
 #include "dr_wav.h" // Include the dr_wav header
 #include <vector>   // For std::vector
@@ -22,10 +25,12 @@
 #include <memory>   // For std::unique_ptr, std::make_unique (used by audio_sample.h)
 #include <random>   // For std::mt19937, std::random_device
 #include <iterator> // For std::make_move_iterator
+#include <algorithm> // For std::max and std::min
 
 #include "EnvelopeGenerator.h"
 #include "LfoGenerator.h"
 #include "PadSettings.h"
+#include "AudioEngine.h" // Include the new AudioEngine header
 
 
 #ifndef M_PI // Define M_PI if not defined by cmath (common on some compilers)
@@ -96,10 +101,15 @@ static std::map<std::string, theone::audio::PadSettingsCpp> gPadSettingsMap;
 static std::mutex gPadSettingsMutex; // Mutex for gPadSettingsMap
 
 // Random number generator for layer selection
-static std::mt19937 gRandomEngine{std::random_device{}()};
+// static std::mt19937 gRandomEngine{std::random_device{}()}; // Moved to AudioEngine class
+
+// Global AudioEngine instance
+static std::unique_ptr<theone::audio::AudioEngine> audioEngineInstance;
 
 
-// --- C++ Sequencer Data Structures ---
+// --- C++ Sequencer Data Structures (Potentially moved to AudioEngine or remain global if engine doesn't manage them directly) ---
+// For now, assuming these might still be global or passed to AudioEngine methods if not fully encapsulated.
+// If AudioEngine fully encapsulates sequencer, these statics would be removed or wrapped.
 enum class EventTriggerTypeCpp {
     PAD_TRIGGER // Initially, only pad triggers
 };
@@ -627,11 +637,13 @@ public:
     }
 };
 
-static MyAudioCallback myCallback;
-static oboe::ManagedStream outStream;
-static bool oboeInitialized = false;
+// static MyAudioCallback myCallback; // Replaced by AudioEngine instance as callback
+// static oboe::ManagedStream outStream; // Managed by AudioEngine instance
+// static bool oboeInitialized = false; // Managed by AudioEngine instance
 
-// Define the Audio Input Callback class
+// Define the Audio Input Callback class (if not part of AudioEngine)
+// If AudioEngine handles input callback as well, this might be removed or adapted.
+// For this step, assuming AudioEngine might use a separate input callback or this remains for now.
 class MyAudioInputCallback : public oboe::AudioStreamCallback {
 public:
     oboe::DataCallbackResult onAudioReady(
@@ -831,37 +843,21 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1initOboe(
         JNIEnv* env,
         jobject /* this */) {
-    if (oboeInitialized) {
+    if (audioEngineInstance && audioEngineInstance->isOboeInitialized()) {
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine already initialized.");
         return JNI_TRUE;
     }
-    oboe::AudioStreamBuilder builder;
-    builder.setDirection(oboe::Direction::Output)
-            ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-            ->setSharingMode(oboe::SharingMode::Exclusive)
-            ->setFormat(oboe::AudioFormat::Float)
-            ->setChannelCount(oboe::ChannelCount::Stereo)
-            ->setSampleRate(oboe::kUnspecified)
-            ->setCallback(&myCallback);
-
-    oboe::Result result = builder.openManagedStream(outStream);
-    if (result == oboe::Result::OK) {
-        result = outStream->requestStart();
-        if (result != oboe::Result::OK) {
-            outStream->close();
-            return JNI_FALSE;
-        }
-        oboeInitialized = true;
-        // Set global audio stream sample rate, used by sequencer and potentially other components
-        gAudioStreamSampleRate = static_cast<uint32_t>(outStream->getSampleRate());
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Oboe initialized. Global Sample Rate: %u Hz", gAudioStreamSampleRate);
-
-        { // Scope for metronomeLock to ensure it's released
-            std::lock_guard<std::mutex> metronomeLock(gMetronomeStateMutex);
-            gMetronomeState.audioStreamSampleRate = gAudioStreamSampleRate; // Update metronome's copy too
-            gMetronomeState.updateSchedulingParameters();
-        }
+    audioEngineInstance = std::make_unique<theone::audio::AudioEngine>();
+    if (audioEngineInstance && audioEngineInstance->initialize()) {
+        // If global gAudioStreamSampleRate is still used by parts of native-lib.cpp not yet refactored:
+        // gAudioStreamSampleRate = static_cast<uint32_t>(audioEngineInstance->getOboeReportedSampleRate()); // You'd need a getter in AudioEngine
+        // Same for gMetronomeState if it's still global and needs the sample rate.
+        // For now, assuming AudioEngine internally manages what it needs.
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine initialized via native_initOboe.");
         return JNI_TRUE;
     }
+    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize AudioEngine via native_initOboe.");
+    audioEngineInstance.reset(); // Ensure cleanup if init failed
     return JNI_FALSE;
 }
 
@@ -1437,34 +1433,33 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1shutdownOboe(
         JNIEnv* env,
         jobject /* this */) {
-    if (outStream && oboeInitialized) {
-        outStream->requestStop();
-        outStream->close();
+    if (audioEngineInstance) {
+        audioEngineInstance->shutdown();
+        audioEngineInstance.reset(); // Release the instance
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine shutdown complete via native_shutdownOboe.");
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_shutdownOboe: audioEngineInstance is null.");
     }
-    if (mInputStream) { // Also close input stream if it was opened
-        mInputStream->requestStop();
-        mInputStream->close();
-    }
-    oboeInitialized = false;
-    __android_log_print(ANDROID_LOG_INFO, "TheOneNative", "Oboe shutdown complete.");
+    // Clear any remaining global state if it's being phased out.
+    // oboeInitialized = false; // This global would be removed if fully refactored.
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1isOboeInitialized(
         JNIEnv* env,
         jobject /* this */) {
-    return static_cast<jboolean>(oboeInitialized && outStream && outStream->getState() != oboe::StreamState::Closed);
+    if (audioEngineInstance) {
+        return static_cast<jboolean>(audioEngineInstance->isOboeInitialized());
+    }
+    return JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1getOboeReportedLatencyMillis(
         JNIEnv* env,
         jobject /* this */) {
-    if (oboeInitialized && outStream) {
-        oboe::ResultWithValue<double> latency = outStream->calculateLatencyMillis();
-        if (latency) {
-            return static_cast<jfloat>(latency.value());
-        }
+    if (audioEngineInstance) {
+        return audioEngineInstance->getOboeReportedLatencyMillis();
     }
     return -1.0f;
 }
@@ -1473,22 +1468,35 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1stringFromJNI(
         JNIEnv* env,
         jobject /* this */) {
-    std::string hello = "Hello from C++ (AudioEngine)";
-    return env->NewStringUTF(hello.c_str());
+    // std::string hello = "Hello from C++ (AudioEngine)"; // This is just a test JNI
+    // return env->NewStringUTF(hello.c_str());
+    if (audioEngineInstance) {
+         // Example: if AudioEngine had a similar test method
+         // return env->NewStringUTF(audioEngineInstance->getTestString().c_str());
+    }
+    return env->NewStringUTF("Hello from C++ (AudioEngine - instance not fully integrated yet)");
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1isRecordingActive(
         JNIEnv *env,
         jobject /* thiz */) {
-    return static_cast<jboolean>(mIsRecording.load());
+    // return static_cast<jboolean>(mIsRecording.load()); // Old global way
+    if (audioEngineInstance) {
+        return static_cast<jboolean>(audioEngineInstance->isRecordingActive());
+    }
+    return JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1getRecordingLevelPeak(
         JNIEnv *env,
         jobject /* thiz */) {
-    return mPeakRecordingLevel.exchange(0.0f);
+    // return mPeakRecordingLevel.exchange(0.0f); // Old global way
+    if (audioEngineInstance) {
+        return audioEngineInstance->getRecordingLevelPeak();
+    }
+    return 0.0f;
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1496,25 +1504,261 @@ Java_com_example_theone_audio_AudioEngine_native_1getSampleRate(
         JNIEnv *env,
         jobject /* thiz */,
         jstring jSampleId) {
-    const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
-    SampleId sampleIdStr(nativeSampleId);
-    env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
-
-    auto it = gSampleMap.find(sampleIdStr);
-    if (it != gSampleMap.end()) {
-        const theone::audio::LoadedSample* loadedSample = &(it->second);
-        if (loadedSample && loadedSample->format.sampleRate > 0) {
-            return static_cast<jint>(loadedSample->format.sampleRate);
-        } else {
-            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_getSampleRate: Sample '%s' found but has invalid sample rate: %u", sampleIdStr.c_str(), loadedSample ? loadedSample->format.sampleRate : 0);
-            return 0; // Indicate error or invalid rate
-        }
+    // const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr); // Old global way
+    // SampleId sampleIdStr(nativeSampleId);
+    // env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
+    // auto it = gSampleMap.find(sampleIdStr);
+    // ... (old global logic)
+    if (audioEngineInstance) {
+        std::string sampleIdStr = JStringToString(env, jSampleId);
+        return audioEngineInstance->getSampleRate(sampleIdStr);
     }
-    __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_getSampleRate: Sample ID '%s' not found.", sampleIdStr.c_str());
-    return 0; // Indicate error (sample not found)
+    return 0;
 }
 
 // ... Any other JNI functions needed ...
+// TODO: Refactor native_loadSampleToMemory, native_isSampleLoaded, native_unloadSample,
+// native_playPadSample, native_playSampleSlice, native_setMetronomeState, native_setMetronomeVolume,
+// native_startAudioRecording, native_stopAudioRecording, etc. to use audioEngineInstance
+
+
+// --- JNI Sequence Conversion Helper Functions ---
+
+static theone::audio::PadTriggerEventCpp ConvertKotlinPadTriggerEvent(JNIEnv* env, jobject kotlinPadTriggerEvent) {
+    theone::audio::PadTriggerEventCpp cppPadTrigger;
+    if (!kotlinPadTriggerEvent) {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinPadTriggerEvent: kotlinPadTriggerEvent is null");
+        return cppPadTrigger; // Return empty
+    }
+
+    jclass padTriggerClass = env->GetObjectClass(kotlinPadTriggerEvent);
+    if (!padTriggerClass) {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinPadTriggerEvent: GetObjectClass failed for PadTrigger event object.");
+        if(env->ExceptionCheck()) env->ExceptionClear();
+        return cppPadTrigger;
+    }
+
+    jfieldID padIdFid = env->GetFieldID(padTriggerClass, "padId", "Ljava/lang/String;");
+    jfieldID velocityFid = env->GetFieldID(padTriggerClass, "velocity", "I");
+    jfieldID durationTicksFid = env->GetFieldID(padTriggerClass, "durationTicks", "J");
+
+    if (!padIdFid || !velocityFid || !durationTicksFid) {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinPadTriggerEvent: Failed to get one or more field IDs for EventType.PadTrigger");
+        env->DeleteLocalRef(padTriggerClass);
+        if(env->ExceptionCheck()) env->ExceptionClear();
+        return cppPadTrigger;
+    }
+
+    jstring jPadId = (jstring)env->GetObjectField(kotlinPadTriggerEvent, padIdFid);
+    cppPadTrigger.padId = JStringToString(env, jPadId); // JStringToString should handle null jPadId
+    if (jPadId) env->DeleteLocalRef(jPadId);
+
+    cppPadTrigger.velocity = env->GetIntField(kotlinPadTriggerEvent, velocityFid);
+    cppPadTrigger.durationTicks = env->GetLongField(kotlinPadTriggerEvent, durationTicksFid);
+
+    env->DeleteLocalRef(padTriggerClass);
+    return cppPadTrigger;
+}
+
+static theone::audio::EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent) {
+    theone::audio::EventCpp cppEvent;
+    if (!kotlinEvent) {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: kotlinEvent is null");
+        return cppEvent;
+    }
+
+    jclass eventClass = env->GetObjectClass(kotlinEvent);
+    if (!eventClass) {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: GetObjectClass failed for Event object.");
+        if(env->ExceptionCheck()) env->ExceptionClear();
+        return cppEvent;
+    }
+
+    jfieldID idFid = env->GetFieldID(eventClass, "id", "Ljava/lang/String;");
+    jfieldID trackIdFid = env->GetFieldID(eventClass, "trackId", "Ljava/lang/String;");
+    jfieldID startTimeTicksFid = env->GetFieldID(eventClass, "startTimeTicks", "J");
+    jfieldID typeFid = env->GetFieldID(eventClass, "type", "Lcom/example/theone/model/EventType;");
+
+    if (!idFid || !trackIdFid || !startTimeTicksFid || !typeFid) {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: Failed to get one or more common field IDs for Event");
+        env->DeleteLocalRef(eventClass);
+        if(env->ExceptionCheck()) env->ExceptionClear();
+        return cppEvent;
+    }
+
+    jstring jId = (jstring)env->GetObjectField(kotlinEvent, idFid);
+    cppEvent.id = JStringToString(env, jId);
+    if (jId) env->DeleteLocalRef(jId);
+
+    jstring jEventTrackId = (jstring)env->GetObjectField(kotlinEvent, trackIdFid);
+    cppEvent.trackId = JStringToString(env, jEventTrackId);
+    if (jEventTrackId) env->DeleteLocalRef(jEventTrackId);
+
+    cppEvent.startTimeTicks = env->GetLongField(kotlinEvent, startTimeTicksFid);
+
+    jobject kotlinEventTypeObj = env->GetObjectField(kotlinEvent, typeFid);
+    if (kotlinEventTypeObj) {
+        jclass padTriggerEventTypeClass = env->FindClass("com/example/theone/model/EventType$PadTrigger");
+        if (padTriggerEventTypeClass) {
+            if (env->IsInstanceOf(kotlinEventTypeObj, padTriggerEventTypeClass)) {
+                cppEvent.type = theone::audio::EventTriggerTypeCpp::PAD_TRIGGER;
+                cppEvent.padTrigger = ConvertKotlinPadTriggerEvent(env, kotlinEventTypeObj);
+            } else {
+                __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: EventType is not PadTrigger.");
+            }
+            env->DeleteLocalRef(padTriggerEventTypeClass);
+        } else {
+             __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: Could not find EventType$PadTrigger class. Check path.");
+             if(env->ExceptionCheck()) env->ExceptionClear();
+        }
+        env->DeleteLocalRef(kotlinEventTypeObj);
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: Event 'type' field is null");
+    }
+
+    env->DeleteLocalRef(eventClass);
+    return cppEvent;
+}
+
+static theone::audio::TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrack) {
+    theone::audio::TrackCpp cppTrack;
+    if (!kotlinTrack) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: kotlinTrack is null"); return cppTrack; }
+
+    jclass trackClass = env->GetObjectClass(kotlinTrack);
+    if (!trackClass) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: GetObjectClass failed."); if(env->ExceptionCheck()) env->ExceptionClear(); return cppTrack; }
+
+    jfieldID idFid = env->GetFieldID(trackClass, "id", "Ljava/lang/String;");
+    jfieldID eventsListFid = env->GetFieldID(trackClass, "events", "Ljava/util/List;");
+
+    if (!idFid || !eventsListFid) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: GetFieldID failed."); env->DeleteLocalRef(trackClass); if(env->ExceptionCheck()) env->ExceptionClear(); return cppTrack; }
+
+    jstring jId = (jstring)env->GetObjectField(kotlinTrack, idFid);
+    cppTrack.id = JStringToString(env, jId);
+    if(jId) env->DeleteLocalRef(jId);
+
+    jobject kotlinEventsList = env->GetObjectField(kotlinTrack, eventsListFid);
+    if (kotlinEventsList) {
+        jclass listClass = env->FindClass("java/util/List");
+        if(!listClass) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: FindClass java/util/List failed."); env->DeleteLocalRef(kotlinEventsList); env->DeleteLocalRef(trackClass); if(env->ExceptionCheck()) env->ExceptionClear(); return cppTrack;}
+
+        jmethodID listSizeMid = env->GetMethodID(listClass, "size", "()I");
+        jmethodID listGetMid = env->GetMethodID(listClass, "get", "(I)Ljava/lang/Object;");
+
+        if(!listSizeMid || !listGetMid) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: GetMethodID for List size/get failed."); env->DeleteLocalRef(listClass); env->DeleteLocalRef(kotlinEventsList); env->DeleteLocalRef(trackClass); if(env->ExceptionCheck()) env->ExceptionClear(); return cppTrack;}
+
+        int listSize = env->CallIntMethod(kotlinEventsList, listSizeMid);
+        cppTrack.events.reserve(listSize);
+        for (int i = 0; i < listSize; ++i) {
+            jobject kotlinEventObj = env->CallObjectMethod(kotlinEventsList, listGetMid, i);
+            if (kotlinEventObj) {
+                cppTrack.events.push_back(ConvertKotlinEvent(env, kotlinEventObj));
+                env->DeleteLocalRef(kotlinEventObj);
+            }
+        }
+        env->DeleteLocalRef(listClass);
+        env->DeleteLocalRef(kotlinEventsList);
+    }
+    env->DeleteLocalRef(trackClass);
+    return cppTrack;
+}
+
+static theone::audio::SequenceCpp ConvertKotlinSequence(JNIEnv* env, jobject kotlinSequence) {
+    theone::audio::SequenceCpp cppSequence;
+    if (!kotlinSequence) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: kotlinSequence is null."); return cppSequence; }
+
+    jclass sequenceClass = env->GetObjectClass(kotlinSequence);
+    if (!sequenceClass) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: GetObjectClass failed."); if(env->ExceptionCheck()) env->ExceptionClear(); return cppSequence; }
+
+    jfieldID idFid = env->GetFieldID(sequenceClass, "id", "Ljava/lang/String;");
+    jfieldID nameFid = env->GetFieldID(sequenceClass, "name", "Ljava/lang/String;");
+    jfieldID bpmFid = env->GetFieldID(sequenceClass, "bpm", "F");
+    jfieldID timeSigNumFid = env->GetFieldID(sequenceClass, "timeSignatureNumerator", "I");
+    jfieldID timeSigDenFid = env->GetFieldID(sequenceClass, "timeSignatureDenominator", "I");
+    jfieldID barLengthFid = env->GetFieldID(sequenceClass, "barLength", "J");
+    jfieldID ppqnFid = env->GetFieldID(sequenceClass, "ppqn", "J");
+    jfieldID tracksMapFid = env->GetFieldID(sequenceClass, "tracks", "Ljava/util/Map;");
+
+    if (!idFid || !nameFid || !bpmFid || !timeSigNumFid || !timeSigDenFid || !barLengthFid || !ppqnFid || !tracksMapFid) {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: Failed to get one or more field IDs for Sequence");
+        env->DeleteLocalRef(sequenceClass); if(env->ExceptionCheck()) env->ExceptionClear(); return cppSequence;
+    }
+
+    jstring jId = (jstring)env->GetObjectField(kotlinSequence, idFid);
+    cppSequence.id = JStringToString(env, jId);
+    if(jId) env->DeleteLocalRef(jId);
+
+    jstring jName = (jstring)env->GetObjectField(kotlinSequence, nameFid);
+    cppSequence.name = JStringToString(env, jName);
+    if(jName) env->DeleteLocalRef(jName);
+
+    cppSequence.bpm = env->GetFloatField(kotlinSequence, bpmFid);
+    cppSequence.timeSignatureNumerator = env->GetIntField(kotlinSequence, timeSigNumFid);
+    cppSequence.timeSignatureDenominator = env->GetIntField(kotlinSequence, timeSigDenFid);
+    cppSequence.barLength = env->GetLongField(kotlinSequence, barLengthFid);
+    cppSequence.ppqn = env->GetLongField(kotlinSequence, ppqnFid);
+
+    jobject kotlinTracksMap = env->GetObjectField(kotlinSequence, tracksMapFid);
+    if (kotlinTracksMap) {
+        jclass mapClass = env->FindClass("java/util/Map");
+        jclass setClass = env->FindClass("java/util/Set");
+        jclass iteratorClass = env->FindClass("java/util/Iterator");
+        jclass entryClass = env->FindClass("java/util/Map$Entry");
+
+        if(!mapClass || !setClass || !iteratorClass || !entryClass) {
+            __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: FindClass failed for Map iteration classes.");
+            if(env->ExceptionCheck()) env->ExceptionClear(); goto cleanup_seq_map_error;
+        }
+
+        jmethodID entrySetMid = env->GetMethodID(mapClass, "entrySet", "()Ljava/util/Set;");
+        jmethodID iteratorMid = env->GetMethodID(setClass, "iterator", "()Ljava/util/Iterator;");
+        jmethodID hasNextMid = env->GetMethodID(iteratorClass, "hasNext", "()Z");
+        jmethodID nextMid = env->GetMethodID(iteratorClass, "next", "()Ljava/lang/Object;");
+        jmethodID getKeyMid = env->GetMethodID(entryClass, "getKey", "()Ljava/lang/Object;");
+        jmethodID getValueMid = env->GetMethodID(entryClass, "getValue", "()Ljava/lang/Object;");
+
+        if(!entrySetMid || !iteratorMid || !hasNextMid || !nextMid || !getKeyMid || !getValueMid) {
+            __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: GetMethodID failed for Map iteration methods.");
+            if(env->ExceptionCheck()) env->ExceptionClear(); goto cleanup_seq_map_error;
+        }
+
+        jobject entrySet = env->CallObjectMethod(kotlinTracksMap, entrySetMid);
+        if (!entrySet) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: entrySet is null."); if(env->ExceptionCheck()) env->ExceptionClear(); goto cleanup_seq_map_error; }
+
+        jobject iterator = env->CallObjectMethod(entrySet, iteratorMid);
+        if (!iterator) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: iterator is null."); env->DeleteLocalRef(entrySet); if(env->ExceptionCheck()) env->ExceptionClear(); goto cleanup_seq_map_error; }
+
+        while (env->CallBooleanMethod(iterator, hasNextMid)) {
+            jobject entry = env->CallObjectMethod(iterator, nextMid);
+            if (!entry) { __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: got null entry from map iterator."); continue; }
+
+            jstring jTrackMapKey = (jstring)env->CallObjectMethod(entry, getKeyMid);
+            jobject kotlinTrackObj = env->CallObjectMethod(entry, getValueMid);
+
+            std::string trackMapKeyStr = JStringToString(env, jTrackMapKey);
+            if (!trackMapKeyStr.empty() && kotlinTrackObj) {
+                cppSequence.tracks[trackMapKeyStr] = ConvertKotlinTrack(env, kotlinTrackObj);
+            } else {
+                __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: null/empty track key or null track object in map.");
+            }
+
+            if (jTrackMapKey) env->DeleteLocalRef(jTrackMapKey);
+            if (kotlinTrackObj) env->DeleteLocalRef(kotlinTrackObj);
+            env->DeleteLocalRef(entry);
+        }
+        env->DeleteLocalRef(iterator);
+        env->DeleteLocalRef(entrySet);
+
+cleanup_seq_map_error:
+        if (mapClass) env->DeleteLocalRef(mapClass);
+        if (setClass) env->DeleteLocalRef(setClass);
+        if (iteratorClass) env->DeleteLocalRef(iteratorClass);
+        if (entryClass) env->DeleteLocalRef(entryClass);
+        env->DeleteLocalRef(kotlinTracksMap);
+    }
+
+    env->DeleteLocalRef(sequenceClass);
+    return cppSequence;
+}
 
 // Helper function to convert Kotlin SampleLayer to SampleLayerCpp
 theone::audio::SampleLayerCpp ConvertKotlinSampleLayer(JNIEnv* env, jobject kotlinLayer) {
@@ -1779,9 +2023,9 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
     std::string padIdStr = JStringToString(env, jPadId);
     std::string padKey = trackIdStr + "_" + padIdStr;
 
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Called for padKey: %s", padKey.c_str());
+    // __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Called for padKey: %s", padKey.c_str()); // Original Log
 
-    theone::audio::PadSettingsCpp cppSettings; // Create a new C++ settings object
+    theone::audio::PadSettingsCpp cppSettings; // Create a new C++ settings object to convert Kotlin object
 
     // Get PadSettings Kotlin class and field IDs
     jclass padSettingsClass = env->GetObjectClass(jPadSettings);
@@ -1982,11 +2226,18 @@ Java_com_example_theone_audio_AudioEngine_native_1updatePadSettings(
     // Clean up PadSettings class reference
     env->DeleteLocalRef(padSettingsClass);
 
-    // --- Update Map ---
-    {
-        std::lock_guard<std::mutex> lock(gPadSettingsMutex);
-        gPadSettingsMap[padKey] = std::move(cppSettings); // Move constructed CppSettings into map
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Successfully updated PadSettings for key: %s. Map size: %zu", padKey.c_str(), gPadSettingsMap.size());
+    // --- Update Map --- // This part is now handled by AudioEngine class
+    // {
+    //     std::lock_guard<std::mutex> lock(gPadSettingsMutex);
+    //     gPadSettingsMap[padKey] = std::move(cppSettings); // Move constructed CppSettings into map
+    //     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Successfully updated PadSettings for key: %s. Map size: %zu", padKey.c_str(), gPadSettingsMap.size());
+    // }
+
+    if (audioEngineInstance) {
+        audioEngineInstance->updatePadSettings(padKey, cppSettings);
+         __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_updatePadSettings: Delegated to AudioEngine for key: %s", padKey.c_str());
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_updatePadSettings: audioEngineInstance is null for key: %s", padKey.c_str());
     }
 
     // JNI resources like jTrackId, jPadId, jPadSettings are managed by JNI (caller releases them or they are arguments)
@@ -2138,119 +2389,32 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1loadSequenceData(
         JNIEnv *env,
         jobject /* thiz */,
-        jobject jSequence) { // jSequence is the Kotlin Sequence object
-    std::lock_guard<std::mutex> lock(gSequencerMutex);
-
-    if (jSequence == nullptr) {
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_loadSequenceData: jSequence object is null. Clearing current sequence.");
-        gCurrentSequence.reset(); // Clear current sequence if new one is null
-        gCurrentTickDurationMs = 0.0; // Stop processing
+        jobject jSequence_kotlin) {
+    if (!audioEngineInstance) {
+        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "native_loadSequenceData: audioEngineInstance is null!");
+        return;
+    }
+    if (jSequence_kotlin == nullptr) {
+        __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "native_loadSequenceData: Kotlin Sequence object is null. Clearing current sequence in AudioEngine.");
+        theone::audio::SequenceCpp emptySequence;
+        // Set a distinct ID or flag if AudioEngine needs to differentiate from a truly empty loaded sequence.
+        emptySequence.id = "__EMPTY_SEQUENCE_FOR_CLEARING__";
+        audioEngineInstance->loadSequenceData(emptySequence);
         return;
     }
 
-    gCurrentSequence = std::make_unique<SequenceCpp>();
+    __android_log_print(ANDROID_LOG_INFO, NATIVE_LIB_APP_NAME, "native_loadSequenceData: Starting conversion of Kotlin Sequence.");
+    theone::audio::SequenceCpp sequenceCpp = ConvertKotlinSequence(env, jSequence_kotlin);
 
-    jclass sequenceClass = env->GetObjectClass(jSequence);
-    if (!sequenceClass) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_loadSequenceData: GetObjectClass failed for Sequence.");
-        gCurrentSequence.reset(); // Ensure consistent state
-        env->ExceptionClear();
-        return;
+    // It's good practice to check if the conversion was successful, e.g. by checking if id is populated
+    if (sequenceCpp.id.empty() && jSequence_kotlin != nullptr) { // Check id only if original object was not null
+         __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "native_loadSequenceData: Conversion from Kotlin Sequence might have failed (resulting ID is empty).");
+         // Depending on requirements, may not load this potentially corrupt/empty sequence.
+         // For now, we proceed to load whatever was converted.
     }
 
-    // Get field IDs for Sequence
-    jfieldID idFid = env->GetFieldID(sequenceClass, "id", "Ljava/lang/String;");
-    jfieldID nameFid = env->GetFieldID(sequenceClass, "name", "Ljava/lang/String;");
-    jfieldID bpmFid = env->GetFieldID(sequenceClass, "bpm", "F");
-    jfieldID timeSigNumFid = env->GetFieldID(sequenceClass, "timeSignatureNumerator", "I");
-    jfieldID timeSigDenFid = env->GetFieldID(sequenceClass, "timeSignatureDenominator", "I");
-    jfieldID barLengthFid = env->GetFieldID(sequenceClass, "barLength", "J");
-    jfieldID ppqnFid = env->GetFieldID(sequenceClass, "ppqn", "J");
-    jfieldID tracksMapFid = env->GetFieldID(sequenceClass, "tracks", "Ljava/util/Map;");
-
-    if (!idFid || !nameFid || !bpmFid || !timeSigNumFid || !timeSigDenFid || !barLengthFid || !ppqnFid || !tracksMapFid) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_loadSequenceData: Failed to get one or more field IDs for Sequence.");
-        env->DeleteLocalRef(sequenceClass);
-        gCurrentSequence.reset();
-        env->ExceptionClear();
-        return;
-    }
-
-    // Populate gCurrentSequence fields
-    jstring jId = (jstring)env->GetObjectField(jSequence, idFid);
-    gCurrentSequence->id = JStringToString(env, jId);
-    env->DeleteLocalRef(jId);
-
-    jstring jName = (jstring)env->GetObjectField(jSequence, nameFid);
-    gCurrentSequence->name = JStringToString(env, jName);
-    env->DeleteLocalRef(jName);
-
-    gCurrentSequence->bpm = env->GetFloatField(jSequence, bpmFid);
-    gCurrentSequence->timeSignatureNumerator = env->GetIntField(jSequence, timeSigNumFid);
-    gCurrentSequence->timeSignatureDenominator = env->GetIntField(jSequence, timeSigDenFid);
-    gCurrentSequence->barLength = env->GetLongField(jSequence, barLengthFid);
-    gCurrentSequence->ppqn = env->GetLongField(jSequence, ppqnFid);
-
-    // Process tracks map
-    jobject tracksMapObj = env->GetObjectField(jSequence, tracksMapFid);
-    if (tracksMapObj) {
-        jclass mapClass = env->FindClass("java/util/Map");
-        jmethodID entrySetMid = env->GetMethodID(mapClass, "entrySet", "()Ljava/util/Set;");
-        jobject entrySetObj = env->CallObjectMethod(tracksMapObj, entrySetMid);
-
-        jclass setClass = env->FindClass("java/util/Set");
-        jmethodID iteratorMid = env->GetMethodID(setClass, "iterator", "()Ljava/util/Iterator;");
-        jobject iteratorObj = env->CallObjectMethod(entrySetObj, iteratorMid);
-
-        jclass iteratorClass = env->FindClass("java/util/Iterator");
-        jmethodID hasNextMid = env->GetMethodID(iteratorClass, "hasNext", "()Z");
-        jmethodID nextMid = env->GetMethodID(iteratorClass, "next", "()Ljava/lang/Object;");
-
-        jclass entryClass = env->FindClass("java/util/Map$Entry");
-        jmethodID getKeyMid = env->GetMethodID(entryClass, "getKey", "()Ljava/lang/Object;");
-        jmethodID getValueMid = env->GetMethodID(entryClass, "getValue", "()Ljava/lang/Object;");
-
-        gCurrentSequence->tracks.clear(); // Clear previous tracks
-
-        if (mapClass && entrySetMid && entrySetObj && setClass && iteratorMid && iteratorObj && iteratorClass && hasNextMid && nextMid && entryClass && getKeyMid && getValueMid) {
-            while (env->CallBooleanMethod(iteratorObj, hasNextMid)) {
-                jobject entryObj = env->CallObjectMethod(iteratorObj, nextMid);
-                jstring jTrackMapKey = (jstring)env->CallObjectMethod(entryObj, getKeyMid); // Track ID (String)
-                jobject kotlinTrackObj = env->CallObjectMethod(entryObj, getValueMid);   // Track object
-
-                std::string trackIdCpp = JStringToString(env, jTrackMapKey);
-                gCurrentSequence->tracks[trackIdCpp] = ConvertKotlinTrack(env, kotlinTrackObj);
-
-                env->DeleteLocalRef(jTrackMapKey);
-                env->DeleteLocalRef(kotlinTrackObj);
-                env->DeleteLocalRef(entryObj);
-            }
-        } else {
-            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_loadSequenceData: Failed to get Map/Set/Iterator/Entry methods.");
-            env->ExceptionClear();
-        }
-
-        if(mapClass) env->DeleteLocalRef(mapClass);
-        if(entrySetObj) env->DeleteLocalRef(entrySetObj);
-        if(setClass) env->DeleteLocalRef(setClass);
-        if(iteratorObj) env->DeleteLocalRef(iteratorObj);
-        if(iteratorClass) env->DeleteLocalRef(iteratorClass);
-        if(entryClass) env->DeleteLocalRef(entryClass);
-        env->DeleteLocalRef(tracksMapObj);
-    } else {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "native_loadSequenceData: Sequence '%s' has null tracks map.", gCurrentSequence->id.c_str());
-    }
-
-    env->DeleteLocalRef(sequenceClass);
-
-    gCurrentSequence->currentPlayheadTicks = 0;
-    gCurrentSequence->isPlaying = false;
-    gTimeAccumulatedForTick = 0.0;
-    RecalculateTickDuration();
-
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
-        "native_loadSequenceData: Loaded sequence ID: %s, Name: %s, BPM: %.2f, PPQN: %ld. Tracks: %zu",
-        gCurrentSequence->id.c_str(), gCurrentSequence->name.c_str(), gCurrentSequence->bpm, gCurrentSequence->ppqn, gCurrentSequence->tracks.size());
+    audioEngineInstance->loadSequenceData(sequenceCpp);
+    __android_log_print(ANDROID_LOG_INFO, NATIVE_LIB_APP_NAME, "native_loadSequenceData: Kotlin Sequence (ID: %s) converted and loaded into AudioEngine.", sequenceCpp.id.c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -2313,3 +2477,48 @@ Java_com_example_theone_audio_AudioEngine_native_1getSequencerPlayheadPosition(
     return 0L;
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1setPadPan(
+        JNIEnv *env,
+        jobject /* this */,
+        jstring jTrackId,
+        jstring jPadId,
+        jfloat pan) {
+    std::string trackIdStr = JStringToString(env, jTrackId);
+    std::string padIdStr = JStringToString(env, jPadId);
+
+    if (trackIdStr.empty() || padIdStr.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_setPadPan JNI: trackId or padId is empty");
+        return;
+    }
+    std::string padKey = trackIdStr + "_" + padIdStr;
+
+    if (audioEngineInstance) {
+        audioEngineInstance->setPadPan(padKey, static_cast<float>(pan));
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_setPadPan JNI: audioEngineInstance is null for padKey '%s'", padKey.c_str());
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_theone_audio_AudioEngine_native_1setPadVolume(
+        JNIEnv *env,
+        jobject /* this */,
+        jstring jTrackId,
+        jstring jPadId,
+        jfloat volume) {
+    std::string trackIdStr = JStringToString(env, jTrackId);
+    std::string padIdStr = JStringToString(env, jPadId);
+
+    if (trackIdStr.empty() || padIdStr.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_setPadVolume JNI: trackId or padId is empty");
+        return;
+    }
+    std::string padKey = trackIdStr + "_" + padIdStr;
+
+    if (audioEngineInstance) {
+        audioEngineInstance->setPadVolume(padKey, static_cast<float>(volume));
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "native_setPadVolume JNI: audioEngineInstance is null for padKey '%s'", padKey.c_str());
+    }
+}
