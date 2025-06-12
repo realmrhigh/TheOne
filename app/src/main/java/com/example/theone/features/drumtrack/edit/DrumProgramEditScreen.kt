@@ -502,17 +502,36 @@ fun EffectSettingItem(
                 onValueChange = { newMix -> viewModel.updateEffectMix(effectSetting.id, newMix) },
                 valueRange = 0f..1f
             )
-            // FIX: Explicitly define the Map.Entry type for the lambda parameter 'it'
-            val paramsString = effectSetting.parameters.entries.joinToString(", ") {
-                // Explicitly declare the type of 'it'
-                    it: Map.Entry<String, Float> ->
-                // Now you can destructure 'it' without issues
-                val (key, value) = it
-                "$key=${String.format("%.2f", value)}"
-            }
-            Text("Parameters: $paramsString")
+            // Dynamically create sliders for parameters
+            val parameterDefinitions = viewModel.getEffectParameterDefinitions(effectSetting.type)
 
-            Button(onClick = { viewModel.removeEffect(effectSetting.id) }) {
+            if (parameterDefinitions.isNotEmpty()) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) // Visually separate mix from other params
+                Text(
+                    "Parameters:",
+                    style = MaterialTheme.typography.titleSmall, // M3 titleSmall
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+
+            parameterDefinitions.forEach { definition ->
+                ParameterSlider(
+                    label = if (definition.unit.isNotBlank()) "${definition.displayName} (${definition.unit})" else definition.displayName,
+                    value = effectSetting.parameters[definition.key] ?: definition.defaultValue,
+                    onValueChange = { newValue ->
+                        viewModel.updateEffectParameter(effectSetting.id, definition.key, newValue)
+                    },
+                    valueRange = definition.valueRange,
+                    steps = definition.steps, // ParameterSlider's internal logic handles M3 step conversion
+                    enabled = effectSetting.isEnabled
+                )
+            }
+
+            Button(
+                onClick = { viewModel.removeEffect(effectSetting.id) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
+            ) {
                 Text("Remove")
             }
         }

@@ -90,12 +90,55 @@ enum class EffectType {
     // TODO: Add more effect types
 }
 
-// TODO: Define default parameter sets for each EffectType somewhere globally accessible.
-// Example:
-// object DefaultEffectParameters {
-//     val DELAY = mapOf("timeMs" to 300f, "feedback" to 0.4f, "lowPassCutoffHz" to 8000f, "highPassCutoffHz" to 100f)
-//     val REVERB = mapOf("size" to 0.7f, "decayMs" to 1500f, "damping" to 0.5f, "earlyReflections" to 0.8f)
-// }
-class SynthModels {
+data class EffectParameterDefinition(
+    val key: String, // Matches the key in EffectSetting.parameters map
+    val displayName: String, // Name for UI display
+    val valueRange: ClosedFloatingPointRange<Float>, // Min and Max for sliders
+    val steps: Int = 0, // For discrete sliders, 0 means continuous. If > 0, actual steps = steps + 1.
+    val unit: String = "", // e.g., "ms", "Hz", "%", for display
+    val defaultValue: Float // Default value for this parameter when an effect is added
+)
 
+object DefaultEffectParameterProvider {
+    private val definitions: Map<EffectType, List<EffectParameterDefinition>> = mapOf(
+        EffectType.DELAY to listOf(
+            EffectParameterDefinition(key = "timeMs", displayName = "Time", valueRange = 0f..2000f, unit = "ms", defaultValue = 300f),
+            EffectParameterDefinition(key = "feedback", displayName = "Feedback", valueRange = 0f..0.95f, steps = 95, unit = "", defaultValue = 0.4f),
+            EffectParameterDefinition(key = "lowPassCutoffHz", displayName = "LP Cutoff", valueRange = 1000f..20000f, unit = "Hz", defaultValue = 18000f),
+            EffectParameterDefinition(key = "highPassCutoffHz", displayName = "HP Cutoff", valueRange = 20f..5000f, unit = "Hz", defaultValue = 100f)
+        ),
+        EffectType.REVERB to listOf(
+            EffectParameterDefinition(key = "size", displayName = "Size", valueRange = 0.1f..1.0f, steps = 90, unit = "", defaultValue = 0.7f),
+            EffectParameterDefinition(key = "decayMs", displayName = "Decay", valueRange = 100f..10000f, unit = "ms", defaultValue = 1500f),
+            EffectParameterDefinition(key = "damping", displayName = "Damping", valueRange = 0f..1.0f, steps = 100, unit = "", defaultValue = 0.5f),
+            EffectParameterDefinition(key = "earlyReflectionsLevel", displayName = "Early Reflect", valueRange = 0f..1.0f, steps = 100, unit = "", defaultValue = 0.8f)
+        )
+        // TODO: Add definitions for other EffectTypes (DISTORTION, EQ_PARAMETRIC, etc.)
+        // EffectType.DISTORTION -> listOf(
+        // EffectParameterDefinition(key = "drive", displayName = "Drive", valueRange = 0f..1f, defaultValue = 0.5f),
+        // EffectParameterDefinition(key = "tone", displayName = "Tone", valueRange = 0f..1f, defaultValue = 0.5f)
+        // ),
+        // EffectType.FILTER -> listOf(
+        // EffectParameterDefinition(key = "cutoffHz", displayName = "Cutoff", valueRange = 20f..20000f, unit="Hz", defaultValue = 1000f),
+        // EffectParameterDefinition(key = "resonance", displayName = "Resonance", valueRange = 0.5f..10f, defaultValue = 0.707f)
+        // // Mode would be a separate enum selection, not a slider here.
+        // )
+    )
+
+    fun getDefinitions(type: EffectType): List<EffectParameterDefinition> {
+        return definitions[type] ?: emptyList()
+    }
+
+    fun getDefaultParameters(type: EffectType): MutableMap<String, Float> {
+        val params = mutableMapOf<String, Float>()
+        getDefinitions(type).forEach { def ->
+            params[def.key] = def.defaultValue
+        }
+        return params
+    }
+}
+
+class SynthModels {
+    // This class can be removed if it's truly empty and not used elsewhere.
+    // For now, keeping it as it was in the original file structure.
 }

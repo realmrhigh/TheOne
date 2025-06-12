@@ -19,6 +19,8 @@ import com.example.theone.model.SynthModels.ModSource // For ModulationRouting's
 import com.example.theone.model.SynthModels.ModDestination // For ModulationRouting's destination type
 import com.example.theone.model.SynthModels.EffectSetting
 import com.example.theone.model.SynthModels.EffectType
+import com.example.theone.model.SynthModels.EffectParameterDefinition // Added import
+import com.example.theone.model.SynthModels.DefaultEffectParameterProvider // Added import
 // Real AudioEngineControl and ProjectManager interfaces
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
@@ -305,22 +307,18 @@ class DrumProgramEditViewModel(
     }
 
     // --- Effects Functions ---
-    fun addEffect(type: EffectType) {
-        // TODO: Initialize with actual default parameters for the given EffectType
-        val defaultParams = mutableMapOf<String, Float>() // Placeholder
-        when (type) {
-            EffectType.DELAY -> {
-                defaultParams["timeMs"] = 250f
-                defaultParams["feedback"] = 0.3f
-            }
-            EffectType.REVERB -> {
-                defaultParams["size"] = 0.7f
-                defaultParams["decayMs"] = 1000f
-            }
-            // Add other effect type default params here
-            else -> {}
-        }
-        val newEffect = EffectSetting(type = type, parameters = defaultParams)
+    fun addEffect(type: com.example.theone.model.SynthModels.EffectType) {
+        // Get default parameters for the given EffectType
+        val defaultParams = com.example.theone.model.SynthModels.DefaultEffectParameterProvider.getDefaultParameters(type)
+
+        val newEffect = com.example.theone.model.SynthModels.EffectSetting(
+            id = java.util.UUID.randomUUID().toString(), // Keep new UUID generation
+            type = type,
+            parameters = defaultParams, // Use parameters from DefaultEffectParameterProvider
+            isEnabled = true, // Default to enabled
+            mix = 0.5f // Default mix level
+        )
+
         _padSettings.update { currentSettings ->
             currentSettings.copy(effects = (currentSettings.effects.toMutableList() + newEffect).toMutableList())
         }
@@ -372,6 +370,10 @@ class DrumProgramEditViewModel(
     // TODO: Implement reorderEffect(fromIndex: Int, toIndex: Int) if needed.
     // This would typically involve removing and inserting at specific indices,
     // and ensuring the underlying list in PadSettings is updated accordingly.
+
+    fun getEffectParameterDefinitions(type: com.example.theone.model.SynthModels.EffectType): List<com.example.theone.model.SynthModels.EffectParameterDefinition> {
+        return com.example.theone.model.SynthModels.DefaultEffectParameterProvider.getDefinitions(type)
+    }
 
     fun onEvent(event: DrumProgramEditEvent) {
         when (event) {
