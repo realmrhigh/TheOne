@@ -1,7 +1,16 @@
 #include "AudioEngine.h"
 #include <android/log.h>
 #include <algorithm> // For std::max, std::min
-#include <string.h> // For memset in onAudioReady
+#include <cmath>     // For M_PI, cosf, sinf, powf
+#include <string.h>  // For memset in onAudioReady
+
+// Ensure M_PI and M_PI_2 are defined
+#ifndef M_PI
+    #define M_PI 3.14159265358979323846
+#endif
+#ifndef M_PI_2
+    #define M_PI_2 (M_PI / 2.0)
+#endif
 
 // Define APP_NAME for logging, if not already globally available
 #ifndef APP_NAME
@@ -313,6 +322,328 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     // All accesses to shared data (padSettingsMap_, sampleMap_, activeSounds_, etc.)
     // must be protected by their respective mutexes (padSettingsMutex_, sampleMapMutex_, etc.).
 
+    // --- Active Sounds Processing ---
+    { // Scope for activeSoundsMutex_
+        std::lock_guard<std::mutex> activeSoundsLock(this->activeSoundsMutex_);
+        uint32_t streamChannels = static_cast<uint32_t>(oboeStream->getChannelCount());
+
+        for (auto soundIt = this->activeSounds_.begin(); soundIt != this->activeSounds_.end(); /* no increment here */) {
+            theone::audio::PlayingSound &sound = *soundIt;
+
+            if (!sound.isActive.load()) {
+                ++soundIt; // Still need to advance iterator if just checking inactive ones prior to erase-remove
+                continue;
+            }
+
+            const theone::audio::LoadedSample* loadedSample = sound.loadedSamplePtr;
+            if (!loadedSample || loadedSample->audioData.empty() || loadedSample->frameCount == 0) {
+                sound.isActive.store(false);
+                ++soundIt;
+                continue;
+            }
+
+            uint32_t sampleChannels = loadedSample->format.channels;
+            float ampEnvValue = 1.0f;
+            float pitchEnvValue = 0.0f; // Typically additive, centered at 0
+            float filterEnvValue = 1.0f; // Typically multiplicative for cutoff modulation
+
+            // Envelope Processing
+            if (sound.padSettings) { // Pad-triggered sound
+                if (sound.ampEnvelopeGen) {
+                    ampEnvValue = sound.ampEnvelopeGen->process();
+                    if (sound.ampEnvelopeGen->getCurrentStage() == theone::audio::EnvelopeStage::IDLE && ampEnvValue < 0.001f) {
+                        sound.isActive.store(false);
+                    }
+                }
+                if (sound.padSettings->hasPitchEnvelope && sound.pitchEnvelopeGen) {
+                    pitchEnvValue = sound.pitchEnvelopeGen->process();
+                     // Check if pitch env is done, though it doesn't make sound inactive
+                    if (sound.pitchEnvelopeGen->getCurrentStage() == theone::audio::EnvelopeStage::IDLE) {
+                        // Pitch envelope finished, could reset or hold last value
+                    }
+                }
+                if (sound.padSettings->hasFilterEnvelope && sound.filterEnvelopeGen) {
+                    filterEnvValue = sound.filterEnvelopeGen->process();
+                    // Check if filter env is done
+                    if (sound.filterEnvelopeGen->getCurrentStage() == theone::audio::EnvelopeStage::IDLE) {
+                        // Filter envelope finished
+                    }
+                }
+            } else { // Non-pad sound (e.g., metronome if it were routed here, or other simple triggers)
+                if (sound.ampEnvelopeGen) { // Basic amp envelope for non-pad sounds
+                    ampEnvValue = sound.ampEnvelopeGen->process();
+                    if (sound.ampEnvelopeGen->getCurrentStage() == theone::audio::EnvelopeStage::IDLE && ampEnvValue < 0.001f) {
+                        sound.isActive.store(false);
+                    }
+                }
+            }
+
+            // LFO Processing
+            float lfoVolumeMod = 1.0f;  // Multiplicative
+            float lfoPanMod = 0.0f;     // Additive
+            float lfoPitchMod = 0.0f;   // Additive (semitones or cents)
+            float lfoFilterMod = 0.0f;  // Additive (filter cutoff units)
+
+            if (sound.padSettings && !sound.lfoGens.empty()) {
+                for (size_t i = 0; i < sound.lfoGens.size() && i < sound.padSettings->lfos.size(); ++i) {
+                    if (!sound.lfoGens[i] || !sound.padSettings->lfos[i].isEnabled) continue;
+
+                    float lfoValue = sound.lfoGens[i]->process(); // Output typically -1 to 1 or 0 to 1
+                    const auto& lfoConfig = sound.padSettings->lfos[i];
+
+                    // Apply LFO based on its primary destination
+                    // Note: The 'depth' controls how much the LFO affects the parameter.
+                    // A bipolar LFO (-1 to 1) with depth D would modulate Param by +/- D.
+                    // A unipolar LFO (0 to 1) with depth D would modulate Param by 0 to D.
+                    // Assuming lfoValue is bipolar (-1 to 1) for these calculations.
+                    // If LFO is unipolar, it should be mapped to bipolar, or calculations adjusted.
+                    // For simplicity, assume lfoValue is already appropriately scaled by LFO generator itself if needed.
+
+                    switch (lfoConfig.primaryDestination) {
+                        case LfoDestinationCpp::VOLUME:
+                            // lfoValue is -1 to 1. Depth is 0 to 1.
+                            // Modulates volume multiplicatively. Example: (1 + lfoValue * depth)
+                            // To ensure volume doesn't go negative: (1.0f + lfoValue * lfoConfig.depth)
+                            // Or more commonly, map LFO to a factor: e.g. 0.5 to 1.5
+                            // lfoVolumeMod *= (1.0f + lfoValue * lfoConfig.depth); // This can be problematic if depth is high
+                                                        // A safer way: make LFO apply to a range.
+                                                        // If LFO is -1 to 1, depth is 0.5, then range is 1.0 +/- 0.5 => 0.5 to 1.5
+                                                        // Or, if LFO is 0 to 1 (e.g. for tremolo), depth 0.5, then range is 1.0 - (0 to 0.5) => 0.5 to 1.0
+                                                        // Let's assume lfoValue is -1 to 1, depth is 0-1.
+                                                        // Max reduction/boost is depth. So effective_mod = 1 + lfoValue * depth.
+                            lfoVolumeMod *= (1.0f + lfoValue * (lfoConfig.depth / 2.0f)); // Assuming depth is full range, so halve for +/-
+                            break;
+                        case LfoDestinationCpp::PAN:
+                            lfoPanMod += lfoValue * lfoConfig.depth; // Pan is -1 to 1. Depth is 0 to 1 (pan width)
+                            break;
+                        case LfoDestinationCpp::PITCH:
+                            // Pitch mod is often in semitones. Depth could be # of semitones.
+                            lfoPitchMod += lfoValue * lfoConfig.depth;
+                            break;
+                        case LfoDestinationCpp::FILTER_CUTOFF:
+                            // Filter mod is often additive to a base cutoff. Depth relative to filter range.
+                            lfoFilterMod += lfoValue * lfoConfig.depth;
+                            break;
+                        default: // NONE or other unhandled
+                            break;
+                    }
+                }
+                // Clamp LFO modulations to sensible ranges
+                lfoVolumeMod = std::max(0.0f, std::min(2.0f, lfoVolumeMod)); // e.g. 0x to 2x volume
+                lfoPanMod = std::max(-1.0f, std::min(1.0f, lfoPanMod));     // Clamp total pan mod contribution
+            }
+            // (Pitch and Filter LFOs would be applied during sample generation/DSP if those were here)
+
+
+            // --- Filter Initialization/Configuration (Sample Rate) ---
+            // This should ideally be done when the sound is created/configured if the sample rate is known.
+            // If a sound's filter sample rate doesn't match the engine's, it should be updated.
+            // For simplicity here, we ensure it's set once.
+            // A more robust system might check if sound.filter->getSampleRate() != currentSampleRate and update.
+            // uint32_t currentSampleRateForModules = this->audioStreamSampleRate_.load(); // Already available from sequencer logic
+            // if (currentSampleRateForModules == 0) currentSampleRateForModules = 48000; // Fallback
+            // if (sound.filter && sound.padSettings && sound.padSettings->filterSettings.enabled) {
+            //     sound.filter->setSampleRate(static_cast<float>(currentSampleRateForModules));
+            // }
+            // Note: The above setSampleRate call for the filter might be redundant if the filter
+            // is always created and configured with the correct sample rate when the sound object is made.
+            // The sequencer part does this for envelopes. Assuming filter will be similar.
+            // For now, let's assume filter is configured with correct SR at creation.
+
+            // --- A. Calculate Effective Pitch Modulation ---
+            float baseTuneSemitones = 0.0f; // Placeholder for future settings
+            float pitchEnvSemitones = 0.0f;
+            // Assuming pitchEnvValue is the raw value from the envelope generator (0 to 1.0)
+            // And lfoPitchMod is already in semitones.
+
+            if (sound.pitchEnvelopeGen && sound.padSettings && sound.padSettings->hasPitchEnvelope) {
+                // pitchEnvValue was already processed earlier in the "Envelope Processing" section.
+                // float pitchEnvRaw = sound.pitchEnvelopeGen->process(); // Already done
+                float pitchEnvDepth = 24.0f; // As per subtask: MAX_PITCH_ENV_SEMITONES
+                // if (sound.padSettings) { // Check if padSettings has a specific depth
+                //    pitchEnvDepth = sound.padSettings->pitchEnvelope.depthSemitones; // Assumes field exists
+                // }
+                pitchEnvSemitones = pitchEnvDepth * (pitchEnvValue - 0.5f) * 2.0f;
+            }
+
+            float lfoPitchSemitones = lfoPitchMod; // Assuming lfoPitchMod is already correctly scaled (e.g. in semitones)
+
+            float totalPitchShiftSemitones = baseTuneSemitones + pitchEnvSemitones + lfoPitchSemitones;
+            float currentPitchFactor = powf(2.0f, totalPitchShiftSemitones / 12.0f);
+            currentPitchFactor = std::max(0.1f, std::min(4.0f, currentPitchFactor)); // Sanity clamp pitch factor
+
+            // --- B. Calculate Effective Filter Cutoff (Filter Modulation) ---
+            if (sound.filter && sound.padSettings && sound.padSettings->filterSettings.enabled) {
+                // Ensure filter's sample rate is up-to-date.
+                // This is important if sounds can be created when engine's sample rate is unknown
+                // or if the engine sample rate can change dynamically (though less common for callbacks).
+                uint32_t currentSr = this->audioStreamSampleRate_.load();
+                if (currentSr == 0) currentSr = 48000; // Fallback if not yet set by Oboe stream
+                sound.filter->setSampleRate(static_cast<float>(currentSr));
+
+
+                float baseCutoffHz = sound.padSettings->filterSettings.cutoffHz;
+                float baseResonance = sound.padSettings->filterSettings.resonance;
+                float modulatedCutoffHz = baseCutoffHz;
+
+                if (sound.filterEnvelopeGen && sound.padSettings->hasFilterEnvelope) {
+                    // filterEnvValue was already processed in "Envelope Processing" section
+                    float filterEnvDepthOctaves = sound.padSettings->filterSettings.envAmount;
+                    // Map filterEnvValue (0..1) to bipolar (-1..1) for modulation range
+                    modulatedCutoffHz *= powf(2.0f, filterEnvDepthOctaves * (filterEnvValue - 0.5f) * 2.0f);
+                }
+
+                // lfoFilterMod is assumed to be an octave offset from LFO processing
+                float lfoModOctaves = lfoFilterMod;
+                modulatedCutoffHz *= powf(2.0f, lfoModOctaves);
+
+                // Clamp modulatedCutoffHz (e.g., 20Hz to Nyquist limit - margin)
+                float nyquistLimit = static_cast<float>(currentSr) / 2.0f;
+                modulatedCutoffHz = std::max(20.0f, std::min(modulatedCutoffHz, nyquistLimit - 100.0f));
+                if (modulatedCutoffHz < 20.0f) modulatedCutoffHz = 20.0f; // final safety
+
+                sound.filter->configure(sound.padSettings->filterSettings.mode, modulatedCutoffHz, baseResonance);
+            }
+
+
+            // Panning and Gain Calculation
+            float currentPan = sound.initialPan + lfoPanMod;
+            currentPan = std::max(-1.0f, std::min(1.0f, currentPan)); // Clamp final pan
+
+            // Convert pan (-1 to 1) to radians for stereo gain calculation (constant power panning)
+            // M_PI_4 is pi/4. Pan value from -1 to 1 maps to 0 to pi/2.
+            // Pan = -1 (Left)  => angle = 0      => cos(0)=1, sin(0)=0
+            // Pan =  0 (Center) => angle = pi/4   => cos(pi/4)=sin(pi/4)=sqrt(2)/2
+            // Pan =  1 (Right) => angle = pi/2   => cos(pi/2)=0, sin(pi/2)=1
+            float panRad = (currentPan * 0.5f + 0.5f) * (float)M_PI_2; // M_PI_2 is pi/2
+
+            float overallGain = sound.initialVolume * ampEnvValue * lfoVolumeMod;
+            overallGain = std::max(0.0f, overallGain); // Ensure gain is not negative
+
+            float finalGainL = overallGain * cosf(panRad);
+            float finalGainR = overallGain * sinf(panRad);
+
+            // --- B. Frame-by-Frame Mixing Loop (with resampling) ---
+            for (int frame = 0; frame < numFrames; ++frame) {
+                if (!sound.isActive.load()) {
+                    break; // Sound became inactive during this frame block
+                }
+
+                size_t effEndFrame = sound.useSlicing ? sound.endFrame : loadedSample->frameCount;
+                if (effEndFrame == 0 && loadedSample->frameCount > 0) effEndFrame = loadedSample->frameCount;
+
+
+                // Determine integer indices and fraction for interpolation
+                size_t index0 = static_cast<size_t>(sound.fractionalFramePosition);
+                float fraction = static_cast<float>(sound.fractionalFramePosition - index0);
+                size_t index1 = index0 + 1;
+
+                // Boundary checks for index0 and index1 against sample/slice boundaries
+                if (index0 >= effEndFrame) {
+                    if (sound.isLooping && sound.loopStartFrame < sound.loopEndFrame && sound.loopEndFrame <= effEndFrame) {
+                        double overshoot = sound.fractionalFramePosition - static_cast<double>(effEndFrame);
+                        sound.fractionalFramePosition = static_cast<double>(sound.loopStartFrame) + overshoot;
+                        // Recalculate indices and fraction
+                        index0 = static_cast<size_t>(sound.fractionalFramePosition);
+                        fraction = static_cast<float>(sound.fractionalFramePosition - index0);
+                        index1 = index0 + 1;
+                        // Ensure new index0 is not immediately causing another loop or end
+                        if (index0 >= effEndFrame) {
+                             sound.isActive.store(false); // Stuck in a loop or bad loop parameters
+                             break;
+                        }
+                    } else {
+                        sound.isActive.store(false);
+                        break;
+                    }
+                }
+
+                // Ensure index1 is within bounds for interpolation.
+                // If index0 is the last valid frame, index1 would be out of bounds.
+                // In this case, we can use sample0 for sample1 (zero-order hold for the last fraction).
+                if (index1 >= loadedSample->frameCount) { // Check against the absolute sample frameCount
+                    index1 = index0; // Use sample0 for sample1 if index1 is out of bounds
+                    if (index0 >= loadedSample->frameCount) { // Should not happen if effEndFrame is correct
+                        sound.isActive.store(false);
+                        break;
+                    }
+                }
+                 // Further check if index0 itself has gone past actual sample data (e.g. bad loop parameters)
+                if (index0 >= loadedSample->frameCount) {
+                    sound.isActive.store(false);
+                    break;
+                }
+
+
+                // Fetch samples
+                float sample0_L = 0.0f, sample0_R = 0.0f;
+                float sample1_L = 0.0f, sample1_R = 0.0f;
+
+                if (sampleChannels == 1) { // Mono sample
+                    sample0_L = loadedSample->audioData[index0];
+                    sample1_L = loadedSample->audioData[index1];
+                    if (streamChannels == 2) {
+                        sample0_R = sample0_L;
+                        sample1_R = sample1_L;
+                    }
+                } else if (sampleChannels == 2) { // Stereo sample
+                    sample0_L = loadedSample->audioData[index0 * 2];
+                    sample0_R = loadedSample->audioData[index0 * 2 + 1];
+                    sample1_L = loadedSample->audioData[index1 * 2];
+                    sample1_R = loadedSample->audioData[index1 * 2 + 1];
+                }
+
+                // Linear Interpolation
+                float interpolatedSample_L = sample0_L * (1.0f - fraction) + sample1_L * fraction;
+                float interpolatedSample_R = (streamChannels == 2) ? (sample0_R * (1.0f - fraction) + sample1_R * fraction) : 0.0f;
+
+                // --- C. Apply Filter ---
+                float processedSample_L = interpolatedSample_L;
+                float processedSample_R = interpolatedSample_R;
+
+                if (sound.filter && sound.padSettings && sound.padSettings->filterSettings.enabled) {
+                    processedSample_L = sound.filter->process(interpolatedSample_L);
+                    if (streamChannels == 2) {
+                        // Process Right channel with the same filter instance.
+                        // For true stereo filter, you'd need two instances or a stereo-aware filter.
+                        processedSample_R = sound.filter->process(interpolatedSample_R);
+                    }
+                }
+
+                // Mix into output buffer
+                if (streamChannels == 1) { // Mono output
+                    outputBuffer[frame] += processedSample_L * overallGain; // Panning ignored for mono output
+                } else if (streamChannels == 2) { // Stereo output
+                    outputBuffer[frame * streamChannels] += processedSample_L * finalGainL;
+                    outputBuffer[frame * streamChannels + 1] += processedSample_R * finalGainR;
+                }
+                // else: Handle other channel counts if necessary
+
+                // Advance fractional frame position
+                sound.fractionalFramePosition += currentPitchFactor;
+                sound.currentFrame = static_cast<size_t>(sound.fractionalFramePosition); // Keep legacy currentFrame somewhat in sync
+
+            } // End of frame-by-frame mixing loop for one sound
+
+            if (!sound.isActive.load()) {
+                // Sound became inactive, mark for removal.
+                // The actual removal happens after the main loop.
+            }
+            ++soundIt; // Advance iterator for the next sound
+        } // End of activeSounds_ loop
+
+        // Remove inactive sounds using erase-remove-if idiom
+        this->activeSounds_.erase(
+            std::remove_if(this->activeSounds_.begin(), this->activeSounds_.end(),
+                           [](const theone::audio::PlayingSound& s) {
+                               return !s.isActive.load();
+                           }),
+            this->activeSounds_.end());
+
+    } // End of scope for activeSoundsMutex_
+    // --- End Active Sounds Processing ---
+
+
     return oboe::DataCallbackResult::Continue;
 }
 
@@ -499,6 +830,26 @@ void AudioEngine::loadSequenceData(const theone::audio::SequenceCpp& sequence) {
                         currentSequence_->bpm,
                         currentSequence_->ppqn,
                         currentSequence_->tracks.size());
+}
+
+
+// --- Test Helpers ---
+int AudioEngine::getActiveSoundsCountForTest() const {
+    std::lock_guard<std::mutex> lock(activeSoundsMutex_);
+    return activeSounds_.size();
+}
+
+void AudioEngine::addPlayingSoundForTest(PlayingSound sound) {
+    std::lock_guard<std::mutex> lock(activeSoundsMutex_);
+    activeSounds_.push_back(std::move(sound));
+}
+
+void AudioEngine::setAudioStreamSampleRateForTest(uint32_t sampleRate) {
+    audioStreamSampleRate_.store(sampleRate);
+    // Also update metronome if it relies on this, though metronome isn't the focus here
+    // std::lock_guard<std::mutex> lock(metronomeStateMutex_);
+    // metronomeState_.audioStreamSampleRate = sampleRate;
+    // metronomeState_.updateSchedulingParameters();
 }
 
 } // namespace audio

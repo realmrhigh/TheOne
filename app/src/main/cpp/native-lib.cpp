@@ -101,7 +101,7 @@ static std::map<std::string, theone::audio::PadSettingsCpp> gPadSettingsMap;
 static std::mutex gPadSettingsMutex; // Mutex for gPadSettingsMap
 
 // Random number generator for layer selection
-// static std::mt19937 gRandomEngine{std::random_device{}()}; // Moved to AudioEngine class
+static std::mt19937 gRandomEngine{std::random_device{}()}; // Reinstated for native-lib layer logic
 
 // Global AudioEngine instance
 static std::unique_ptr<theone::audio::AudioEngine> audioEngineInstance;
@@ -1080,7 +1080,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
         case theone::audio::LayerTriggerRuleCpp::RANDOM: {
             if (!enabledLayers.empty()) {
                 std::uniform_int_distribution<> distrib(0, static_cast<int>(enabledLayers.size() - 1));
-                selectedLayer = enabledLayers[distrib(gRandomEngine)];
+                selectedLayer = enabledLayers[distrib(gRandomEngine)]; // Ensure gRandomEngine is used
             }
             break;
         }

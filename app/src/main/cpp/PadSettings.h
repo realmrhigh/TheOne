@@ -5,9 +5,20 @@
 #include <vector>
 #include "EnvelopeGenerator.h"
 #include "LfoGenerator.h"
+#include "StateVariableFilter.h" // For SVF_Mode enum
 
 namespace theone {
 namespace audio {
+
+// --- Filter Settings ---
+struct FilterSettingsCpp {
+    bool enabled = false;
+    theone::audio::SVF_Mode mode = theone::audio::SVF_Mode::LOW_PASS;
+    float cutoffHz = 18000.0f;
+    float resonance = 0.707f; // Q factor
+    float envAmount = 0.0f;   // e.g., +/- octaves for cutoff modulation by filter env
+    // LFO modulation for filter is typically handled by LFO target settings
+};
 
 // C++ Data Structures Mirroring Kotlin Models
 struct SampleLayerCpp {
@@ -49,6 +60,7 @@ struct PadSettingsCpp {
     EnvelopeSettingsCpp ampEnvelope;
     bool hasFilterEnvelope = false;
     EnvelopeSettingsCpp filterEnvelope;
+    FilterSettingsCpp filterSettings; // Added FilterSettings
     bool hasPitchEnvelope = false;
     EnvelopeSettingsCpp pitchEnvelope;
     std::vector<LfoSettingsCpp> lfos;
