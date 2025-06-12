@@ -37,7 +37,14 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         noteInstanceId: String, trackId: String, padId: String, sampleId: String, sliceId: String?,
         velocity: Float, coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
         playbackModeOrdinal: Int,
-        ampEnvAttackMs: Float, ampEnvDecayMs: Float, ampEnvSustainLevel: Float, ampEnvReleaseMs: Float
+        // Amp Envelope
+        ampEnvAttackMs: Float, ampEnvDecayMs: Float, ampEnvSustainLevel: Float, ampEnvReleaseMs: Float,
+        // Filter Envelope (as jobject)
+        jFilterEnvSettings: Any?, // Use Any? which maps to jobject, allows null
+        // Pitch Envelope (as jobject)
+        jPitchEnvSettings: Any?, // Use Any? which maps to jobject, allows null
+        // LFOs (as jobjectArray of LFOSettings jobjects)
+        jLfoSettingsList: Array<Any>? // Use Array<Any>? which maps to jobjectArray, allows null list
     ): Boolean
 
     // JNI declaration for sample playback (Slice related)
@@ -219,8 +226,11 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
             ampEnvAttackMs = ampEnv.attackMs,
             ampEnvDecayMs = ampEnv.decayMs,
             ampEnvSustainLevel = ampEnv.sustainLevel,
-            ampEnvReleaseMs = ampEnv.releaseMs
-            // TODO: Pass filterEnv, pitchEnv, LFOs to native layer if native_playPadSample is extended
+            ampEnvReleaseMs = ampEnv.releaseMs,
+            // Pass the new EnvelopeSettings and LFOSettings objects directly
+            jFilterEnvSettings = filterEnv, // Pass the EnvelopeSettings? object
+            jPitchEnvSettings = pitchEnv,   // Pass the EnvelopeSettings? object
+            jLfoSettingsList = if (lfos.isNotEmpty()) lfos.toTypedArray() else null // Convert List to Array<LFOSettings>, or pass null if empty
         )
     }
 

@@ -971,12 +971,28 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
         jfloat jAmpEnvAttackMs,
         jfloat jAmpEnvDecayMs,
         jfloat jAmpEnvSustainLevel,
-        jfloat jAmpEnvReleaseMs
-        // TODO: Add JNI params for filterEnv, pitchEnv, LFOs later
+        jfloat jAmpEnvReleaseMs,
+        // New JNI parameters
+        jobject jFilterEnvSettings_kotlin,
+        jobject jPitchEnvSettings_kotlin,
+        jobjectArray jLfos_kotlin
 ) {
     const char *nativeNoteInstanceId = env->GetStringUTFChars(jNoteInstanceId, nullptr);
     std::string noteInstanceIdStr(nativeNoteInstanceId);
     env->ReleaseStringUTFChars(jNoteInstanceId, nativeNoteInstanceId);
+
+    // Convert new JNI parameters to C++ types
+    std::optional<theone::audio::EnvelopeSettingsCpp> filterEnvSettingsCpp;
+    if (jFilterEnvSettings_kotlin != nullptr) {
+        filterEnvSettingsCpp = ConvertKotlinEnvelopeSettings(env, jFilterEnvSettings_kotlin);
+    }
+
+    std::optional<theone::audio::EnvelopeSettingsCpp> pitchEnvSettingsCpp;
+    if (jPitchEnvSettings_kotlin != nullptr) {
+        pitchEnvSettingsCpp = ConvertKotlinEnvelopeSettings(env, jPitchEnvSettings_kotlin);
+    }
+
+    std::vector<theone::audio::LfoSettingsCpp> lfoSettingsListCpp = ConvertKotlinLfoSettingsList(env, jLfos_kotlin);
 
     const char *nativeTrackId = env->GetStringUTFChars(jTrackId, nullptr);
     const char *nativePadId = env->GetStringUTFChars(jPadId, nullptr);
@@ -1127,74 +1143,105 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
     float sr = outStream ? static_cast<float>(outStream->getSampleRate()) : 48000.0f;
     if (sr <= 0) sr = 48000.0f; // Safety net for sample rate
 
-    // Prioritize PadSettingsCpp for envelope configuration
-    if (soundToMove.padSettings) {
-        // Amp Envelope
-        soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-        soundToMove.ampEnvelopeGen->configure(soundToMove.padSettings->ampEnvelope, sr, noteVelocity);
-        soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
+    // Configure Amp Envelope from direct JNI float parameters
+    // (as per Kotlin JNI declaration keeping amp env params as floats)
+    theone::audio::EnvelopeSettingsCpp ampEnvelopeSettingsFromJniParams;
+    // Try to get type and other nuanced params from PadSettings if available, otherwise use defaults
+    ampEnvelopeSettingsFromJniParams.type = (soundToMove.padSettings) ? soundToMove.padSettings->ampEnvelope.type : theone::audio::ModelEnvelopeTypeInternalCpp::ADSR;
+    ampEnvelopeSettingsFromJniParams.attackMs = jAmpEnvAttackMs;
+    ampEnvelopeSettingsFromJniParams.holdMs = (soundToMove.padSettings && soundToMove.padSettings->ampEnvelope.holdMs.has_value()) ? soundToMove.padSettings->ampEnvelope.holdMs.value() : 0.0f;
+    ampEnvelopeSettingsFromJniParams.decayMs = jAmpEnvDecayMs;
+    ampEnvelopeSettingsFromJniParams.sustainLevel = jAmpEnvSustainLevel;
+    ampEnvelopeSettingsFromJniParams.releaseMs = jAmpEnvReleaseMs;
+    ampEnvelopeSettingsFromJniParams.velocityToAttack = (soundToMove.padSettings) ? soundToMove.padSettings->ampEnvelope.velocityToAttack : 0.0f;
+    ampEnvelopeSettingsFromJniParams.velocityToLevel = (soundToMove.padSettings) ? soundToMove.padSettings->ampEnvelope.velocityToLevel : 0.0f;
 
-        // Pitch Envelope
-        if (soundToMove.padSettings->hasPitchEnvelope) {
-            soundToMove.pitchEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-            soundToMove.pitchEnvelopeGen->configure(soundToMove.padSettings->pitchEnvelope, sr, noteVelocity);
-            soundToMove.pitchEnvelopeGen->triggerOn(noteVelocity);
+    soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+    soundToMove.ampEnvelopeGen->configure(ampEnvelopeSettingsFromJniParams, sr, noteVelocity);
+    soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
+
+
+    // Configure Pitch Envelope: JNI parameter (jPitchEnvSettings_kotlin) overrides PadSettings
+    bool pitchEnvConfigured = false;
+    if (pitchEnvSettingsCpp.has_value()) {
+        soundToMove.pitchEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+        soundToMove.pitchEnvelopeGen->configure(pitchEnvSettingsCpp.value(), sr, noteVelocity);
+        soundToMove.pitchEnvelopeGen->triggerOn(noteVelocity);
+        if (soundToMove.padSettings) soundToMove.padSettings->hasPitchEnvelope = true;
+        pitchEnvConfigured = true;
+    } else if (soundToMove.padSettings && soundToMove.padSettings->hasPitchEnvelope) {
+        soundToMove.pitchEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+        soundToMove.pitchEnvelopeGen->configure(soundToMove.padSettings->pitchEnvelope, sr, noteVelocity);
+        soundToMove.pitchEnvelopeGen->triggerOn(noteVelocity);
+        pitchEnvConfigured = true;
+    }
+    if (!pitchEnvConfigured) {
+        soundToMove.pitchEnvelopeGen.reset(); // Ensure it's null if no settings apply
+        if (soundToMove.padSettings) soundToMove.padSettings->hasPitchEnvelope = false;
+    }
+
+    // Configure Filter Envelope: JNI parameter (jFilterEnvSettings_kotlin) overrides PadSettings
+    bool filterEnvConfigured = false;
+    if (filterEnvSettingsCpp.has_value()) {
+        soundToMove.filterEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+        soundToMove.filterEnvelopeGen->configure(filterEnvSettingsCpp.value(), sr, noteVelocity);
+        soundToMove.filterEnvelopeGen->triggerOn(noteVelocity);
+        if (soundToMove.padSettings) soundToMove.padSettings->hasFilterEnvelope = true;
+        filterEnvConfigured = true;
+    } else if (soundToMove.padSettings && soundToMove.padSettings->hasFilterEnvelope) {
+        soundToMove.filterEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
+        soundToMove.filterEnvelopeGen->configure(soundToMove.padSettings->filterEnvelope, sr, noteVelocity);
+        soundToMove.filterEnvelopeGen->triggerOn(noteVelocity);
+        filterEnvConfigured = true;
+    }
+    if (!filterEnvConfigured) {
+        soundToMove.filterEnvelopeGen.reset();
+        if (soundToMove.padSettings) soundToMove.padSettings->hasFilterEnvelope = false;
+    }
+
+    // Base Filter settings (mode, cutoff, Q) still come from padSettingsPtr if available
+    // The filter unique_ptr is already created in PlayingSound constructor.
+    if (soundToMove.filter && soundToMove.padSettings && soundToMove.padSettings->filterSettings.enabled) {
+        soundToMove.filter->setSampleRate(sr); // Ensure sample rate is set
+        soundToMove.filter->configure(
+                soundToMove.padSettings->filterSettings.mode,
+                soundToMove.padSettings->filterSettings.cutoffHz,
+                soundToMove.padSettings->filterSettings.resonance
+        );
+    }
+
+    // Configure LFOs: JNI parameter list (jLfos_kotlin) overrides PadSettings LFO list
+    soundToMove.lfoGens.clear();
+    float tempo = 120.0f; // Default tempo
+    if (gCurrentSequence) {
+        std::lock_guard<std::mutex> seqLock(gSequencerMutex);
+        if (gCurrentSequence && gCurrentSequence->bpm > 0) {
+            tempo = gCurrentSequence->bpm;
         }
-
-        // Filter Envelope
-        if (soundToMove.padSettings->hasFilterEnvelope) {
-            soundToMove.filterEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-            soundToMove.filterEnvelopeGen->configure(soundToMove.padSettings->filterEnvelope, sr, noteVelocity);
-            soundToMove.filterEnvelopeGen->triggerOn(noteVelocity);
+    } else {
+        std::lock_guard<std::mutex> metroLock(gMetronomeStateMutex);
+        if (gMetronomeState.bpm.load() > 0) {
+            tempo = gMetronomeState.bpm.load();
         }
+    }
 
-        // LFOs
-        soundToMove.lfoGens.clear(); // Clear any prior LFOs
-        float tempo = 120.0f; // Default tempo
-        // Consider getting tempo from a more reliable source if sequencer is active
-        // For now, use metronome BPM as a proxy if available
-        {
-            std::lock_guard<std::mutex> metroLock(gMetronomeStateMutex);
-            if (gMetronomeState.bpm.load() > 0) { // Check if BPM is valid
-                tempo = gMetronomeState.bpm.load();
-            }
-        }
-         if (gCurrentSequence) { // Prefer sequencer tempo if available
-            std::lock_guard<std::mutex> seqLock(gSequencerMutex);
-            if (gCurrentSequence && gCurrentSequence->bpm > 0) {
-                tempo = gCurrentSequence->bpm;
-            }
-        }
+    const std::vector<theone::audio::LfoSettingsCpp>* lfosToUse = nullptr;
+    if (jLfos_kotlin != nullptr) { // JNI list takes precedence if provided (even if empty)
+        lfosToUse = &lfoSettingsListCpp;
+    } else if (soundToMove.padSettings && !soundToMove.padSettings->lfos.empty()) { // Fallback to PadSettings LFOs
+        lfosToUse = &(soundToMove.padSettings->lfos);
+    }
 
-
-        for (const auto& lfoConfig : soundToMove.padSettings->lfos) {
-            if (lfoConfig.isEnabled) {
+    if (lfosToUse) {
+        for (const auto& lfoConfigCpp : *lfosToUse) {
+            if (lfoConfigCpp.isEnabled) {
                 auto lfo = std::make_unique<theone::audio::LfoGenerator>();
-                lfo->configure(lfoConfig, sr, tempo);
-                lfo->retrigger(); // Retrigger based on LFO config (e.g. if note-on retrigger is set)
+                lfo->configure(lfoConfigCpp, sr, tempo);
+                lfo->retrigger();
                 soundToMove.lfoGens.push_back(std::move(lfo));
             }
         }
-
-    } else {
-        // Fallback to JNI parameters if padSettingsPtr was not available (though current logic implies it should be)
-        // This block would typically be hit if the initial gPadSettingsMap.find() failed AND a fallback path was taken,
-        // but the current structure ensures padSettingsPtr is valid if we reach here, or returns early.
-        // For robustness, or if the JNI params are meant as an override/alternative path:
-        theone::audio::EnvelopeSettingsCpp ampEnvelopeFromParams;
-        ampEnvelopeFromParams.type = theone::audio::ModelEnvelopeTypeInternalCpp::ADSR; // Default type
-        ampEnvelopeFromParams.attackMs = jAmpEnvAttackMs;
-        ampEnvelopeFromParams.holdMs = 0; // JNI doesn't pass hold for amp
-        ampEnvelopeFromParams.decayMs = jAmpEnvDecayMs;
-        ampEnvelopeFromParams.sustainLevel = jAmpEnvSustainLevel;
-        ampEnvelopeFromParams.releaseMs = jAmpEnvReleaseMs;
-
-        soundToMove.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-        soundToMove.ampEnvelopeGen->configure(ampEnvelopeFromParams, sr, noteVelocity);
-        soundToMove.ampEnvelopeGen->triggerOn(noteVelocity);
-        // No LFOs or other envelopes in this fallback path from JNI params
     }
-
     // Slicing parameters (currently not set by PadSettings, but PlayingSound supports them)
     // If PadSettings were to include slice points for the selected layer's sample, they'd be applied here.
     // For now, it will play the full sample as per LoadedSample.
@@ -2002,6 +2049,28 @@ theone::audio::LfoSettingsCpp ConvertKotlinLfoSettings(JNIEnv* env, jobject kotl
 
     env->DeleteLocalRef(lfoSettingsClass);
     return cppSettings;
+}
+
+// Helper function to convert Kotlin List<LFOSettings> to std::vector<theone::audio::LfoSettingsCpp>
+std::vector<theone::audio::LfoSettingsCpp> ConvertKotlinLfoSettingsList(JNIEnv* env, jobjectArray jLfoList_kotlin) {
+    std::vector<theone::audio::LfoSettingsCpp> cppLfoList;
+    if (jLfoList_kotlin == nullptr) {
+        return cppLfoList; // Return empty list if Kotlin array is null
+    }
+
+    jsize listSize = env->GetArrayLength(jLfoList_kotlin);
+    cppLfoList.reserve(listSize);
+
+    for (jsize i = 0; i < listSize; ++i) {
+        jobject kotlinLfoObj = env->GetObjectArrayElement(jLfoList_kotlin, i);
+        if (kotlinLfoObj != nullptr) {
+            cppLfoList.push_back(ConvertKotlinLfoSettings(env, kotlinLfoObj));
+            env->DeleteLocalRef(kotlinLfoObj); // Release local ref
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "ConvertKotlinLfoSettingsList: Null LFO object in array at index %d", static_cast<int>(i));
+        }
+    }
+    return cppLfoList;
 }
 
 
