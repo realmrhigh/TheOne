@@ -38,9 +38,10 @@ fun StepSequencerScreen(
     // Get the current sequence from the ViewModel (or a default one for now)
     // This would typically be selected by the user.
     // For this initial UI, we assume a sequence is loaded or use placeholders.
-    val currentSequence by remember {
-        mutableStateOf(sequencerViewModel.getEventsForCurrentSequence()) // This gets a List<Event>
-    }
+    // val currentSequence by remember {
+    //     mutableStateOf(sequencerViewModel.getEventsForCurrentSequence()) // This gets a List<Event>
+    // }
+    val sequenceToDisplay = sequencerViewModel.currentSequence
 
 
     Scaffold(
@@ -69,12 +70,12 @@ fun StepSequencerScreen(
                     val stepCol = index % NUM_STEPS  // Determines which step (0 to NUM_STEPS-1)
 
                     // Determine if an event exists at this pad and step
-                    // This requires querying `currentSequence.events`
-                    val eventExists = currentSequence.any { event ->
+                    // This requires querying `sequenceToDisplay.events`
+                    val eventExists = sequenceToDisplay?.events?.any { event ->
                         event.type is EventType.PadTrigger &&
                         (event.type as EventType.PadTrigger).padId == "Pad$padRow" && // Assuming padId like "Pad0", "Pad1"
                         (event.startTimeTicks / (sequencerViewModel.ticksPer16thNote)) == stepCol.toLong() // Assuming ticksPer16thNote is accessible
-                    }
+                    } ?: false
 
                     StepCell(
                         padId = "Pad$padRow", // Example padId
