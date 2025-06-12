@@ -62,7 +62,8 @@ struct PlayingSound {
     std::unique_ptr<EnvelopeGenerator> filterEnvelopeGen; // Optional, might be nullptr
     std::unique_ptr<EnvelopeGenerator> pitchEnvelopeGen;  // Optional, might be nullptr
     std::vector<std::unique_ptr<LfoGenerator>> lfoGens;
-    std::unique_ptr<StateVariableFilter> filter; // Added SVF member
+    std::unique_ptr<theone::audio::StateVariableFilter> filterL_; // New L filter
+    std::unique_ptr<theone::audio::StateVariableFilter> filterR_; // New R filter
     // --- END NEW ---
 
     std::shared_ptr<PadSettingsCpp> padSettings; // Pad settings for this sound
@@ -75,16 +76,21 @@ struct PlayingSound {
     bool isLooping;
     bool useSlicing;
 
+    // Tuning settings combined from Pad and Layer at the moment sound is triggered
+    int totalTuningCoarse_ = 0;
+    int totalTuningFine_ = 0;
+
     // Default constructor
     PlayingSound() : loadedSamplePtr(nullptr), currentFrame(0), fractionalFramePosition(0.0),
                      gainLeft(1.0f), gainRight(1.0f), isActive(false),
                      initialVolume(1.0f), initialPan(0.0f),
                      ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
-                     filter(std::make_unique<StateVariableFilter>()), // Initialize filter
+                     filterL_(nullptr), filterR_(nullptr), // Initialize new filters
                      padSettings(nullptr),
                      startFrame(0), endFrame(0),
                      loopStartFrame(0), loopEndFrame(0),
-                     isLooping(false), useSlicing(false) {}
+                     isLooping(false), useSlicing(false),
+                     totalTuningCoarse_(0), totalTuningFine_(0) {} // Initialize new tuning fields
 
     // Constructor for simple playback (no slicing)
     PlayingSound(const LoadedSample* sample, std::string id, float volume, float pan)
@@ -94,14 +100,15 @@ struct PlayingSound {
           noteInstanceId(std::move(id)),
           initialVolume(volume), initialPan(pan),
           ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
-          filter(std::make_unique<StateVariableFilter>()), // Initialize filter
+          filterL_(nullptr), filterR_(nullptr), // Initialize new filters
           padSettings(nullptr),
           startFrame(0),
           endFrame(sample ? sample->frameCount : 0),
           loopStartFrame(0),
           loopEndFrame(0), // Default to full sample length if looping were added here
           isLooping(false),
-          useSlicing(false) { // Explicitly false for this constructor
+          useSlicing(false), // Explicitly false for this constructor
+          totalTuningCoarse_(0), totalTuningFine_(0) { // Initialize new tuning fields
         float panRad = (pan * 0.5f + 0.5f) * (M_PI / 2.0f);
         gainLeft = volume * cosf(panRad);
         gainRight = volume * sinf(panRad);
@@ -116,14 +123,15 @@ struct PlayingSound {
           noteInstanceId(std::move(id)),
           initialVolume(volume), initialPan(pan),
           ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
-          filter(std::make_unique<StateVariableFilter>()), // Initialize filter
+          filterL_(nullptr), filterR_(nullptr), // Initialize new filters
           padSettings(nullptr),
           startFrame(sf),
           endFrame(ef == 0 && sample ? sample->frameCount : ef),
           loopStartFrame(lsf),
           loopEndFrame(lef == 0 && sample ? sample->frameCount : lef), // If 0, use sample's frameCount
           isLooping(looping),
-          useSlicing(true) { // Explicitly true for this constructor
+          useSlicing(true), // Explicitly true for this constructor
+          totalTuningCoarse_(0), totalTuningFine_(0) { // Initialize new tuning fields
         float panRad = (pan * 0.5f + 0.5f) * (M_PI / 2.0f);
         gainLeft = volume * cosf(panRad);
         gainRight = volume * sinf(panRad);
@@ -159,14 +167,17 @@ struct PlayingSound {
           filterEnvelopeGen(std::move(other.filterEnvelopeGen)),
           pitchEnvelopeGen(std::move(other.pitchEnvelopeGen)),
           lfoGens(std::move(other.lfoGens)),
-          filter(std::move(other.filter)), // Move filter
+          filterL_(std::move(other.filterL_)), // Move new filters
+          filterR_(std::move(other.filterR_)), // Move new filters
           padSettings(std::move(other.padSettings)),
           startFrame(other.startFrame),
           endFrame(other.endFrame),
           loopStartFrame(other.loopStartFrame),
           loopEndFrame(other.loopEndFrame),
           isLooping(other.isLooping),
-          useSlicing(other.useSlicing) {
+          useSlicing(other.useSlicing),
+          totalTuningCoarse_(other.totalTuningCoarse_), // Move new tuning fields
+          totalTuningFine_(other.totalTuningFine_) {   // Move new tuning fields
         other.loadedSamplePtr = nullptr; // Null out moved-from raw pointer
         other.currentFrame = 0;
         other.fractionalFramePosition = 0.0;
@@ -193,7 +204,8 @@ struct PlayingSound {
         filterEnvelopeGen = std::move(other.filterEnvelopeGen);
         pitchEnvelopeGen = std::move(other.pitchEnvelopeGen);
         lfoGens = std::move(other.lfoGens);
-        filter = std::move(other.filter); // Assign filter
+        filterL_ = std::move(other.filterL_); // Assign new filters
+        filterR_ = std::move(other.filterR_); // Assign new filters
         padSettings = std::move(other.padSettings);
         startFrame = other.startFrame;
         endFrame = other.endFrame;
@@ -201,6 +213,8 @@ struct PlayingSound {
         loopEndFrame = other.loopEndFrame;
         isLooping = other.isLooping;
         useSlicing = other.useSlicing;
+        totalTuningCoarse_ = other.totalTuningCoarse_; // Assign new tuning fields
+        totalTuningFine_ = other.totalTuningFine_;   // Assign new tuning fields
 
         other.loadedSamplePtr = nullptr; // Null out moved-from raw pointer
         other.currentFrame = 0;

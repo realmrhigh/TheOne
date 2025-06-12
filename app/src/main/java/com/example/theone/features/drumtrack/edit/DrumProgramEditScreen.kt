@@ -188,8 +188,8 @@ fun SamplesEditorContent(
         }
         ParameterSlider(label = "Loop Point", value = currentLayer.loopPoint, onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.LOOP_POINT, it) }, valueRange = 0f..1f, enabled = currentLayer.loopEnabled)
         HorizontalDivider()
-        ParameterSlider(label = "Tune (Semi)", value = currentLayer.tuningSemi.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_SEMI, it.toInt()) }, valueRange = -24f..24f, steps = 47)
-        ParameterSlider(label = "Tune (Fine)", value = currentLayer.tuningFine.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_FINE, it.toInt()) }, valueRange = -100f..100f, steps = 199)
+        ParameterSlider(label = "Tune Offset (Semi)", value = currentLayer.tuningCoarseOffset.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_COARSE_OFFSET, it.toInt()) }, valueRange = -24f..24f, steps = 47)
+        ParameterSlider(label = "Tune Offset (Fine)", value = currentLayer.tuningFineOffset.toFloat(), onValueChange = { viewModel.updateLayerParameter(selectedLayerIndex, LayerParameter.TUNING_FINE_OFFSET, it.toInt()) }, valueRange = -100f..100f, steps = 199)
         HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Reverse:", modifier = Modifier.weight(1f))

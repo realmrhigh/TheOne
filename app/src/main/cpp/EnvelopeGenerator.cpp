@@ -41,11 +41,21 @@ namespace theone {
                 attackRate = 1.0f; // Effectively instant attack if time is zero
             }
 
-            if (settings.decayMs > 0.0f) {
-                // Decay from 1.0 to sustainLevel
-                decayRate = (1.0f - settings.sustainLevel) / (settings.decayMs / 1000.0f * sampleRate);
-            } else {
-                decayRate = 1.0f; // Effectively instant decay
+            // Updated decayRate calculation for AD and ADSR/AHDSR types
+            if (settings.type == ModelEnvelopeTypeInternalCpp::AD) {
+                // AD envelope decays from peak (1.0) to zero (0.0)
+                if (settings.decayMs > 0.0f) {
+                    decayRate = 1.0f / (settings.decayMs / 1000.0f * sampleRate); // Rate to go from 1 to 0
+                } else {
+                    decayRate = 1.0f; // Effectively instant decay to zero
+                }
+            } else { // Existing logic for ADSR/AHDSR
+                if (settings.decayMs > 0.0f) {
+                    // Decay from 1.0 to sustainLevel
+                    decayRate = (1.0f - settings.sustainLevel) / (settings.decayMs / 1000.0f * sampleRate);
+                } else {
+                    decayRate = 1.0f; // Effectively instant decay to sustainLevel
+                }
             }
 
             if (settings.releaseMs > 0.0f) {
@@ -155,30 +165,20 @@ namespace theone {
                     }
                     break;
                 case EnvelopeStage::DECAY:
-                    if (settings.type == ModelEnvelopeTypeInternalCpp::AD) { // AD envelope decays to zero
-                        // For AD, sustainLevel is effectively 0. decayRate should be calculated towards 0.
-                        // This recalculation should ideally be more robustly handled in calculateRates or by
-                        // ensuring settings.sustainLevel is treated as 0 for AD type during rate calculation.
-                        // Quick fix for AD decay rate calculation if not already set up to target 0:
-                        float targetSustainForAD = 0.0f;
-                        float tempDecayRate;
-                        if (settings.decayMs > 0.0f) {
-                            tempDecayRate = (1.0f - targetSustainForAD) / (settings.decayMs / 1000.0f * sampleRate);
-                        } else {
-                            tempDecayRate = 1.0f; // Instant decay
-                        }
-                        currentValue -= tempDecayRate;
-
-                    } else { // AHDS, ADSR decay to sustainLevel
-                        currentValue -= decayRate;
-                    }
+                    // The decayRate is now correctly calculated in calculateRates() for both AD and ADSR types.
+                    currentValue -= decayRate;
 
                     if (settings.type != ModelEnvelopeTypeInternalCpp::AD && currentValue <= settings.sustainLevel) {
+                        // For ADSR/AHDSR, transition to SUSTAIN if sustainLevel is reached
                         currentValue = settings.sustainLevel;
                         currentStage = EnvelopeStage::SUSTAIN;
                     } else if (settings.type == ModelEnvelopeTypeInternalCpp::AD && currentValue <= 0.0f) {
+                        // For AD, transition to IDLE if 0.0 is reached
                         currentValue = 0.0f;
                         currentStage = EnvelopeStage::IDLE; // AD envelope finishes after decay
+                    } else if (currentValue <= 0.0f) { // General case if sustain level is 0 for ADSR/AHDSR
+                        currentValue = 0.0f;
+                        currentStage = EnvelopeStage::IDLE;
                     }
                     break;
                 case EnvelopeStage::SUSTAIN:

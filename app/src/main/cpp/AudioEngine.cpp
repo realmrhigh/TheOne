@@ -259,6 +259,16 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                                             soundToPlay.ampEnvelopeGen->configure(padSettingsPtr->ampEnvelope, static_cast<float>(currentSampleRateForModules), velocityNormalized);
                                             soundToPlay.ampEnvelopeGen->triggerOn(velocityNormalized);
 
+                                            // Populate total tuning from Pad base + Layer offset
+                                            if (soundToPlay.padSettings && selectedLayer) {
+                                                soundToPlay.totalTuningCoarse_ = soundToPlay.padSettings->tuningCoarse + selectedLayer->tuningCoarseOffset;
+                                                soundToPlay.totalTuningFine_ = soundToPlay.padSettings->tuningFine + selectedLayer->tuningFineOffset;
+                                            } else if (soundToPlay.padSettings) { // Fallback if no specific layer (should ideally not happen for sequenced pad sounds)
+                                                soundToPlay.totalTuningCoarse_ = soundToPlay.padSettings->tuningCoarse;
+                                                soundToPlay.totalTuningFine_ = soundToPlay.padSettings->tuningFine;
+                                            }
+                                            // totalTuningCoarse_ and totalTuningFine_ remain 0 if no padSettings
+
                                             if (padSettingsPtr->hasPitchEnvelope) {
                                                 soundToPlay.pitchEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
                                                 soundToPlay.pitchEnvelopeGen->configure(padSettingsPtr->pitchEnvelope, static_cast<float>(currentSampleRateForModules), velocityNormalized);
@@ -283,6 +293,30 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                                                     soundToPlay.lfoGens.push_back(std::move(lfo));
                                                 }
                                             }
+
+                                            // --- Filter Initialization for new sound ---
+                                            if (soundToPlay.padSettings && soundToPlay.padSettings->filterSettings.enabled) {
+                                                uint32_t currentSr = this->audioStreamSampleRate_.load();
+                                                if (currentSr == 0) currentSr = 48000; // Fallback
+
+                                                soundToPlay.filterL_ = std::make_unique<theone::audio::StateVariableFilter>();
+                                                soundToPlay.filterR_ = std::make_unique<theone::audio::StateVariableFilter>();
+
+                                                soundToPlay.filterL_->setSampleRate(static_cast<float>(currentSr));
+                                                soundToPlay.filterR_->setSampleRate(static_cast<float>(currentSr));
+
+                                                soundToPlay.filterL_->configure(
+                                                    soundToPlay.padSettings->filterSettings.mode,
+                                                    soundToPlay.padSettings->filterSettings.cutoffHz,
+                                                    soundToPlay.padSettings->filterSettings.resonance
+                                                );
+                                                soundToPlay.filterR_->configure(
+                                                    soundToPlay.padSettings->filterSettings.mode,
+                                                    soundToPlay.padSettings->filterSettings.cutoffHz,
+                                                    soundToPlay.padSettings->filterSettings.resonance
+                                                );
+                                            }
+                                            // --- End Filter Initialization ---
 
                                             { // Scope for activeSoundsMutex_
                                                 std::lock_guard<std::mutex> activeSoundsLock(this->activeSoundsMutex_);
@@ -434,53 +468,44 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             }
             // (Pitch and Filter LFOs would be applied during sample generation/DSP if those were here)
 
-
-            // --- Filter Initialization/Configuration (Sample Rate) ---
-            // This should ideally be done when the sound is created/configured if the sample rate is known.
-            // If a sound's filter sample rate doesn't match the engine's, it should be updated.
-            // For simplicity here, we ensure it's set once.
-            // A more robust system might check if sound.filter->getSampleRate() != currentSampleRate and update.
-            // uint32_t currentSampleRateForModules = this->audioStreamSampleRate_.load(); // Already available from sequencer logic
-            // if (currentSampleRateForModules == 0) currentSampleRateForModules = 48000; // Fallback
-            // if (sound.filter && sound.padSettings && sound.padSettings->filterSettings.enabled) {
-            //     sound.filter->setSampleRate(static_cast<float>(currentSampleRateForModules));
-            // }
-            // Note: The above setSampleRate call for the filter might be redundant if the filter
-            // is always created and configured with the correct sample rate when the sound object is made.
-            // The sequencer part does this for envelopes. Assuming filter will be similar.
-            // For now, let's assume filter is configured with correct SR at creation.
-
             // --- A. Calculate Effective Pitch Modulation ---
-            float baseTuneSemitones = 0.0f; // Placeholder for future settings
+            // Combine coarse and fine tuning. Fine tuning is in cents (1/100th of a semitone).
+            float soundSpecificBaseTuneSemitones = static_cast<float>(sound.totalTuningCoarse_) + (static_cast<float>(sound.totalTuningFine_) / 100.0f);
+
             float pitchEnvSemitones = 0.0f;
             // Assuming pitchEnvValue is the raw value from the envelope generator (0 to 1.0)
             // And lfoPitchMod is already in semitones.
-
             if (sound.pitchEnvelopeGen && sound.padSettings && sound.padSettings->hasPitchEnvelope) {
                 // pitchEnvValue was already processed earlier in the "Envelope Processing" section.
-                // float pitchEnvRaw = sound.pitchEnvelopeGen->process(); // Already done
-                float pitchEnvDepth = 24.0f; // As per subtask: MAX_PITCH_ENV_SEMITONES
-                // if (sound.padSettings) { // Check if padSettings has a specific depth
-                //    pitchEnvDepth = sound.padSettings->pitchEnvelope.depthSemitones; // Assumes field exists
-                // }
-                pitchEnvSemitones = pitchEnvDepth * (pitchEnvValue - 0.5f) * 2.0f;
+                float pitchEnvDepth = 24.0f; // Default, consider making this configurable per pad/layer if needed
+                                             // Example: pitchEnvDepth = sound.padSettings->pitchEnvelope.depthSemitones; // Assumes field exists
+                pitchEnvSemitones = pitchEnvDepth * (pitchEnvValue - 0.5f) * 2.0f; // Assumes pitchEnvValue is 0-1
             }
 
             float lfoPitchSemitones = lfoPitchMod; // Assuming lfoPitchMod is already correctly scaled (e.g. in semitones)
 
-            float totalPitchShiftSemitones = baseTuneSemitones + pitchEnvSemitones + lfoPitchSemitones;
+            // Total pitch shift includes sound's base tuning, envelope, and LFO
+            float totalPitchShiftSemitones = soundSpecificBaseTuneSemitones + pitchEnvSemitones + lfoPitchSemitones;
             float currentPitchFactor = powf(2.0f, totalPitchShiftSemitones / 12.0f);
             currentPitchFactor = std::max(0.1f, std::min(4.0f, currentPitchFactor)); // Sanity clamp pitch factor
 
             // --- B. Calculate Effective Filter Cutoff (Filter Modulation) ---
-            if (sound.filter && sound.padSettings && sound.padSettings->filterSettings.enabled) {
-                // Ensure filter's sample rate is up-to-date.
-                // This is important if sounds can be created when engine's sample rate is unknown
-                // or if the engine sample rate can change dynamically (though less common for callbacks).
-                uint32_t currentSr = this->audioStreamSampleRate_.load();
-                if (currentSr == 0) currentSr = 48000; // Fallback if not yet set by Oboe stream
-                sound.filter->setSampleRate(static_cast<float>(currentSr));
+            // Note: The main filter sample rate update (setSampleRate) is now done at sound creation.
+            // We might still need to update it here if the engine's sample rate can change dynamically
+            // *during* a sound's lifetime, which is less common for typical audio engine designs using Oboe.
+            // For now, assuming it's stable for the duration of a playing sound.
 
+            if (sound.filterL_ && sound.filterR_ && sound.padSettings && sound.padSettings->filterSettings.enabled) {
+                uint32_t currentSr = this->audioStreamSampleRate_.load();
+                if (currentSr == 0) currentSr = 48000; // Fallback
+
+                // Optional: Re-check and set sample rate if it could change dynamically.
+                // if (sound.filterL_->getSampleRate() != static_cast<float>(currentSr)) {
+                //     sound.filterL_->setSampleRate(static_cast<float>(currentSr));
+                // }
+                // if (sound.filterR_->getSampleRate() != static_cast<float>(currentSr)) {
+                //     sound.filterR_->setSampleRate(static_cast<float>(currentSr));
+                // }
 
                 float baseCutoffHz = sound.padSettings->filterSettings.cutoffHz;
                 float baseResonance = sound.padSettings->filterSettings.resonance;
@@ -489,22 +514,19 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 if (sound.filterEnvelopeGen && sound.padSettings->hasFilterEnvelope) {
                     // filterEnvValue was already processed in "Envelope Processing" section
                     float filterEnvDepthOctaves = sound.padSettings->filterSettings.envAmount;
-                    // Map filterEnvValue (0..1) to bipolar (-1..1) for modulation range
                     modulatedCutoffHz *= powf(2.0f, filterEnvDepthOctaves * (filterEnvValue - 0.5f) * 2.0f);
                 }
 
-                // lfoFilterMod is assumed to be an octave offset from LFO processing
-                float lfoModOctaves = lfoFilterMod;
+                float lfoModOctaves = lfoFilterMod; // lfoFilterMod is assumed to be an octave offset
                 modulatedCutoffHz *= powf(2.0f, lfoModOctaves);
 
-                // Clamp modulatedCutoffHz (e.g., 20Hz to Nyquist limit - margin)
                 float nyquistLimit = static_cast<float>(currentSr) / 2.0f;
                 modulatedCutoffHz = std::max(20.0f, std::min(modulatedCutoffHz, nyquistLimit - 100.0f));
-                if (modulatedCutoffHz < 20.0f) modulatedCutoffHz = 20.0f; // final safety
+                if (modulatedCutoffHz < 20.0f) modulatedCutoffHz = 20.0f;
 
-                sound.filter->configure(sound.padSettings->filterSettings.mode, modulatedCutoffHz, baseResonance);
+                sound.filterL_->configure(sound.padSettings->filterSettings.mode, modulatedCutoffHz, baseResonance);
+                sound.filterR_->configure(sound.padSettings->filterSettings.mode, modulatedCutoffHz, baseResonance);
             }
-
 
             // Panning and Gain Calculation
             float currentPan = sound.initialPan + lfoPanMod;
@@ -601,12 +623,18 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 float processedSample_L = interpolatedSample_L;
                 float processedSample_R = interpolatedSample_R;
 
-                if (sound.filter && sound.padSettings && sound.padSettings->filterSettings.enabled) {
-                    processedSample_L = sound.filter->process(interpolatedSample_L);
+                if (sound.filterL_ && sound.filterR_ && sound.padSettings && sound.padSettings->filterSettings.enabled) {
+                    processedSample_L = sound.filterL_->process(interpolatedSample_L);
                     if (streamChannels == 2) {
-                        // Process Right channel with the same filter instance.
-                        // For true stereo filter, you'd need two instances or a stereo-aware filter.
-                        processedSample_R = sound.filter->process(interpolatedSample_R);
+                        processedSample_R = sound.filterR_->process(interpolatedSample_R);
+                    } else if (streamChannels == 1 && sampleChannels == 2) {
+                        // If output is mono but sample was stereo, the R channel of the sample was already
+                        // mixed into interpolatedSample_L if sampleChannels == 1 logic was hit earlier,
+                        // or interpolatedSample_R contains the R channel data.
+                        // For mono output, we only care about processedSample_L.
+                        // If stereo sample to mono output needs R channel filtered too before summing,
+                        // that logic would be more complex and happen before this point or during mixing.
+                        // Current structure implies interpolatedSample_L is the one to use for mono output.
                     }
                 }
 

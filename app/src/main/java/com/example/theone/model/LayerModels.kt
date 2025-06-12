@@ -16,11 +16,9 @@ data class SampleLayer(
     var panOffset: Float = 0f, // -1.0 to 1.0 (original field for offsets)
 
     // --- Fields added for compatibility with DrumProgramEditViewModel/Screen ---
+    // Absolute fields (tuningSemi, tuningFine, volume, pan) were removed.
+    // Offsets (tuningCoarseOffset, tuningFineOffset, volumeOffsetDb, panOffset) are primary.
     var sampleNameCache: String = "N/A", // For UI display
-    var tuningSemi: Int = 0,    // Absolute tuning in Semitones (editor uses this)
-    var tuningFine: Int = 0,    // Absolute tuning in Cents (editor uses this)
-    var volume: Float = 1.0f,   // Absolute volume 0.0 to 1.0 (editor uses this)
-    var pan: Float = 0.0f,      // Absolute pan -1.0 to 1.0 (editor uses this)
     var startPoint: Float = 0.0f, // Sample start position 0.0 to 1.0
     var endPoint: Float = 1.0f,   // Sample end position 0.0 to 1.0
     var loopPoint: Float = 0.0f,  // Loop point 0.0 to 1.0

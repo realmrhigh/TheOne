@@ -34,7 +34,7 @@ import java.util.UUID // For generating noteInstanceId
 
 // Enums specific to this ViewModel's editing logic
 enum class EditorTab { SAMPLES, ENVELOPES, LFO, MODULATION, EFFECTS }
-enum class LayerParameter { SAMPLE_ID, TUNING_SEMI, TUNING_FINE, VOLUME, PAN, START_POINT, END_POINT, LOOP_POINT, LOOP_ENABLED, REVERSE }
+enum class LayerParameter { SAMPLE_ID, TUNING_COARSE_OFFSET, TUNING_FINE_OFFSET, START_POINT, END_POINT, LOOP_POINT, LOOP_ENABLED, REVERSE }
 // This EnvelopeType is for selecting which envelope to edit (Amp, Pitch, Filter)
 enum class EnvelopeType { AMP, PITCH, FILTER }
 
@@ -161,10 +161,9 @@ class DrumProgramEditViewModel(
                     val layerToUpdate = updatedLayers[layerIndex]
                     val updatedLayer = when (parameter) {
                         // SAMPLE_ID handled above
-                        LayerParameter.TUNING_SEMI -> if (value is Int) layerToUpdate.copy(tuningSemi = value) else layerToUpdate
-                        LayerParameter.TUNING_FINE -> if (value is Int) layerToUpdate.copy(tuningFine = value) else layerToUpdate
-                        LayerParameter.VOLUME -> if (value is Float) layerToUpdate.copy(volume = value) else layerToUpdate
-                        LayerParameter.PAN -> if (value is Float) layerToUpdate.copy(pan = value) else layerToUpdate
+                        LayerParameter.TUNING_COARSE_OFFSET -> if (value is Int) layerToUpdate.copy(tuningCoarseOffset = value) else layerToUpdate
+                        LayerParameter.TUNING_FINE_OFFSET -> if (value is Int) layerToUpdate.copy(tuningFineOffset = value) else layerToUpdate
+                        // VOLUME and PAN cases removed as they are no longer in LayerParameter enum
                         LayerParameter.START_POINT -> if (value is Float) layerToUpdate.copy(startPoint = value) else layerToUpdate
                         LayerParameter.END_POINT -> if (value is Float) layerToUpdate.copy(endPoint = value) else layerToUpdate
                         LayerParameter.LOOP_POINT -> if (value is Float) layerToUpdate.copy(loopPoint = value) else layerToUpdate
@@ -245,12 +244,16 @@ class DrumProgramEditViewModel(
                 // We use the layer's sampleId, and its specific tuning/vol/pan,
                 // but apply the global pad's envelopes and LFOs.
                 // Layer's tuningSemi/Fine are absolute. Pad's tuningCoarse/Fine are base values.
-                // For audition, we combine them or prioritize layer's if it's meant to be an override.
-                // The consolidated SampleLayer has absolute tuningSemi/Fine. PadSettings has coarse/fine.
-                // Let's assume layer's tuning is the primary one for audition.
+                // Calculate effective parameters using Pad's base and Layer's offset
+                val effectiveCoarseTune = currentSettings.tuningCoarse + selectedLayer.tuningCoarseOffset
+                val effectiveFineTune = currentSettings.tuningFine + selectedLayer.tuningFineOffset
 
-                val effectiveVolume = currentSettings.volume * selectedLayer.volume // Layer vol modulates global vol
-                val effectivePan = (currentSettings.pan + selectedLayer.pan).coerceIn(-1f, 1f) // Layer pan offsets global, clamped
+                // Convert volumeOffsetDb to gain multiplier: Gain = 10^(dB/20)
+                // Pad volume is linear 0-1. Layer offset is in dB.
+                val layerVolumeGain = Math.pow(10.0, selectedLayer.volumeOffsetDb / 20.0).toFloat()
+                val effectiveVolume = (currentSettings.volume * layerVolumeGain).coerceIn(0f, 2f) // Assuming max 2x gain
+
+                val effectivePan = (currentSettings.pan + selectedLayer.panOffset).coerceIn(-1f, 1f)
 
                 // Ensure the SampleLayer's sampleId is valid and loaded if AudioEngine requires it.
                 // For now, assuming AudioEngine handles unknown sampleId gracefully or sample is preloaded.
@@ -263,8 +266,8 @@ class DrumProgramEditViewModel(
                     sliceId = null, // Slicing not handled in this editor's scope
                     velocity = 1.0f, // Full velocity for audition
                     playbackMode = currentSettings.playbackMode, // Pad's global playback mode
-                    coarseTune = selectedLayer.tuningSemi, // Use layer's absolute coarse tuning
-                    fineTune = selectedLayer.tuningFine,   // Use layer's absolute fine tuning
+                    coarseTune = effectiveCoarseTune,
+                    fineTune = effectiveFineTune,
                     pan = effectivePan,
                     volume = effectiveVolume,
                     ampEnv = currentSettings.ampEnvelope,
