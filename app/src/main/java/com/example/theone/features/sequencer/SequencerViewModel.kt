@@ -230,8 +230,27 @@ class SequencerViewModel @Inject constructor(
                 )
             )
 
-            // Update the sequence's event list
-            val updatedEvents = targetSequence.events.toMutableList().apply { add(newEvent) }
+            // Implement Overdub/Replace logic
+            val updatedEvents = targetSequence.events.toMutableList()
+
+            // Find the index of an existing event at the same time for the same pad on the same track
+            val existingEventIndex = updatedEvents.indexOfFirst { event ->
+                event.startTimeTicks == quantizedTimeTicks &&
+                event.trackId == newEvent.trackId && // Ensure it's for the same track (sequence in this case)
+                (event.type as? EventType.PadTrigger)?.padId == padId
+            }
+
+            if (existingEventIndex != -1) {
+                // Event exists, replace it
+                updatedEvents[existingEventIndex] = newEvent
+                Log.d("SequencerViewModel", "Replaced event for pad $padId at $quantizedTimeTicks ticks.")
+            } else {
+                // No existing event, add the new one and sort
+                updatedEvents.add(newEvent)
+                updatedEvents.sortBy { it.startTimeTicks } // Keep events sorted if adding new
+                Log.d("SequencerViewModel", "Added new event for pad $padId at $quantizedTimeTicks ticks.")
+            }
+            // End of Overdub/Replace logic
 
             currentSequence = targetSequence.copy(events = updatedEvents)
 
@@ -324,12 +343,28 @@ class SequencerViewModel @Inject constructor(
 
     // For "Clear Sequence" Button
     fun clearCurrentSequenceEvents() {
-        val targetSequence = currentSequence // Use currentSequence
-        targetSequence?.events?.clear()
-        println("SequencerViewModel: Cleared all events from sequence ${targetSequence?.name}")
-        // Similar to recordPadTrigger, if events list is not a snapshot state list, UI might not update.
-        // currentSequence = targetSequence?.copy(events = mutableListOf())
-        // _sequences.value = _sequences.value.map { s -> if (s.id == targetSequence?.id) currentSequence!! else s }
+        val targetSequence = currentSequence
+        if (targetSequence == null) {
+            Log.w("SequencerViewModel", "clearCurrentSequenceEvents: No current sequence to clear.")
+            return
+        }
+
+        // Create a new Sequence instance with an empty event list
+        val clearedSequence = targetSequence.copy(events = mutableListOf())
+
+        // Update currentSequence state to trigger recomposition
+        currentSequence = clearedSequence
+
+        // Update the sequence in the main _sequences list
+        _sequences.update { currentList ->
+            currentList.map { if (it.id == targetSequence.id) clearedSequence else it }
+        }
+
+        // Sync the cleared sequence with the native audio engine
+        viewModelScope.launch { // loadSequenceData is a suspend function
+            audioEngine.loadSequenceData(clearedSequence)
+            Log.d("SequencerViewModel", "Cleared events for sequence ${targetSequence.name} and synced with native engine.")
+        }
     }
 
     fun toggleStep(padId: String, stepIndex: Int) { // Simplified: trackId will be currentSequence.id

@@ -17,6 +17,8 @@
 namespace theone {
 namespace audio {
 
+#include "StateVariableFilter.h" // Added include for SVF
+
 // Forward declarations
 class EnvelopeGenerator;
 class LfoGenerator;
@@ -45,7 +47,8 @@ struct LoadedSample {
 
 struct PlayingSound {
     const LoadedSample* loadedSamplePtr;
-    size_t currentFrame;
+    size_t currentFrame; // Kept for now, but fractionalFramePosition will be primary for playback
+    double fractionalFramePosition; // New member for resampling
     float gainLeft;
     float gainRight;
     std::atomic<bool> isActive;
@@ -59,6 +62,7 @@ struct PlayingSound {
     std::unique_ptr<EnvelopeGenerator> filterEnvelopeGen; // Optional, might be nullptr
     std::unique_ptr<EnvelopeGenerator> pitchEnvelopeGen;  // Optional, might be nullptr
     std::vector<std::unique_ptr<LfoGenerator>> lfoGens;
+    std::unique_ptr<StateVariableFilter> filter; // Added SVF member
     // --- END NEW ---
 
     std::shared_ptr<PadSettingsCpp> padSettings; // Pad settings for this sound
@@ -72,11 +76,12 @@ struct PlayingSound {
     bool useSlicing;
 
     // Default constructor
-    PlayingSound() : loadedSamplePtr(nullptr), currentFrame(0),
+    PlayingSound() : loadedSamplePtr(nullptr), currentFrame(0), fractionalFramePosition(0.0),
                      gainLeft(1.0f), gainRight(1.0f), isActive(false),
-                     initialVolume(1.0f), initialPan(0.0f), // Initialize new members
+                     initialVolume(1.0f), initialPan(0.0f),
                      ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
-                     padSettings(nullptr), // Initialize padSettings
+                     filter(std::make_unique<StateVariableFilter>()), // Initialize filter
+                     padSettings(nullptr),
                      startFrame(0), endFrame(0),
                      loopStartFrame(0), loopEndFrame(0),
                      isLooping(false), useSlicing(false) {}
@@ -84,14 +89,15 @@ struct PlayingSound {
     // Constructor for simple playback (no slicing)
     PlayingSound(const LoadedSample* sample, std::string id, float volume, float pan)
         : loadedSamplePtr(sample),
-          currentFrame(0), // For non-sliced, always start at 0
+          currentFrame(0), fractionalFramePosition(0.0),
           isActive(true),
           noteInstanceId(std::move(id)),
-          initialVolume(volume), initialPan(pan), // Initialize new members
+          initialVolume(volume), initialPan(pan),
           ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
-          padSettings(nullptr), // Initialize padSettings
+          filter(std::make_unique<StateVariableFilter>()), // Initialize filter
+          padSettings(nullptr),
           startFrame(0),
-          endFrame(sample ? sample->frameCount : 0), // Default to full sample length
+          endFrame(sample ? sample->frameCount : 0),
           loopStartFrame(0),
           loopEndFrame(0), // Default to full sample length if looping were added here
           isLooping(false),
@@ -105,14 +111,15 @@ struct PlayingSound {
     PlayingSound(const LoadedSample* sample, std::string id, float volume, float pan,
                  size_t sf, size_t ef, size_t lsf, size_t lef, bool looping)
         : loadedSamplePtr(sample),
-          currentFrame(sf), // Start playback at startFrame
+          currentFrame(sf), fractionalFramePosition(static_cast<double>(sf)),
           isActive(true),
           noteInstanceId(std::move(id)),
-          initialVolume(volume), initialPan(pan), // Initialize new members
+          initialVolume(volume), initialPan(pan),
           ampEnvelopeGen(nullptr), filterEnvelopeGen(nullptr), pitchEnvelopeGen(nullptr),
-          padSettings(nullptr), // Initialize padSettings
+          filter(std::make_unique<StateVariableFilter>()), // Initialize filter
+          padSettings(nullptr),
           startFrame(sf),
-          endFrame(ef == 0 && sample ? sample->frameCount : ef), // If 0, use sample's frameCount
+          endFrame(ef == 0 && sample ? sample->frameCount : ef),
           loopStartFrame(lsf),
           loopEndFrame(lef == 0 && sample ? sample->frameCount : lef), // If 0, use sample's frameCount
           isLooping(looping),
@@ -141,6 +148,7 @@ struct PlayingSound {
     PlayingSound(PlayingSound&& other) noexcept
         : loadedSamplePtr(other.loadedSamplePtr),
           currentFrame(other.currentFrame),
+          fractionalFramePosition(other.fractionalFramePosition),
           gainLeft(other.gainLeft),
           gainRight(other.gainRight),
           isActive(other.isActive.load()), // std::atomic needs load()
@@ -151,7 +159,8 @@ struct PlayingSound {
           filterEnvelopeGen(std::move(other.filterEnvelopeGen)),
           pitchEnvelopeGen(std::move(other.pitchEnvelopeGen)),
           lfoGens(std::move(other.lfoGens)),
-          padSettings(std::move(other.padSettings)), // Move padSettings
+          filter(std::move(other.filter)), // Move filter
+          padSettings(std::move(other.padSettings)),
           startFrame(other.startFrame),
           endFrame(other.endFrame),
           loopStartFrame(other.loopStartFrame),
@@ -160,6 +169,7 @@ struct PlayingSound {
           useSlicing(other.useSlicing) {
         other.loadedSamplePtr = nullptr; // Null out moved-from raw pointer
         other.currentFrame = 0;
+        other.fractionalFramePosition = 0.0;
         other.isActive.store(false);
         other.initialVolume = 1.0f; // Reset moved-from object's values
         other.initialPan = 0.0f;
@@ -172,6 +182,7 @@ struct PlayingSound {
         }
         loadedSamplePtr = other.loadedSamplePtr;
         currentFrame = other.currentFrame;
+        fractionalFramePosition = other.fractionalFramePosition;
         gainLeft = other.gainLeft;
         gainRight = other.gainRight;
         isActive.store(other.isActive.load()); // std::atomic needs load() then store()
@@ -182,7 +193,8 @@ struct PlayingSound {
         filterEnvelopeGen = std::move(other.filterEnvelopeGen);
         pitchEnvelopeGen = std::move(other.pitchEnvelopeGen);
         lfoGens = std::move(other.lfoGens);
-        padSettings = std::move(other.padSettings); // Assign padSettings
+        filter = std::move(other.filter); // Assign filter
+        padSettings = std::move(other.padSettings);
         startFrame = other.startFrame;
         endFrame = other.endFrame;
         loopStartFrame = other.loopStartFrame;
@@ -192,6 +204,7 @@ struct PlayingSound {
 
         other.loadedSamplePtr = nullptr; // Null out moved-from raw pointer
         other.currentFrame = 0;
+        other.fractionalFramePosition = 0.0;
         other.isActive.store(false);
         other.initialVolume = 1.0f; // Reset moved-from object's values
         other.initialPan = 0.0f;

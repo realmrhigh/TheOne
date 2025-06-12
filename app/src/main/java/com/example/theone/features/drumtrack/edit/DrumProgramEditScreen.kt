@@ -229,14 +229,65 @@ fun EnvelopesEditorContent(padSettings: PadSettings, viewModel: DrumProgramEditV
             }
         }
         Spacer(Modifier.height(8.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(100.dp).border(1.dp, Color.Gray).padding(8.dp), contentAlignment = Alignment.Center) {
-            Text("Graphical Envelope Editor for ${selectedEditorEnvelopeType.name}")
-        }
+        // Replace placeholder Box with VisualEnvelopeEditor
+        VisualEnvelopeEditor(
+            modifier = Modifier.fillMaxWidth().height(150.dp), // Or desired height
+            envelopeSettings = currentModelEnvelope,
+            onSettingsChange = { updatedSettings ->
+                // updatedSettings from VisualEnvelopeEditor has times in MS.
+                // ViewModel's updateEnvelope now also expects MS.
+                viewModel.updateEnvelope(selectedEditorEnvelopeType, updatedSettings)
+            },
+            lineColor = MaterialTheme.colorScheme.primary,
+            pointColor = MaterialTheme.colorScheme.secondary,
+            draggedPointColor = MaterialTheme.colorScheme.tertiary
+        )
         Spacer(Modifier.height(8.dp))
-        ParameterSlider(label = "Attack (s)", value = currentModelEnvelope.attackMs.toFloat() / 1000f, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(attackMs = it.toDouble())) }, valueRange = 0f..2f )
-        ParameterSlider(label = "Decay (s)", value = currentModelEnvelope.decayMs.toFloat() / 1000f, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(decayMs = it.toDouble())) }, valueRange = 0f..2f)
-        ParameterSlider(label = "Sustain Level", value = currentModelEnvelope.sustainLevel, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(sustainLevel = it)) }, valueRange = 0f..1f)
-        ParameterSlider(label = "Release (s)", value = currentModelEnvelope.releaseMs.toFloat() / 1000f, onValueChange = { viewModel.updateEnvelope(selectedEditorEnvelopeType, currentModelEnvelope.copy(releaseMs = it.toDouble())) }, valueRange = 0f..5f)
+        // Adjust ParameterSliders to send MS to ViewModel
+        ParameterSlider(
+            label = "Attack (s)",
+            value = currentModelEnvelope.attackMs / 1000f, // Display in seconds
+            onValueChange = { secondsValue ->
+                viewModel.updateEnvelope(
+                    selectedEditorEnvelopeType,
+                    currentModelEnvelope.copy(attackMs = secondsValue * 1000f) // Convert to MS
+                )
+            },
+            valueRange = 0f..2f // Range in seconds for UI
+        )
+        ParameterSlider(
+            label = "Decay (s)",
+            value = currentModelEnvelope.decayMs / 1000f, // Display in seconds
+            onValueChange = { secondsValue ->
+                viewModel.updateEnvelope(
+                    selectedEditorEnvelopeType,
+                    currentModelEnvelope.copy(decayMs = secondsValue * 1000f) // Convert to MS
+                )
+            },
+            valueRange = 0f..2f // Range in seconds for UI
+        )
+        ParameterSlider(
+            label = "Sustain Level",
+            value = currentModelEnvelope.sustainLevel,
+            onValueChange = { sustainValue -> // Sustain is already 0-1f
+                viewModel.updateEnvelope(
+                    selectedEditorEnvelopeType,
+                    currentModelEnvelope.copy(sustainLevel = sustainValue)
+                )
+            },
+            valueRange = 0f..1f
+        )
+        ParameterSlider(
+            label = "Release (s)",
+            value = currentModelEnvelope.releaseMs / 1000f, // Display in seconds
+            onValueChange = { secondsValue ->
+                viewModel.updateEnvelope(
+                    selectedEditorEnvelopeType,
+                    currentModelEnvelope.copy(releaseMs = secondsValue * 1000f) // Convert to MS
+                )
+            },
+            valueRange = 0f..5f // Range in seconds for UI
+        )
     }
 }
 
@@ -273,13 +324,107 @@ fun ModulationEditorContent(padSettings: PadSettings, viewModel: DrumProgramEdit
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class) // Needed for ExposedDropdownMenuBox
+@Composable
 fun ModulationRoutingItem(routing: ModulationRouting, viewModel: DrumProgramEditViewModel) {
-    // M3: Card elevation is a direct parameter
+    var sourceDropdownExpanded by remember { mutableStateOf(false) }
+    var destinationDropdownExpanded by remember { mutableStateOf(false) }
+
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            Text("ID: ${routing.id.take(8)}...")
-            Text("Source: ${routing.source.name}, Dest: ${routing.destination.name}, Amt: ${routing.amount}, Enabled: ${routing.isEnabled}")
-            Button(onClick = { viewModel.removeModulationRouting(routing.id) }) {
+        Column(modifier = Modifier.padding(16.dp).spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("ID: ${routing.id.take(8)}...", style = MaterialTheme.typography.labelSmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enabled", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(end = 8.dp))
+                    Switch(
+                        checked = routing.isEnabled,
+                        onCheckedChange = { viewModel.updateModulationRouting(routing.id, routing.copy(isEnabled = it)) },
+                        modifier = Modifier.size(40.dp) // Smaller switch
+                    )
+                }
+            }
+
+            // Source Dropdown
+            ExposedDropdownMenuBox(
+                expanded = sourceDropdownExpanded,
+                onExpandedChange = { sourceDropdownExpanded = !sourceDropdownExpanded },
+            ) {
+                OutlinedTextField(
+                    value = routing.source.name,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Source") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceDropdownExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    enabled = routing.isEnabled
+                )
+                ExposedDropdownMenu(
+                    expanded = sourceDropdownExpanded,
+                    onDismissRequest = { sourceDropdownExpanded = false }
+                ) {
+                    viewModel.availableModSources.forEach { source ->
+                        DropdownMenuItem(
+                            text = { Text(source.name) },
+                            onClick = {
+                                viewModel.updateModulationRouting(routing.id, routing.copy(source = source))
+                                sourceDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Destination Dropdown
+            ExposedDropdownMenuBox(
+                expanded = destinationDropdownExpanded,
+                onExpandedChange = { destinationDropdownExpanded = !destinationDropdownExpanded }
+            ) {
+                OutlinedTextField(
+                    value = routing.destination.name,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Destination") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = destinationDropdownExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    enabled = routing.isEnabled
+                )
+                ExposedDropdownMenu(
+                    expanded = destinationDropdownExpanded,
+                    onDismissRequest = { destinationDropdownExpanded = false }
+                ) {
+                    viewModel.availableModDestinations.forEach { destination ->
+                        DropdownMenuItem(
+                            text = { Text(destination.name) },
+                            onClick = {
+                                viewModel.updateModulationRouting(routing.id, routing.copy(destination = destination))
+                                destinationDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Amount Slider
+            Text(text = "Amount: ${String.format(Locale.US, "%.2f", routing.amount)}", style = MaterialTheme.typography.labelMedium)
+            Slider(
+                value = routing.amount,
+                onValueChange = { newValue ->
+                    viewModel.updateModulationRouting(routing.id, routing.copy(amount = newValue))
+                },
+                valueRange = -1f..1f, // Assuming bipolar amount
+                enabled = routing.isEnabled,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = { viewModel.removeModulationRouting(routing.id) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
+            ) {
                 Text("Remove")
             }
         }

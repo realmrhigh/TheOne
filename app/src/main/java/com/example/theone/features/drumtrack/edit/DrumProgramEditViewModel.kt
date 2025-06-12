@@ -69,6 +69,13 @@ class DrumProgramEditViewModel(
     private val _currentEditorTab = MutableStateFlow(EditorTab.SAMPLES)
     val currentEditorTab: StateFlow<EditorTab> = _currentEditorTab.asStateFlow()
 
+    // --- Modulation Source/Destination Lists for UI ---
+    val availableModSources: List<com.example.theone.model.SynthModels.ModSource> =
+        com.example.theone.model.SynthModels.ModSource.values().toList()
+
+    val availableModDestinations: List<com.example.theone.model.SynthModels.ModDestination> =
+        com.example.theone.model.SynthModels.ModDestination.values().toList()
+
     init {
         _selectedLayerIndex.value = if (initialPadSettings.layers.isNotEmpty()) 0 else -1 // Use .layers
     }
@@ -190,11 +197,12 @@ class DrumProgramEditViewModel(
 
         // Assume newSettingsFromUI was created by UI like: currentEnvelope.copy(attackMs = sliderValueInSeconds)
         // So, newSettingsFromUI.attackMs actually contains seconds.
+        // UPDATED: newSettingsFromUI will now provide times in Milliseconds directly.
         val finalSettings = envelopeToUpdate.copy(
-            attackMs = newSettingsFromUI.attackMs * 1000f, // Convert seconds to ms
-            decayMs = newSettingsFromUI.decayMs * 1000f,   // Convert seconds to ms
+            attackMs = newSettingsFromUI.attackMs, // Already in ms
+            decayMs = newSettingsFromUI.decayMs,   // Already in ms
             sustainLevel = newSettingsFromUI.sustainLevel, // This is 0-1f, no conversion
-            releaseMs = newSettingsFromUI.releaseMs * 1000f, // Convert seconds to ms
+            releaseMs = newSettingsFromUI.releaseMs, // Already in ms
             // Copy other fields like type, holdMs, velocityToAttack, velocityToLevel if they could be changed by UI
             // For now, assume UI only changes ADSR values passed as if they were ms.
             type = newSettingsFromUI.type, // Preserve type
