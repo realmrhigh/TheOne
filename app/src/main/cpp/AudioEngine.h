@@ -68,6 +68,13 @@ public:
     bool isOboeInitialized() const;
     float getOboeReportedLatencyMillis() const;
 
+    // --- Test Helpers ---
+    // These methods are primarily for facilitating unit testing.
+    int getActiveSoundsCountForTest() const;
+    void addPlayingSoundForTest(PlayingSound sound);
+    // Allow test to set sample rate if Oboe isn't initialized
+    void setAudioStreamSampleRateForTest(uint32_t sampleRate);
+
 
 private:
     // Oboe Stream

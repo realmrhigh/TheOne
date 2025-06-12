@@ -21,3 +21,62 @@ target_link_libraries(theone
         oboe
         ${log-lib}
 )
+
+# Google Test Setup
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG main # Or a specific release tag e.g. release-1.12.1
+)
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+# Enable testing
+enable_testing()
+
+# Add test executable
+add_executable(EnvelopeGeneratorTests
+    ../test/cpp/EnvelopeGeneratorTests.cpp # Path relative to this CMakeLists.txt
+    # EnvelopeGenerator.cpp is already part of the 'theone' library
+)
+
+# Link tests with GoogleTest and the main library
+target_link_libraries(EnvelopeGeneratorTests PRIVATE
+    theone
+    GTest::gtest_main # Use GTest::gtest_main to get both gtest and gtest_main
+)
+
+# Add include directories for the tests to find headers from the main library
+# This ensures that #include "../../main/cpp/EnvelopeGenerator.h" works as expected,
+# or allows for #include "EnvelopeGenerator.h" if preferred.
+target_include_directories(EnvelopeGeneratorTests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} # For EnvelopeGenerator.h etc.
+)
+
+# Discover and add tests to CTest
+include(GoogleTest)
+gtest_discover_tests(EnvelopeGeneratorTests)
+
+# Add AudioEngineTests executable
+add_executable(AudioEngineTests
+    ../test/cpp/AudioEngineTests.cpp
+    # AudioEngine.cpp is part of 'theone' library
+)
+
+# Link AudioEngineTests with GoogleTest and the main library
+target_link_libraries(AudioEngineTests PRIVATE
+    theone
+    GTest::gtest_main
+)
+
+# Add include directories for AudioEngineTests
+# This ensures that #include "../../main/cpp/AudioEngine.h" etc. work as expected.
+# Redundant if already covered by a higher-level include, but good for explicitness.
+target_include_directories(AudioEngineTests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Discover and add tests for AudioEngineTests to CTest
+gtest_discover_tests(AudioEngineTests)
