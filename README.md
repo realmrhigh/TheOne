@@ -1,4 +1,8 @@
 TheOne
+
+##  Session Start Instructions for Gemini
+"It's time to start the next development cycle for Project TheOne. Your role is the 'brains of the team.' Please assess the attached code from the latest feature branch and define the objectives for the next implementation phase. when you read this and understand your role in our development team, say "banana" in the chat then give your assessment of the latest changes in the branch"
+## 
 Project Genesis & Workflow
 This is an insane project that I have undertaken solo as a complete programming noob, against my better judgement. I want to see how far I can push the power of AI coding. 
 By using this plan to portion out tasks, we prevent information overload to keep the AI focused; this will help prevent getting stuck in an error loop. 
