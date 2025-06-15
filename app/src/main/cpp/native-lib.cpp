@@ -501,19 +501,6 @@ static MyAudioInputCallback myInputCallback;
 
 static std::unique_ptr<theone::audio::AudioEngine> audioEngineInstance;
 
-// Place these after includes, before any JNI functions:
-theone::audio::EnvelopeSettingsCpp ConvertKotlinEnvelopeSettings(JNIEnv* env, jobject jEnvSettings) { return theone::audio::EnvelopeSettingsCpp(); }
-std::vector<theone::audio::LfoSettingsCpp> ConvertKotlinLfoSettingsList(JNIEnv* env, jobject jLfos) { return {}; }
-
-// Add this helper after includes:
-static std::string JStringToString(JNIEnv* env, jstring jStr) {
-    if (!jStr) return "";
-    const char* chars = env->GetStringUTFChars(jStr, nullptr);
-    std::string result(chars ? chars : "");
-    if (chars) env->ReleaseStringUTFChars(jStr, chars);
-    return result;
-}
-
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1startAudioRecording(
         JNIEnv *env,
@@ -980,7 +967,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
     // Try to get type and other nuanced params from PadSettings if available, otherwise use defaults
     ampEnvelopeSettingsFromJniParams.type = (soundToMove.padSettings) ? soundToMove.padSettings->ampEnvelope.type : theone::audio::ModelEnvelopeTypeInternalCpp::ADSR;
     ampEnvelopeSettingsFromJniParams.attackMs = jAmpEnvAttackMs;
-    ampEnvelopeSettingsFromJniParams.holdMs = (soundToMove.padSettings) ? soundToMove.padSettings->ampEnvelope.holdMs : 0.0f;
+    ampEnvelopeSettingsFromJniParams.holdMs = soundToMove.padSettings->ampEnvelope.holdMs;
     ampEnvelopeSettingsFromJniParams.decayMs = jAmpEnvDecayMs;
     ampEnvelopeSettingsFromJniParams.sustainLevel = jAmpEnvSustainLevel;
     ampEnvelopeSettingsFromJniParams.releaseMs = jAmpEnvReleaseMs;
@@ -1032,9 +1019,9 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
 
     // Base Filter settings (mode, cutoff, Q) still come from padSettingsPtr if available
     // The filter unique_ptr is already created in PlayingSound constructor.
-    if (soundToMove.filterL_ && soundToMove.padSettings && soundToMove.padSettings->filterSettings.enabled) {
-        soundToMove.filterL_->setSampleRate(sr); // Ensure sample rate is set
-        soundToMove.filterL_->configure(
+    if (soundToMove.filter && soundToMove.padSettings && soundToMove.padSettings->filterSettings.enabled) {
+        soundToMove.filter->setSampleRate(sr); // Ensure sample rate is set
+        soundToMove.filter->configure(
                 soundToMove.padSettings->filterSettings.mode,
                 soundToMove.padSettings->filterSettings.cutoffHz,
                 soundToMove.padSettings->filterSettings.resonance
@@ -1101,7 +1088,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playSampleSlice(
         jboolean jIsLooping
 ) {
     const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
-    SampleId sampleIdStr(nativeSampleId);
+    std::string sampleIdStr(nativeSampleId);
     env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
 
     const char *nativeNoteInstanceId = env->GetStringUTFChars(jNoteInstanceId, nullptr);
@@ -1253,14 +1240,12 @@ static theone::audio::PadTriggerEventCpp ConvertKotlinPadTriggerEvent(JNIEnv* en
     if (jPadId) env->DeleteLocalRef(jPadId);
 
     cppPadTrigger.velocity = env->GetIntField(kotlinPadTriggerEvent, velocityFid);
-    // cppPadTrigger.durationTicks = env->GetLongField(kotlinPadTriggerEvent, durationTicksFid); // <-- Remove or fix if not present in struct
+    cppPadTrigger.durationTicks = env->GetLongField(kotlinPadTriggerEvent, durationTicksFid);
 
     env->DeleteLocalRef(padTriggerClass);
     return cppPadTrigger;
 }
 
-// Comment out or fix EventCpp usage:
-/*
 static theone::audio::EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent) {
     theone::audio::EventCpp cppEvent;
     if (!kotlinEvent) {
@@ -1320,7 +1305,6 @@ static theone::audio::EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEve
     env->DeleteLocalRef(eventClass);
     return cppEvent;
 }
-*/
 
 static theone::audio::TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrack) {
     theone::audio::TrackCpp cppTrack;
@@ -1347,12 +1331,25 @@ static theone::audio::TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTra
     if (jEventsList) {
         jclass listClass = env->GetObjectClass(jEventsList);
         jmethodID listSizeMethod = env->GetMethodID(listClass, "size", "()I");
+        jmethodID listGetMethod = env->GetMethodID(listClass, "get", "(I)Ljava/lang/Object;");
+
+        if (listSizeMethod && listGetMethod) {
+            jint eventsCount = env->CallIntMethod(jEventsList, listSizeMethod);
+            for (jint i = 0; i < eventsCount; ++i) {
+                jobject jEvent = env->CallObjectMethod(jEventsList, listGetMethod, i);
+                theone::audio::EventCpp cppEvent = ConvertKotlinEvent(env, jEvent);
+                cppTrack.events.push_back(cppEvent);
+                if (jEvent) env->DeleteLocalRef(jEvent);
+            }
+        } else {
             __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: Failed to get list methods for events");
         }
         env->DeleteLocalRef(listClass);
     } else {
         __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: events list is null");
     }
+
+   
 
     env->DeleteLocalRef(trackClass);
     return cppTrack;
