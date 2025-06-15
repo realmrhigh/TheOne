@@ -2,7 +2,6 @@ package com.high.theone.features.sampler
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.high.theone.audio.AudioEngine
 import com.high.theone.audio.AudioEngineControl
 import com.high.theone.domain.ProjectManager
 import com.high.theone.model.AudioInputSource
@@ -22,13 +21,14 @@ import java.io.File
 import java.io.IOException
 import android.util.Log
 import android.content.Context
+import javax.inject.Inject
 
 @HiltViewModel
 class SamplerViewModel @Inject constructor(
     private val projectManager: ProjectManager,
-    private val audioEngine: AudioEngine,
+    private val audioEngine: AudioEngineControl,
     @ApplicationContext private val context: Context
-) : ViewModel(), AudioEngineControl {
+) : ViewModel() {
 
     private val _state = MutableStateFlow(SamplerState())
     val state: StateFlow<SamplerState> = _state.asStateFlow()

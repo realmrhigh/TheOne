@@ -1,25 +1,24 @@
 package com.high.theone.features.drumtrack
 
 import androidx.lifecycle.ViewModel
-import com.high.theone.audio.AudioEngine
+import com.high.theone.audio.AudioEngineControl
 import com.high.theone.domain.ProjectManager
 import com.high.theone.features.drumtrack.model.PadSettings
-// import com.high.theone.features.sequencer.SequencerViewModel // Removed import
-import com.high.theone.features.sequencer.SequencerEventBus // Added import
-import com.high.theone.features.sequencer.PadTriggerEvent // Added import
+import com.high.theone.features.sequencer.SequencerEventBus
+import com.high.theone.features.sequencer.PadTriggerEvent
 import com.high.theone.model.SampleMetadata
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import androidx.lifecycle.viewModelScope // Added import
-import kotlinx.coroutines.launch // Added import
-import java.util.UUID // Added import
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 @HiltViewModel
 class DrumTrackViewModel @Inject constructor(
-    val audioEngine: com.high.theone.audio.AudioEngineControl, // Changed to interface
+    val audioEngine: AudioEngineControl,
     val projectManager: ProjectManager,
     private val sequencerEventBus: SequencerEventBus
 ) : ViewModel() {

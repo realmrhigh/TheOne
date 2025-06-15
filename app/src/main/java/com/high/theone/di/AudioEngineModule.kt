@@ -1,8 +1,8 @@
 package com.high.theone.di
 
 import android.content.Context
-import com.high.theone.audio.AudioEngine // Implementation class
-import com.high.theone.audio.AudioEngineControl // Interface
+import com.high.theone.audio.AudioEngine
+import com.high.theone.audio.AudioEngineControl
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
