@@ -39,7 +39,7 @@ enable_testing()
 
 # Add test executable
 add_executable(EnvelopeGeneratorTests
-    ../test/cpp/EnvelopeGeneratorTests.cpp # Path relative to this CMakeLists.txt
+    EnvelopeGeneratorTests.cpp
     # EnvelopeGenerator.cpp is already part of the 'theone' library
 )
 
@@ -62,7 +62,7 @@ gtest_discover_tests(EnvelopeGeneratorTests)
 
 # Add AudioEngineTests executable
 add_executable(AudioEngineTests
-    ../test/cpp/AudioEngineTests.cpp
+    AudioEngineTests.cpp
     # AudioEngine.cpp is part of 'theone' library
 )
 
