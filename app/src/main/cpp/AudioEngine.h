@@ -12,8 +12,7 @@
 struct _jobject;
 typedef _jobject* jobject;
 
-// Forward declare SequenceCpp or include its header
-struct SequenceCpp;
+#include "SequenceCpp.h"
 
 namespace theone {
 namespace audio {

@@ -8,6 +8,32 @@
 #include <fcntl.h>  // For open (though we get fd from Kotlin)
 #include <sys/stat.h> // For fstat
 #include <errno.h> // For strerror
+#include "SequenceCpp.h" // Include the new SequenceCpp header
+
+// --- dr_wav file descriptor callbacks ---
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+// Read callback for dr_wav (file descriptor)
+static size_t drwav_read_proc_fd(void* pUserData, void* pBufferOut, size_t bytesToRead) {
+    int fd = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
+    ssize_t bytesRead = read(fd, pBufferOut, bytesToRead);
+    return (bytesRead < 0) ? 0 : static_cast<size_t>(bytesRead);
+}
+// Write callback for dr_wav (file descriptor)
+static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite) {
+    int fd = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
+    ssize_t bytesWritten = write(fd, pData, bytesToWrite);
+    return (bytesWritten < 0) ? 0 : static_cast<size_t>(bytesWritten);
+}
+// Seek callback for dr_wav (file descriptor)
+static drwav_bool32 drwav_seek_proc_fd(void* pUserData, int offset, drwav_seek_origin origin) {
+    int fd = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
+    int whence = (origin == drwav_seek_origin_start) ? SEEK_SET : SEEK_CUR;
+    return (lseek(fd, offset, whence) == -1) ? DRWAV_FALSE : DRWAV_TRUE;
+}
 
 // Define this in exactly one .c or .cpp file
 #define DR_WAV_IMPLEMENTATION
@@ -37,197 +63,19 @@
 #define M_PI (3.14159265358979323846f)
 #endif
 
-// Helper function for dr_wav to write to a file descriptor
-static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite) {
-    int fd = (int)(intptr_t)pUserData;
-    ssize_t bytesWritten = write(fd, pData, bytesToWrite);
-    if (bytesWritten < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "drwav_write_proc_fd: Failed to write: %s", strerror(errno));
-        return 0;
-    }
-    return (size_t)bytesWritten;
-}
-
-// Helper function for dr_wav to seek in a file descriptor
-static drwav_bool32 drwav_seek_proc_fd(void* pUserData, int offset, drwav_seek_origin origin) {
-    int fd = (int)(intptr_t)pUserData;
-    int whence;
-    switch (origin) {
-        case drwav_seek_origin_start:
-            whence = SEEK_SET;
-            break;
-        case drwav_seek_origin_current:
-            whence = SEEK_CUR;
-            break;
-        default:
-            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "drwav_seek_proc_fd: Unknown seek origin: %d", origin);
-            return DRWAV_FALSE;
-    }
-    if (lseek(fd, (off_t)offset, whence) == -1) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "drwav_seek_proc_fd: Failed to seek: %s", strerror(errno));
-        return DRWAV_FALSE;
-    }
-    return DRWAV_TRUE;
-}
-
-static size_t on_read_c(void* pUserData, void* pBufferOut, size_t bytesToRead) {
-    return read((int)(intptr_t)pUserData, pBufferOut, bytesToRead);
-}
-
-static drwav_bool32 on_seek_c(void* pUserData, int offset, drwav_seek_origin origin) {
-    int whence = (origin == drwav_seek_origin_current) ? SEEK_CUR : SEEK_SET;
-    if (lseek((int)(intptr_t)pUserData, offset, whence) != -1) {
-        return DRWAV_TRUE;
-    }
-    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "on_seek_c: Failed to lseek: %s", strerror(errno));
-    return DRWAV_FALSE;
-}
-
-using SampleId = std::string;
-using SampleMap = std::map<SampleId, theone::audio::LoadedSample>;
-static SampleMap gSampleMap;
+// --- GLOBAL STATE: Move all global variables to the top for visibility ---
+static theone::audio::MetronomeState gMetronomeState;
+static std::mutex gMetronomeStateMutex;
 static std::map<std::string, theone::audio::PadSettingsCpp> gPadSettingsMap;
 static std::mutex gPadSettingsMutex;
-static std::mt19937 gRandomEngine{std::random_device{}()};
-static std::unique_ptr<theone::audio::AudioEngine> audioEngineInstance;
-
-
-// --- C++ Sequencer Data Structures (Potentially moved to AudioEngine or remain global if engine doesn't manage them directly) ---
-// For now, assuming these might still be global or passed to AudioEngine methods if not fully encapsulated.
-// If AudioEngine fully encapsulates sequencer, these statics would be removed or wrapped.
-enum class EventTriggerTypeCpp {
-    PAD_TRIGGER // Initially, only pad triggers
-};
-
-namespace theone { namespace audio {
-struct PadTriggerEventCpp {
-    std::string padId; // Relative to the track, e.g. "Pad1", "Pad2"
-    int velocity;
-    long durationTicks; // Optional, if events have duration
-};
-
-struct EventCpp {
-    std::string id; // Unique ID for this event instance
-    std::string trackId; // Identifies which track this event belongs to (e.g., "Track1")
-    long startTimeTicks;
-    EventTriggerTypeCpp type;
-    PadTriggerEventCpp padTrigger; // Assuming only pad triggers for now
-    // Could use std::variant if more event types are added later
-};
-
-struct TrackCpp {
-    std::string id; // e.g., "Track1"
-    std::vector<EventCpp> events;
-};
-
-struct SequenceCpp {
-    std::string id; // Unique ID for this sequence
-    std::string name;
-    float bpm = 120.0f;
-    int timeSignatureNumerator = 4;
-    int timeSignatureDenominator = 4; // Currently not used for tick calculation directly, but good to have
-    long barLength = 4; // Length in bars
-    long ppqn = 96; // Pulses per quarter note, configurable per sequence
-    std::map<std::string, TrackCpp> tracks; // Map of trackId to TrackCpp
-    long currentPlayheadTicks = 0;
-    bool isPlaying = false;
-};
-}} // namespace theone::audio
-
-// Forward declarations for helper functions (implementations should exist elsewhere)
-struct EnvelopeSettingsCpp;
-struct LfoSettingsCpp;
-std::vector<LfoSettingsCpp> ConvertKotlinLfoSettingsList(JNIEnv* env, jobject lfoSettingsListObj);
-EnvelopeSettingsCpp ConvertKotlinEnvelopeSettings(JNIEnv* env, jobject envelopeSettingsObj);
-
-
-// --- Helper Function to Recalculate Tick Duration ---
-void RecalculateTickDuration() {
-    // This function might be called when gCurrentSequence members (bpm, ppqn) change,
-    // or when gCurrentSequence itself is replaced.
-    // A lock is appropriate here to ensure consistent reads of gCurrentSequence members
-    // and write to gCurrentTickDurationMs.
-    std::lock_guard<std::mutex> lock(gSequencerMutex);
-    if (gCurrentSequence && gCurrentSequence->bpm > 0 && gCurrentSequence->ppqn > 0) {
-        double msPerMinute = 60000.0;
-        double beatsPerMinute = gCurrentSequence->bpm;
-        double msPerBeat = msPerMinute / beatsPerMinute;
-        gCurrentTickDurationMs = msPerBeat / gCurrentSequence->ppqn;
-    } else {
-        gCurrentTickDurationMs = 0.0;
-    }
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Recalculated tick duration: %f ms (BPM: %f, PPQN: %ld)",
-                        gCurrentTickDurationMs,
-                        gCurrentSequence ? gCurrentSequence->bpm : 0.0f,
-                        gCurrentSequence ? gCurrentSequence->ppqn : 0l);
-}
-
-
-// Helper function to convert jstring to std::string
-std::string JStringToString(JNIEnv* env, jstring jstr) {
-    if (jstr == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "JStringToString: jstr is null");
-        return "";
-    }
-    const char* chars = env->GetStringUTFChars(jstr, nullptr);
-    if (chars == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "JStringToString: GetStringUTFChars failed");
-        env->ExceptionClear(); // Clear any pending exceptions
-        return "";
-    }
-    std::string str = chars;
-    env->ReleaseStringUTFChars(jstr, chars);
-    return str;
-}
-
-// Helper function to get enum ordinal
-int getEnumOrdinal(JNIEnv* env, jobject enumObj) {
-    if (enumObj == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "getEnumOrdinal: enumObj is null");
-        return -1; // Or handle error as appropriate
-    }
-    jclass enumClass = env->GetObjectClass(enumObj);
-    if (enumClass == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "getEnumOrdinal: GetObjectClass failed for enumObj");
-        env->ExceptionClear();
-        env->DeleteLocalRef(enumObj); // Release the object reference
-        return -1;
-    }
-    jmethodID ordinalMethod = env->GetMethodID(enumClass, "ordinal", "()I");
-    if (ordinalMethod == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "getEnumOrdinal: GetMethodID for ordinal failed");
-        env->DeleteLocalRef(enumClass);
-        env->DeleteLocalRef(enumObj); // Release the object reference
-        env->ExceptionClear();
-        return -1;
-    }
-    int ordinal = env->CallIntMethod(enumObj, ordinalMethod);
-    if (env->ExceptionCheck()) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "getEnumOrdinal: CallIntMethod for ordinal failed");
-        env->ExceptionDescribe();
-        env->ExceptionClear();
-        env->DeleteLocalRef(enumClass);
-        env->DeleteLocalRef(enumObj); // Release the object reference
-        return -1;
-    }
-    env->DeleteLocalRef(enumClass);
-    // Note: enumObj is not deleted here if it was passed as an argument to this function,
-    // its lifecycle should be managed by the caller. If it was locally created (e.g. GetObjectField),
-    // then it should be deleted by the caller after this function returns.
-    return ordinal;
-}
-
-
-// Placeholder for logging
-//const char* APP_NAME = "TheOneNative";
-
-// List for active playing sounds and its mutex
+static std::map<std::string, theone::audio::LoadedSample> gSampleMap;
 static std::vector<theone::audio::PlayingSound> gActiveSounds;
-static std::mutex gActiveSoundsMutex; // Mutex to protect gActiveSounds
-
-// Metronome state object and its mutex
-static theone::audio::MetronomeState gMetronomeState;
-static std::mutex gMetronomeStateMutex; // Mutex to protect gMetronomeState
+static std::mutex gActiveSoundsMutex;
+static std::mutex gSequencerMutex;
+static std::unique_ptr<theone::audio::SequenceCpp> gCurrentSequence;
+static double gCurrentTickDurationMs = 0.0;
+static int gAudioStreamSampleRate = 0;
+static double gTimeAccumulatedForTick = 0.0;
 
 // Recording State Variables
 static oboe::ManagedStream mInputStream; // Oboe Input Stream
@@ -238,13 +86,6 @@ static drwav mWavWriter;                     // dr_wav instance for writing
 static bool mWavWriterInitialized = false;   // Flag to check if mWavWriter is initialized
 static std::string mCurrentRecordingFilePath = ""; // Store the path for metadata later
 static std::mutex gRecordingStateMutex; // Mutex to protect recording state, file descriptor, and drwav writer access
-
-// Sequencer global state
-static std::mutex gSequencerMutex;
-static std::unique_ptr<theone::audio::SequenceCpp> gCurrentSequence;
-static double gCurrentTickDurationMs = 0.0;
-static int gAudioStreamSampleRate = 0;
-static double gTimeAccumulatedForTick = 0.0;
 
 // Basic Oboe audio callback
 class MyAudioCallback : public oboe::AudioStreamCallback {
@@ -329,7 +170,7 @@ public:
                     for (auto const& [trackId, track] : gCurrentSequence->tracks) {
                         for (const auto& event : track.events) {
                             if (event.startTimeTicks == gCurrentSequence->currentPlayheadTicks) {
-                                if (event.type == EventTriggerTypeCpp::PAD_TRIGGER) {
+                                if (event.type == theone::audio::EventTriggerTypeCpp::PAD_TRIGGER) {
                                     std::string padKey = event.trackId + "_" + event.padTrigger.padId;
                                     std::shared_ptr<theone::audio::PadSettingsCpp> padSettingsPtr;
 
@@ -727,21 +568,20 @@ Java_com_example_theone_audio_AudioEngine_native_1startAudioRecording(
     // Let's assume Kotlin passes a valid, readable FD that it will close.
     // If lseek is needed for the offset:
     if (offset > 0) {
-        if (lseek(fd, static_cast<off_t>(offset), SEEK_SET) == -1) {
-            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to lseek to offset %lld for FD %d: %s", (long long)offset, fd, strerror(errno));
+        if (lseek(jFd, static_cast<off_t>(offset), SEEK_SET) == -1) {
+            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to lseek to offset %lld for FD %d: %s", (long long)offset, jFd, strerror(errno));
             return JNI_FALSE;
         }
     }
-    // Now fd is positioned at the correct offset.
+    // Now jFd is positioned at the correct offset.
 
-    if (!drwav_init(&mWavWriter, &wavFormat, drwav_write_proc_fd, drwav_seek_proc_fd, (void*)(intptr_t)fd, nullptr)) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize drwav writer with procs for FD: %d (dup: %d)", mRecordingFileDescriptor, recordingFdDup);
-        close(recordingFdDup); // Close the duplicated FD as init failed
+    if (!drwav_init(&mWavWriter, &wavFormat, drwav_write_proc_fd, drwav_seek_proc_fd, (void*)(intptr_t)jFd, nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize drwav writer with procs for FD: %d", mRecordingFileDescriptor);
         mCurrentRecordingFilePath = "";
         return JNI_FALSE;
     }
     mWavWriterInitialized = true;
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "dr_wav writer initialized with procs for FD: %d (dup: %d)", mRecordingFileDescriptor, recordingFdDup);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "dr_wav writer initialized with procs for FD: %d", mRecordingFileDescriptor);
 
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Input)
@@ -894,7 +734,7 @@ Java_com_example_theone_audio_AudioEngine_native_1loadSampleToMemory(
     }
     // Now fd is positioned at the correct offset.
 
-    if (!drwav_init(&wav, on_read_c, on_seek_c, (void*)(intptr_t)fd, nullptr)) {
+    if (!drwav_init(&wav, drwav_read_proc_fd, drwav_seek_proc_fd, (void*)(intptr_t)fd, nullptr)) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to init drwav with callbacks for sample %s", sampleIdStr.c_str());
         return JNI_FALSE;
     }
@@ -1386,12 +1226,6 @@ Java_com_example_theone_audio_AudioEngine_native_1playSampleSlice(
     return JNI_TRUE;
 }
 
-// Forward declaration for ConvertKotlinEnvelopeSettings
-namespace theone { namespace audio {
-    struct EnvelopeSettingsCpp;
-}}
-theone::audio::EnvelopeSettingsCpp ConvertKotlinEnvelopeSettings(JNIEnv* env, jobject kotlinEnvelopeSettings);
-
 // --- JNI PadSettings Conversion Helper Functions ---
 
 static theone::audio::PadTriggerEventCpp ConvertKotlinPadTriggerEvent(JNIEnv* env, jobject kotlinPadTriggerEvent) {
@@ -1539,6 +1373,7 @@ static theone::audio::TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTra
 
 static theone::audio::SequenceCpp ConvertKotlinSequence(JNIEnv* env, jobject kotlinSequence) {
     theone::audio::SequenceCpp cppSequence;
+
     if (!kotlinSequence) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: kotlinSequence is null"); return cppSequence; }
 
     jclass sequenceClass = env->GetObjectClass(kotlinSequence);

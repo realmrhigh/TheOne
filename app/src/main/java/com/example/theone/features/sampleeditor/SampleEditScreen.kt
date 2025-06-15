@@ -14,9 +14,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.theone.model.LoopMode
+import com.example.theone.model.PlaybackMode
 import com.example.theone.model.SampleMetadata
-import com.example.theone.model.PlaybackMode // Added import
-import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
+import com.example.theone.model.SynthModels.EffectSetting
+import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
+import com.example.theone.model.SynthModels.ModulationRouting
 import java.util.UUID
 
 // Mock AudioEngineControl for preview

@@ -14,17 +14,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.theone.features.drumtrack.DrumTrackViewModel
-// Now using consolidated models directly
 import com.example.theone.features.drumtrack.edit.DrumProgramEditDialog
 import com.example.theone.features.drumtrack.edit.DrumProgramEditViewModel
-import com.example.theone.features.drumtrack.model.PadSettings // Consolidated PadSettings
-// Removed imports for placeholder/dummy AudioEngine and ProjectManager from .edit package
-// Real instances will be passed from drumTrackViewModel
-
-// PlaceholderAudioEngine object definition removed.
-// localProjectManager instantiation using DummyProjectManagerImpl from .edit package removed.
-
-// Mapper functions are no longer needed as DrumProgramEditViewModel now uses consolidated models.
+import com.example.theone.features.drumtrack.model.PadSettings
+import com.example.theone.model.SynthModels.EffectSetting
+import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
+import com.example.theone.model.SynthModels.ModulationRouting
 
 @Composable
 fun DrumPadScreen(
@@ -116,5 +112,3 @@ fun PadView(
         // TODO: Display sample name if available on padModel.sampleName
     }
 }
-
-// FIX: Add missing closing brace for the package

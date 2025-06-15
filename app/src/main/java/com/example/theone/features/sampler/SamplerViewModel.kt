@@ -3,10 +3,17 @@ package com.example.theone.features.sampler
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.theone.audio.AudioEngine
+import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 import com.example.theone.model.AudioInputSource
+import com.example.theone.model.Sample
 import com.example.theone.model.SampleMetadata
-import com.example.theone.model.Sample // Import the Sample class
+import com.example.theone.model.SynthModels.EffectSetting
+import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
+import com.example.theone.model.SynthModels.ModulationRouting
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,10 +22,6 @@ import java.io.File
 import java.io.IOException
 import android.util.Log
 import android.content.Context
-import com.example.theone.audio.AudioEngineControl
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
 
 enum class RecordingState {
     IDLE,       // Not recording, sampler not armed

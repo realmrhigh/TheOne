@@ -20,6 +20,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.theone.model.Event
 import com.example.theone.model.EventType
+import com.example.theone.model.SynthModels.EffectSetting
+import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
+import com.example.theone.model.SynthModels.ModulationRouting
 
 // Number of steps in the sequencer grid (e.g., 16 for one bar of 16th notes)
 const val NUM_STEPS = 16

@@ -13,7 +13,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.theone.model.PlaybackMode
+import com.example.theone.model.SynthModels.EffectSetting
 import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
+import com.example.theone.model.SynthModels.ModulationRouting
 
 @Composable
 fun SamplerScreen(samplerViewModel: SamplerViewModel = viewModel()) { // Placeholder for Hilt injection later

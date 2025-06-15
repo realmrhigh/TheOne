@@ -2,21 +2,16 @@ package com.example.theone.features.sequencer
 
 import androidx.lifecycle.ViewModel
 import com.example.theone.audio.AudioEngine
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.example.theone.model.Event
 import com.example.theone.model.EventType
-import com.example.theone.model.PlaybackMode // Added import
-import com.example.theone.model.Sequence // This was the problematic import before
-import com.example.theone.model.SynthModels.EnvelopeSettings // Added import
-import com.example.theone.model.SynthModels.EnvelopeType // Added import
+import com.example.theone.model.PlaybackMode
+import com.example.theone.model.Sequence
+import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
+import com.example.theone.model.SynthModels.ModulationRouting
+import com.example.theone.model.SynthModels.EffectSetting
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
-// import com.example.theone.model.Project // Not using Project directly for now
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import com.example.theone.features.sequencer.SequencerEventBus

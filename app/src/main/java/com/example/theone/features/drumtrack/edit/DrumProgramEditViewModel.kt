@@ -5,28 +5,21 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-
-// Consolidated Model Imports
 import com.example.theone.features.drumtrack.model.PadSettings
 import com.example.theone.model.LayerModels.SampleLayer
-import com.example.theone.model.SampleMetadata // Consolidated SampleMetadata
-import com.example.theone.model.SynthModels.EnvelopeSettings as ModelEnvelopeSettings
-import com.example.theone.model.SynthModels.LFOSettings as ModelLFOSettings
-import com.example.theone.model.SynthModels.LfoWaveform // Already imported
-import com.example.theone.model.SynthModels.LfoDestination // Already imported
-import com.example.theone.model.SynthModels.ModulationRouting
-import com.example.theone.model.SynthModels.ModSource // For ModulationRouting's source type
-import com.example.theone.model.SynthModels.ModDestination // For ModulationRouting's destination type
+import com.example.theone.model.SampleMetadata
 import com.example.theone.model.SynthModels.EffectSetting
+import com.example.theone.model.SynthModels.EnvelopeSettings
+import com.example.theone.model.SynthModels.LFOSettings
+import com.example.theone.model.SynthModels.ModulationRouting
+import com.example.theone.model.SynthModels.ModSource
+import com.example.theone.model.SynthModels.ModDestination
 import com.example.theone.model.SynthModels.EffectType
-import com.example.theone.model.SynthModels.EffectParameterDefinition // Added import
-import com.example.theone.model.SynthModels.DefaultEffectParameterProvider // Added import
-// Real AudioEngineControl and ProjectManager interfaces
+import com.example.theone.model.SynthModels.EffectParameterDefinition
+import com.example.theone.model.SynthModels.DefaultEffectParameterProvider
 import com.example.theone.audio.AudioEngineControl
 import com.example.theone.domain.ProjectManager
 import com.example.theone.features.drumtrack.edit.DrumProgramEditEvent
-
-// AndroidX ViewModel and scope for coroutines
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
