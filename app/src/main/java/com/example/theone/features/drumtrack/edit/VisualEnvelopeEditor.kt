@@ -8,15 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx::compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.tooling.preview.Preview
@@ -154,7 +146,7 @@ fun VisualEnvelopeEditor(
                                     // The "release handle" is conceptually the duration from P3.
                                     // Let's try dragging P3's X to control Release Time for now.
                                     // This means p4.x = p3_x_dragged + release_time_pixels.
-                                    // So, release_time_pixels = p4.x_current - p3_x_current
+                                    // release_time_pixels = p4.x_current - p3_x_current
                                     // p3_x_dragged = initial_p3_x + drag.x
                                     // new_release_ms = ( (p4_x_current - (p3_x_current + change.position.x - change.previousPosition.x) ) / timeScale * 1000f) is NOT intuitive.
 

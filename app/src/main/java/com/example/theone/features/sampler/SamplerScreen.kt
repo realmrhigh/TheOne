@@ -1,7 +1,7 @@
 package com.example.theone.features.sampler
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.*
+import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.RadioButtonChecked
@@ -11,12 +11,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.lifecycle.viewmodel.compose.viewModel // Required for viewModel()
-// Import unified models for the dummy/preview implementations
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.theone.model.PlaybackMode
-import com.example.theone.model.SynthModels.EnvelopeSettings // Corrected import
-// Assuming SamplerViewModel is in the same package
-// Assuming RecordingState is accessible
+import com.example.theone.model.SynthModels.EnvelopeSettings
 
 @Composable
 fun SamplerScreen(samplerViewModel: SamplerViewModel = viewModel()) { // Placeholder for Hilt injection later
@@ -57,7 +54,7 @@ fun SamplerScreen(samplerViewModel: SamplerViewModel = viewModel()) { // Placeho
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 // Input Source Selection (Placeholder)
-                Text("Input Source: Mic (Placeholder)", style = MaterialTheme.typography.subtitle1)
+                Text("Input Source: Mic (Placeholder)", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Live Input Level Meter
@@ -65,7 +62,7 @@ fun SamplerScreen(samplerViewModel: SamplerViewModel = viewModel()) { // Placeho
                     progress = inputLevel, // ViewModel will provide this
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text(String.format("Input Level: %.2f", inputLevel), style = MaterialTheme.typography.caption)
+                Text(String.format("Input Level: %.2f", inputLevel), style = MaterialTheme.typography.labelSmall)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Threshold Recording
@@ -207,19 +204,16 @@ fun AssignToPadDialog(
     onAssign: (String) -> Unit,
     onSkip: () -> Unit
 ) {
-    // Placeholder for pad selection. In a real app, this would be a grid or list of pads.
-    val padOptions = List(16) { "Pad ${it + 1}" } // Example: Pad 1 to Pad 16
+    val padOptions = List(16) { "Pad ${it + 1}" }
     var selectedPad by remember { mutableStateOf(padOptions[0]) }
-
+    var expanded by remember { mutableStateOf(false) }
     AlertDialog(
-        onDismissRequest = onDismiss, // User clicked outside
+        onDismissRequest = onDismiss,
         title = { Text("Assign to Pad (Optional)") },
         text = {
             Column {
                 Text("Select a pad to assign this sample to:")
                 Spacer(modifier = Modifier.height(8.dp))
-                // Simple dropdown for now
-                var expanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = !expanded }
@@ -238,13 +232,12 @@ fun AssignToPadDialog(
                     ) {
                         padOptions.forEach { selectionOption ->
                             DropdownMenuItem(
+                                text = { Text(text = selectionOption) },
                                 onClick = {
                                     selectedPad = selectionOption
                                     expanded = false
                                 }
-                            ) {
-                                Text(text = selectionOption)
-                            }
+                            )
                         }
                     }
                 }
@@ -256,15 +249,11 @@ fun AssignToPadDialog(
             }
         },
         dismissButton = {
-            Button(onClick = onSkip ) { // Changed to "Skip" for clarity
+            Button(onClick = onSkip ) {
                 Text("Save without Assigning")
             }
         },
-         neutralButton = { // Added a neutral button for true dismiss/cancel
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        // Material3 AlertDialog does not support neutralButton, so omit or use custom layout if needed
     )
 }
 

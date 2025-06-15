@@ -8,12 +8,12 @@
 #include "PadSettings.h" // Assuming PadSettingsCpp is defined here
 #include "audio_sample.h" // For LoadedSample, PlayingSound etc. if managed by AudioEngine
 #include <oboe/Oboe.h>   // For Oboe types if AudioEngine manages stream
-
-// Forward declaration for JNI types if needed for callbacks, though not typical in core engine class
-struct JNIEnv;
+#include <jni.h> // Use the real JNI definition
 struct _jobject;
 typedef _jobject* jobject;
 
+// Forward declare SequenceCpp or include its header
+struct SequenceCpp;
 
 namespace theone {
 namespace audio {
