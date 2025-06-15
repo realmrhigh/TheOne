@@ -38,4 +38,7 @@ class DrumTrackViewModel @Inject constructor(
             val padId = "Pad$index" // Generate IDs like "Pad0", "Pad1", ... "Pad15"
             padId to PadSettings(id = padId)
         }
-// ...rest of the code remains unchanged...
+        _padSettingsMap.value = initialPads
+    }
+// TODO: Complete implementation as needed
+}

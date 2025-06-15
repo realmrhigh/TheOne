@@ -38,3 +38,12 @@ data class PadSettings(
         releaseMs = 100f
     ),
     var pitchEnvelope: EnvelopeSettings = EnvelopeSettings( // Non-nullable
+        type = com.high.theone.model.ModelEnvelopeTypeInternal.ADSR,
+        attackMs = 5f,
+        holdMs = 0f,
+        decayMs = 150f,
+        sustainLevel = 1.0f,
+        releaseMs = 100f
+    )
+    // TODO: Add other properties and methods as needed
+)

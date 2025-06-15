@@ -18,6 +18,7 @@ enum class EventTriggerTypeCpp {
 struct PadTriggerEventCpp {
     std::string padId;
     int velocity = 127;
+    int64_t durationTicks = 0; // Added for native-lib.cpp compatibility
 };
 
 // Sequence event struct
@@ -38,6 +39,8 @@ struct SequenceTrackCpp {
 
 // Sequence struct
 struct SequenceCpp {
+    std::string id; // Added for native-lib.cpp compatibility
+    std::string name; // Added for native-lib.cpp compatibility
     bool isPlaying = false;
     int64_t currentPlayheadTicks = 0;
     int timeSignatureNumerator = 4;

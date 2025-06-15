@@ -37,4 +37,59 @@ fun DrumPadScreen(
     val padList = remember(padSettingsMap) {
         padSettingsMap.values.toList().sortedBy { it.id } // Simple sort by ID
     }
-// ...rest of the code remains unchanged...
+
+    // Main content
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text("Drum Pad Screen", color = Color.White, fontSize = 24.sp)
+
+        // Grid of drum pads
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 100.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            items(padList.size) { index ->
+                val padSettings = padList[index]
+                // PadItem composable represents each drum pad
+                PadItem(
+                    padSettings = padSettings,
+                    onPadClick = {
+                        // Handle pad click, possibly play sound or show settings
+                    },
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = {
+                                    // Handle pad tap
+                                }
+                            )
+                        }
+                )
+            }
+        }
+
+        // Edit button or area
+        // This could be a separate Row or Button composable
+        // On click, it should open the DrumProgramEditDialog
+    }
+
+    // Edit dialog
+    if (showEditDialog && padToEdit != null) {
+        DrumProgramEditDialog(
+            padSettings = padToEdit!!,
+            onDismiss = { showEditDialog = false },
+            onSave = { updatedSettings ->
+                // Handle saving of updated settings
+                // Possibly call a method in drumTrackViewModel
+                showEditDialog = false
+            }
+        )
+    }
+}
+// TODO: Complete implementation as needed

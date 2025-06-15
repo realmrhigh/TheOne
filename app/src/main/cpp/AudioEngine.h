@@ -37,7 +37,7 @@ public:
     // Playback (example, might be more complex)
     bool playPadSample(
         const std::string& noteInstanceId, const std::string& trackId, const std::string& padId,
-        const std::string& sampleId, // Fallback
+        const std::string& sampleId,
         float velocity, float coarseTune, float fineTune, float pan, float volume,
         int playbackModeOrdinal, float ampEnvAttackMs, float ampEnvDecayMs,
         float ampEnvSustainLevel, float ampEnvReleaseMs
@@ -77,6 +77,8 @@ public:
     // Allow test to set sample rate if Oboe isn't initialized
     void setAudioStreamSampleRateForTest(uint32_t sampleRate);
 
+    void loadSequenceData(const SequenceCpp& sequence);
+
 
 private:
     // Oboe Stream
@@ -92,8 +94,8 @@ private:
     std::mutex padSettingsMutex_;
 
     // Active sounds
+    mutable std::mutex activeSoundsMutex_;
     std::vector<PlayingSound> activeSounds_;
-    std::mutex activeSoundsMutex_;
 
     // Metronome
     MetronomeState metronomeState_;

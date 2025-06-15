@@ -38,3 +38,6 @@ data class DrumTrack(
 fun createDefaultDrumTrack(id: String = "dt1", name: String = "Default Drum Track"): DrumTrack {
     return DrumTrack(
         id = id,
+        name = name
+    )
+}

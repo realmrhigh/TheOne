@@ -63,7 +63,7 @@ bool AudioEngine::initialize() {
             return false;
         }
         oboeInitialized_.store(true);
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::initialize - Oboe output stream started. Sample Rate: %u", audioStreamSampleRate_);
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::initialize - Oboe output stream started. Sample Rate: %u", audioStreamSampleRate_.load());
         return true;
     }
     __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::initialize - Failed to open output stream: %s", oboe::convertToText(result));
@@ -732,7 +732,13 @@ int AudioEngine::getSampleRate(const std::string& sampleId) {
     return 0;
 }
 
-bool AudioEngine::playPadSample(/*...params...*/) {
+bool AudioEngine::playPadSample(
+    const std::string& noteInstanceId, const std::string& trackId, const std::string& padId,
+    const std::string& sampleId,
+    float velocity, float coarseTune, float fineTune, float pan, float volume,
+    int playbackModeOrdinal, float ampEnvAttackMs, float ampEnvDecayMs,
+    float ampEnvSustainLevel, float ampEnvReleaseMs
+) {
     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::playPadSample (placeholder)");
     // TODO: Implement using activeSounds_, activeSoundsMutex_, padSettingsMap_, sampleMap_
     // This would involve creating a PlayingSound object and adding to activeSounds_
@@ -836,7 +842,7 @@ void AudioEngine::loadSequenceData(const theone::audio::SequenceCpp& sequence) {
 
     currentSequence_->tracks.clear();
     for (const auto& [trackId, trackData] : sequence.tracks) {
-        theone::audio::TrackCpp newTrack;
+        theone::audio::SequenceTrackCpp newTrack;
         newTrack.id = trackData.id;
         newTrack.events.clear();
         for (const auto& eventData : trackData.events) {

@@ -38,4 +38,7 @@ class MockAudioEngineControl : com.high.theone.audio.AudioEngineControl {
         sliceId: String?, velocity: Float,
         playbackMode: com.high.theone.model.PlaybackMode, // Corrected type
         coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-// ...existing code...
+        // TODO: Complete method signature and implementation
+    ): Boolean = true
+}
+// TODO: Complete implementation as needed

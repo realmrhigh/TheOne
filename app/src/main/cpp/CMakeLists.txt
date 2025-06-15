@@ -13,6 +13,7 @@ add_library(theone SHARED
         EnvelopeGenerator.cpp
         LfoGenerator.cpp
         StateVariableFilter.cpp # Added SVF source file
+        AudioEngine.cpp # <-- Added AudioEngine implementation
 )
 
 find_library(log-lib log)
