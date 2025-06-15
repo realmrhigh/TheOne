@@ -1,6 +1,9 @@
 #ifndef THEONE_AUDIOENGINE_H
 #define THEONE_AUDIOENGINE_H
 
+#include "dr_wav.h"
+#include <random>
+
 #include <string>
 #include <vector>
 #include <map>

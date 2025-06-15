@@ -13,6 +13,10 @@
 #endif
 #include <cmath>
 
+#include "PadSettings.h"
+#include "EnvelopeGenerator.h"
+#include "LfoGenerator.h"
+
 
 namespace theone {
 namespace audio {

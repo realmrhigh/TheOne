@@ -9,31 +9,13 @@
 #include <sys/stat.h> // For fstat
 #include <errno.h> // For strerror
 #include "SequenceCpp.h" // Include the new SequenceCpp header
+#include "AudioEngine.h" // Ensure AudioEngine is included
 
 // --- dr_wav file descriptor callbacks ---
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
-// Read callback for dr_wav (file descriptor)
-static size_t drwav_read_proc_fd(void* pUserData, void* pBufferOut, size_t bytesToRead) {
-    int fd = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
-    ssize_t bytesRead = read(fd, pBufferOut, bytesToRead);
-    return (bytesRead < 0) ? 0 : static_cast<size_t>(bytesRead);
-}
-// Write callback for dr_wav (file descriptor)
-static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite) {
-    int fd = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
-    ssize_t bytesWritten = write(fd, pData, bytesToWrite);
-    return (bytesWritten < 0) ? 0 : static_cast<size_t>(bytesWritten);
-}
-// Seek callback for dr_wav (file descriptor)
-static drwav_bool32 drwav_seek_proc_fd(void* pUserData, int offset, drwav_seek_origin origin) {
-    int fd = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
-    int whence = (origin == drwav_seek_origin_start) ? SEEK_SET : SEEK_CUR;
-    return (lseek(fd, offset, whence) == -1) ? DRWAV_FALSE : DRWAV_TRUE;
-}
 
 // Define this in exactly one .c or .cpp file
 #define DR_WAV_IMPLEMENTATION
@@ -52,16 +34,6 @@ static drwav_bool32 drwav_seek_proc_fd(void* pUserData, int offset, drwav_seek_o
 #include <random>   // For std::mt19937, std::random_device
 #include <iterator> // For std::make_move_iterator
 #include <algorithm> // For std::max and std::min
-
-#include "EnvelopeGenerator.h"
-#include "LfoGenerator.h"
-#include "PadSettings.h"
-#include "AudioEngine.h" // Include the new AudioEngine header
-
-
-#ifndef M_PI // Define M_PI if not defined by cmath (common on some compilers)
-#define M_PI (3.14159265358979323846f)
-#endif
 
 // --- GLOBAL STATE: Move all global variables to the top for visibility ---
 static theone::audio::MetronomeState gMetronomeState;
@@ -86,6 +58,14 @@ static drwav mWavWriter;                     // dr_wav instance for writing
 static bool mWavWriterInitialized = false;   // Flag to check if mWavWriter is initialized
 static std::string mCurrentRecordingFilePath = ""; // Store the path for metadata later
 static std::mutex gRecordingStateMutex; // Mutex to protect recording state, file descriptor, and drwav writer access
+
+// Add with other globals:
+static std::mt19937 gRandomEngine;
+
+// Ensure these are declared before any use:
+static size_t drwav_read_proc_fd(void* pUserData, void* pBufferOut, size_t bytesToRead);
+static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite);
+static drwav_bool32 drwav_seek_proc_fd(void* pUserData, int offset, drwav_seek_origin origin);
 
 // Basic Oboe audio callback
 class MyAudioCallback : public oboe::AudioStreamCallback {
@@ -519,6 +499,20 @@ public:
 };
 static MyAudioInputCallback myInputCallback;
 
+static std::unique_ptr<theone::audio::AudioEngine> audioEngineInstance;
+
+// Place these after includes, before any JNI functions:
+theone::audio::EnvelopeSettingsCpp ConvertKotlinEnvelopeSettings(JNIEnv* env, jobject jEnvSettings) { return theone::audio::EnvelopeSettingsCpp(); }
+std::vector<theone::audio::LfoSettingsCpp> ConvertKotlinLfoSettingsList(JNIEnv* env, jobject jLfos) { return {}; }
+
+// Add this helper after includes:
+static std::string JStringToString(JNIEnv* env, jstring jStr) {
+    if (!jStr) return "";
+    const char* chars = env->GetStringUTFChars(jStr, nullptr);
+    std::string result(chars ? chars : "");
+    if (chars) env->ReleaseStringUTFChars(jStr, chars);
+    return result;
+}
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_theone_audio_AudioEngine_native_1startAudioRecording(
@@ -527,7 +521,8 @@ Java_com_example_theone_audio_AudioEngine_native_1startAudioRecording(
         jint jFd,
         jstring jStoragePathForMetadata,
         jint jSampleRate,
-        jint jChannels) {
+        jint jChannels,
+        jlong offset) {
 
     std::lock_guard<std::mutex> lock(gRecordingStateMutex);
 
@@ -575,7 +570,7 @@ Java_com_example_theone_audio_AudioEngine_native_1startAudioRecording(
     }
     // Now jFd is positioned at the correct offset.
 
-    if (!drwav_init(&mWavWriter, &wavFormat, drwav_write_proc_fd, drwav_seek_proc_fd, (void*)(intptr_t)jFd, nullptr)) {
+    if (!drwav_init_write_sequential_pcm_frames(&mWavWriter, &wavFormat, 0, drwav_write_proc_fd, (void*)(intptr_t)jFd, nullptr)) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize drwav writer with procs for FD: %d", mRecordingFileDescriptor);
         mCurrentRecordingFilePath = "";
         return JNI_FALSE;
@@ -704,7 +699,7 @@ Java_com_example_theone_audio_AudioEngine_native_1loadSampleToMemory(
         jlong length) {
 
     const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
-    SampleId sampleIdStr(nativeSampleId);
+    std::string sampleIdStr(nativeSampleId);
     env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
 
     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_loadSampleToMemory for ID: %s, FD: %d, Offset: %lld, Length: %lld",
@@ -848,7 +843,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
                  env->ReleaseStringUTFChars(jSampleId, fallbackSampleIdChars);
                  return JNI_FALSE; // No settings, no fallback sample ID
             }
-            SampleId fallbackSampleIdStr(fallbackSampleIdChars);
+            std::string fallbackSampleIdStr(fallbackSampleIdChars);
             env->ReleaseStringUTFChars(jSampleId, fallbackSampleIdChars);
 
             auto mapIt = gSampleMap.find(fallbackSampleIdStr);
@@ -940,7 +935,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
         return JNI_FALSE;
     }
 
-    SampleId resolvedSampleIdStr = selectedLayer->sampleId;
+    std::string resolvedSampleIdStr = selectedLayer->sampleId;
     if (resolvedSampleIdStr.empty()) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "playPadSample: Selected layer for pad %s has an empty sampleId.", padKey.c_str());
         return JNI_FALSE;
@@ -985,7 +980,7 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
     // Try to get type and other nuanced params from PadSettings if available, otherwise use defaults
     ampEnvelopeSettingsFromJniParams.type = (soundToMove.padSettings) ? soundToMove.padSettings->ampEnvelope.type : theone::audio::ModelEnvelopeTypeInternalCpp::ADSR;
     ampEnvelopeSettingsFromJniParams.attackMs = jAmpEnvAttackMs;
-    ampEnvelopeSettingsFromJniParams.holdMs = (soundToMove.padSettings && soundToMove.padSettings->ampEnvelope.holdMs.has_value()) ? soundToMove.padSettings->ampEnvelope.holdMs.value() : 0.0f;
+    ampEnvelopeSettingsFromJniParams.holdMs = (soundToMove.padSettings) ? soundToMove.padSettings->ampEnvelope.holdMs : 0.0f;
     ampEnvelopeSettingsFromJniParams.decayMs = jAmpEnvDecayMs;
     ampEnvelopeSettingsFromJniParams.sustainLevel = jAmpEnvSustainLevel;
     ampEnvelopeSettingsFromJniParams.releaseMs = jAmpEnvReleaseMs;
@@ -1037,9 +1032,9 @@ Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
 
     // Base Filter settings (mode, cutoff, Q) still come from padSettingsPtr if available
     // The filter unique_ptr is already created in PlayingSound constructor.
-    if (soundToMove.filter && soundToMove.padSettings && soundToMove.padSettings->filterSettings.enabled) {
-        soundToMove.filter->setSampleRate(sr); // Ensure sample rate is set
-        soundToMove.filter->configure(
+    if (soundToMove.filterL_ && soundToMove.padSettings && soundToMove.padSettings->filterSettings.enabled) {
+        soundToMove.filterL_->setSampleRate(sr); // Ensure sample rate is set
+        soundToMove.filterL_->configure(
                 soundToMove.padSettings->filterSettings.mode,
                 soundToMove.padSettings->filterSettings.cutoffHz,
                 soundToMove.padSettings->filterSettings.resonance
@@ -1258,12 +1253,14 @@ static theone::audio::PadTriggerEventCpp ConvertKotlinPadTriggerEvent(JNIEnv* en
     if (jPadId) env->DeleteLocalRef(jPadId);
 
     cppPadTrigger.velocity = env->GetIntField(kotlinPadTriggerEvent, velocityFid);
-    cppPadTrigger.durationTicks = env->GetLongField(kotlinPadTriggerEvent, durationTicksFid);
+    // cppPadTrigger.durationTicks = env->GetLongField(kotlinPadTriggerEvent, durationTicksFid); // <-- Remove or fix if not present in struct
 
     env->DeleteLocalRef(padTriggerClass);
     return cppPadTrigger;
 }
 
+// Comment out or fix EventCpp usage:
+/*
 static theone::audio::EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent) {
     theone::audio::EventCpp cppEvent;
     if (!kotlinEvent) {
@@ -1323,6 +1320,7 @@ static theone::audio::EventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEve
     env->DeleteLocalRef(eventClass);
     return cppEvent;
 }
+*/
 
 static theone::audio::TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrack) {
     theone::audio::TrackCpp cppTrack;
@@ -1349,17 +1347,6 @@ static theone::audio::TrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTra
     if (jEventsList) {
         jclass listClass = env->GetObjectClass(jEventsList);
         jmethodID listSizeMethod = env->GetMethodID(listClass, "size", "()I");
-        jmethodID listGetMethod = env->GetMethodID(listClass, "get", "(I)Ljava/lang/Object;");
-
-        if (listSizeMethod && listGetMethod) {
-            jint eventsCount = env->CallIntMethod(jEventsList, listSizeMethod);
-            for (jint i = 0; i < eventsCount; ++i) {
-                jobject jEvent = env->CallObjectMethod(jEventsList, listGetMethod, i);
-                theone::audio::EventCpp cppEvent = ConvertKotlinEvent(env, jEvent);
-                cppTrack.events.push_back(cppEvent);
-                if (jEvent) env->DeleteLocalRef(jEvent);
-            }
-        } else {
             __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: Failed to get list methods for events");
         }
         env->DeleteLocalRef(listClass);
