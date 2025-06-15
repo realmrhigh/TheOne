@@ -1,16 +1,20 @@
 package com.high.theone.features.sampleeditor
 
 import androidx.lifecycle.ViewModel
-import com.high.theone.audio.AudioEngine
+import com.high.theone.audio.AudioEngineControl
 import com.high.theone.domain.ProjectManager
 import com.high.theone.model.SampleMetadata
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class SampleEditViewModel(
-    private val initialSampleMetadata: SampleMetadata, // Order changed
-    private val audioEngine: AudioEngine, // Type changed
+@HiltViewModel
+class SampleEditViewModel @AssistedInject constructor(
+    @Assisted private val initialSampleMetadata: SampleMetadata, // Order changed
+    private val audioEngine: AudioEngineControl, // Type changed
     private val projectManager: ProjectManager
 ) : ViewModel() {
 

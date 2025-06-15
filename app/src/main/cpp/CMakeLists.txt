@@ -58,8 +58,16 @@ target_include_directories(EnvelopeGeneratorTests PRIVATE
 )
 
 # Discover and add tests to CTest
-include(GoogleTest)
-gtest_discover_tests(EnvelopeGeneratorTests)
+if(NOT CMAKE_CROSSCOMPILING)
+    include(GoogleTest)
+    gtest_discover_tests(EnvelopeGeneratorTests)
+    gtest_discover_tests(AudioEngineTests)
+else()
+    # When cross-compiling, the tests will be built,
+    # but not discovered by CTest at configure time.
+    # They might need to be run manually or via a different mechanism on the target.
+    message(STATUS "Cross-compiling: Skipping gtest_discover_tests for host execution.")
+endif()
 
 # Add AudioEngineTests executable
 add_executable(AudioEngineTests
@@ -81,4 +89,5 @@ target_include_directories(AudioEngineTests PRIVATE
 )
 
 # Discover and add tests for AudioEngineTests to CTest
-gtest_discover_tests(AudioEngineTests)
+# Already handled in the conditional block above
+# gtest_discover_tests(AudioEngineTests)
