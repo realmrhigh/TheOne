@@ -1,4 +1,4 @@
-package com.example.theone.features.drumtrack.edit
+package com.high.theone.features.drumtrack.edit
 
 import org.junit.Assert.*
 import org.junit.Before
