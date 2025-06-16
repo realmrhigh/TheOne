@@ -11,9 +11,7 @@ namespace theone {
                   currentStage(EnvelopeStage::IDLE),
                   attackRate(0.0f),
                   decayRate(0.0f),
-                  releaseRate(0.0f),
-                  holdTimeSamples(0.0f),
-                  holdSamplesRemaining(0.0f) {
+                  releaseRate(0.0f) {
             // settings will be default constructed
         }
 
@@ -26,66 +24,53 @@ namespace theone {
         }
 
         void EnvelopeGenerator::calculateRates(float triggerVelocity) {
-            // Apply velocity to attack time (example: higher velocity = shorter attack)
-            // This is a simple linear scaling. More complex curves could be used.
-            // velocityToAttack is 0-1. If 1, max velocity makes attack instant. If 0, no effect.
-            float actualAttackMs = settings.attackMs;
-            if (settings.velocityToAttack > 0.0f) {
-                actualAttackMs = settings.attackMs * (1.0f - (triggerVelocity * settings.velocityToAttack));
-                actualAttackMs = std::max(0.0f, actualAttackMs); // Ensure non-negative
-            }
+            float currentAttackMs = std::max(0.0f, settings.attackMs); // Ensure non-negative
 
-            if (actualAttackMs > 0.0f) {
-                attackRate = 1.0f / (actualAttackMs / 1000.0f * sampleRate);
+            if (currentAttackMs > 0.0f) {
+                attackRate = 1.0f / (currentAttackMs / 1000.0f * sampleRate);
             } else {
                 attackRate = 1.0f; // Effectively instant attack if time is zero
             }
 
-            // Updated decayRate calculation for AD and ADSR/AHDSR types
-            if (settings.type == ModelEnvelopeTypeInternalCpp::AD) {
-                // AD envelope decays from peak (1.0) to zero (0.0)
-                if (settings.decayMs > 0.0f) {
-                    decayRate = 1.0f / (settings.decayMs / 1000.0f * sampleRate); // Rate to go from 1 to 0
-                } else {
-                    decayRate = 1.0f; // Effectively instant decay to zero
-                }
-            } else { // Existing logic for ADSR/AHDSR
-                if (settings.decayMs > 0.0f) {
+            // Decay Rate Calculation
+            if (settings.decayMs > 0.0f) {
+                if (settings.hasSustain) {
                     // Decay from 1.0 to sustainLevel
                     decayRate = (1.0f - settings.sustainLevel) / (settings.decayMs / 1000.0f * sampleRate);
                 } else {
-                    decayRate = 1.0f; // Effectively instant decay to sustainLevel
+                    // AD envelope decays from peak (1.0) to zero (0.0)
+                    decayRate = 1.0f / (settings.decayMs / 1000.0f * sampleRate); // Rate to go from 1 to 0
                 }
+            } else {
+                decayRate = 1.0f; // Effectively instant decay
+            }
+            // Ensure decayRate is positive, especially if sustainLevel is 1.0 and decayMs is > 0
+            if (decayRate <= 0.0f && settings.decayMs > 0.0f && settings.hasSustain && settings.sustainLevel >= 1.0f) {
+                 // This case means decay to 1.0 or higher, effectively no decay phase or instant to sustain.
+                 // Let's make it very fast to sustain level.
+                 decayRate = 1.0f;
             }
 
+
+            // Release Rate Calculation
+            // triggerOff() will recalculate releaseRate based on currentValue when transitioning to RELEASE stage.
+            // This sets a default based on sustainLevel or 0 if no sustain.
             if (settings.releaseMs > 0.0f) {
-                // Release from current value (or sustainLevel if not AD) to 0
-                // For ADSR/AHDS, releaseRate is based on sustainLevel typically, but can be from current value.
-                // Here, using sustainLevel for ADSR/AHDS, currentValue for AD.
-                float releaseFromLevel = (settings.type == ModelEnvelopeTypeInternalCpp::AD) ? currentValue : settings.sustainLevel;
-                if (settings.type == ModelEnvelopeTypeInternalCpp::AD && currentStage == EnvelopeStage::ATTACK) {
-                    // If AD and still in attack, release from current value
-                    releaseFromLevel = currentValue;
-                } else if (settings.type == ModelEnvelopeTypeInternalCpp::AD && currentStage == EnvelopeStage::DECAY) {
-                    // AD envelope has no sustain, decay goes to 0. Release is from current value if triggered early.
-                    releaseFromLevel = currentValue;
+                 // If sustain is false, release is effectively from current value, but triggerOff handles actual current value.
+                 // Here, for AD, if sustain is false, it will be 0.
+                 // This calculation is more of a placeholder before triggerOff.
+                 // However, if release happens from sustain stage, this rate is used.
+                if (settings.hasSustain && settings.sustainLevel > 0.0f) {
+                    releaseRate = settings.sustainLevel / (settings.releaseMs / 1000.0f * sampleRate);
+                } else if (!settings.hasSustain) { // AD envelope - release from whatever current value is (handled by triggerOff)
+                                                  // For initial setup, assume it would release from a nominal low level if sustain is false
+                    releaseRate = 1.0f / (settings.releaseMs / 1000.0f * sampleRate); // Nominal rate to release from 1.0 to 0
                 }
-
-
-                if (releaseFromLevel > 0.0f) { // Check to prevent division by zero if sustain is 0
-                    releaseRate = releaseFromLevel / (settings.releaseMs / 1000.0f * sampleRate);
-                } else {
-                    releaseRate = 1.0f; // Instant release if starting from zero
+                else { // sustainLevel is 0.0f or less
+                    releaseRate = 1.0f; // Instant release if sustain level is zero
                 }
-
             } else {
                 releaseRate = 1.0f; // Effectively instant release
-            }
-
-            if (settings.holdMs > 0.0f) {
-                holdTimeSamples = settings.holdMs / 1000.0f * sampleRate;
-            } else {
-                holdTimeSamples = 0.0f;
             }
         }
 
@@ -96,32 +81,18 @@ namespace theone {
 
             currentValue = 0.0f;
             currentStage = EnvelopeStage::ATTACK;
-            holdSamplesRemaining = holdTimeSamples;
 
-            if (settings.type == ModelEnvelopeTypeInternalCpp::AD && settings.attackMs <= 0.0f) { // AD type, zero attack time
+            if (settings.attackMs <= 0.0f) {
                 currentValue = 1.0f; // Go straight to peak
-                currentStage = EnvelopeStage::DECAY; // Then start decaying
-            } else if (settings.attackMs <= 0.0f) { // Non-AD type, zero attack time
-                currentValue = 1.0f;
-                if (settings.type == ModelEnvelopeTypeInternalCpp::AHDSR || settings.type == ModelEnvelopeTypeInternalCpp::ADSR) {
-                    if (holdTimeSamples > 0) {
-                        currentStage = EnvelopeStage::HOLD;
-                    } else {
-                        currentStage = EnvelopeStage::DECAY;
-                    }
-                } else { // AD (already handled) or future types
-                    currentStage = EnvelopeStage::DECAY;
-                }
+                currentStage = EnvelopeStage::DECAY; // Then start decaying (no HOLD stage)
             }
-            // Note: Velocity to Level is not implemented in this `process` method yet.
-            // It would typically scale `currentValue` or the target levels of stages.
         }
 
         void EnvelopeGenerator::triggerOff() {
             if (currentStage != EnvelopeStage::IDLE) {
                 currentStage = EnvelopeStage::RELEASE;
                 // Recalculate release rate based on current value if it's not fixed to sustain level
-                // This is particularly important for AD envelopes or if release is triggered during attack/decay of ADSR/AHDS
+                // This is particularly important for AD envelopes or if release is triggered during attack/decay of envelopes with sustain.
                 if (settings.releaseMs > 0.0f) {
                     // Ensure releaseRate is calculated based on the value when release starts
                     // Avoid division by zero if currentValue is already 0
@@ -145,46 +116,42 @@ namespace theone {
                     currentValue += attackRate;
                     if (currentValue >= 1.0f) {
                         currentValue = 1.0f;
-                        if (settings.type == ModelEnvelopeTypeInternalCpp::AHDSR || (settings.type == ModelEnvelopeTypeInternalCpp::ADSR && settings.holdMs > 0.0f)) {
-                            if (holdTimeSamples > 0) {
-                                currentStage = EnvelopeStage::HOLD;
-                                holdSamplesRemaining = holdTimeSamples; // Reset for this new hold phase
-                            } else {
-                                currentStage = EnvelopeStage::DECAY;
-                            }
-                        } else { // AD or ADSR with no hold
-                            currentStage = EnvelopeStage::DECAY;
-                        }
-                    }
-                    break;
-                case EnvelopeStage::HOLD:
-                    currentValue = 1.0f; // Sustain at peak during hold
-                    holdSamplesRemaining--;
-                    if (holdSamplesRemaining <= 0) {
-                        currentStage = EnvelopeStage::DECAY;
-                    }
-                    break;
-                case EnvelopeStage::DECAY:
-                    // The decayRate is now correctly calculated in calculateRates() for both AD and ADSR types.
-                    currentValue -= decayRate;
-
-                    if (settings.type != ModelEnvelopeTypeInternalCpp::AD && currentValue <= settings.sustainLevel) {
-                        // For ADSR/AHDSR, transition to SUSTAIN if sustainLevel is reached
+                    currentStage = EnvelopeStage::DECAY; // Transition directly to DECAY
+                }
+                break;
+            case EnvelopeStage::DECAY:
+                currentValue -= decayRate;
+                if (settings.hasSustain) {
+                    if (currentValue <= settings.sustainLevel) {
                         currentValue = settings.sustainLevel;
-                        currentStage = EnvelopeStage::SUSTAIN;
-                    } else if (settings.type == ModelEnvelopeTypeInternalCpp::AD && currentValue <= 0.0f) {
-                        // For AD, transition to IDLE if 0.0 is reached
-                        currentValue = 0.0f;
-                        currentStage = EnvelopeStage::IDLE; // AD envelope finishes after decay
-                    } else if (currentValue <= 0.0f) { // General case if sustain level is 0 for ADSR/AHDSR
+                        // Only go to sustain if sustainLevel is meaningfully positive.
+                        // If sustainLevel is 0, it should go to IDLE from decay.
+                        if (settings.sustainLevel > 0.0f) {
+                            currentStage = EnvelopeStage::SUSTAIN;
+                            } else {
+                            currentStage = EnvelopeStage::IDLE;
+                            }
+                    }
+                } else { // No sustain (AD envelope)
+                    if (currentValue <= 0.0f) {
                         currentValue = 0.0f;
                         currentStage = EnvelopeStage::IDLE;
+                        }
+                    }
+                // General fallback, if somehow decay rate is very high or sustain level is already < 0
+                if (currentValue <= 0.0f && currentStage != EnvelopeStage::IDLE) {
+                     currentValue = 0.0f;
+                     currentStage = EnvelopeStage::IDLE;
                     }
                     break;
                 case EnvelopeStage::SUSTAIN:
-                    // For ADSR/AHDS, sustainLevel is held. AD shouldn't reach here.
+                // This stage should only be active if settings.hasSustain is true AND sustainLevel > 0.
+                // If sustainLevel is <= 0, it should have transitioned to IDLE in DECAY stage.
                     currentValue = settings.sustainLevel;
-                    if (settings.sustainLevel <= 0.0f && settings.type != ModelEnvelopeTypeInternalCpp::AD) { // If sustain is zero (for ADSR/AHDS), effectively ends
+                // It's possible to be in SUSTAIN with sustainLevel <= 0 if configured that way initially,
+                // though DECAY stage logic tries to prevent this transition.
+                if (!settings.hasSustain || settings.sustainLevel <= 0.0f) {
+                    currentValue = 0.0f; // Ensure value is 0 if sustain is not really happening
                         currentStage = EnvelopeStage::IDLE;
                     }
                     break;
@@ -202,7 +169,6 @@ namespace theone {
         void EnvelopeGenerator::reset() {
             currentValue = 0.0f;
             currentStage = EnvelopeStage::IDLE;
-            holdSamplesRemaining = 0.0f; // Reset any ongoing hold
         }
 
         bool EnvelopeGenerator::isActive() const {

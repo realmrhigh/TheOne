@@ -11,39 +11,24 @@ namespace audio {
 enum class EnvelopeStage {
     IDLE,
     ATTACK,
-    HOLD, // Added for AHDS
     DECAY,
     SUSTAIN,
     RELEASE
 };
 
-enum class ModelEnvelopeTypeInternalCpp {
-    AD,
-    AHDSR,
-    ADSR
-};
-
 struct EnvelopeSettingsCpp {
-    ModelEnvelopeTypeInternalCpp type = ModelEnvelopeTypeInternalCpp::ADSR;
     float attackMs = 5.0f;
-    float holdMs = 0.0f;    // Relevant for AHDS, ADSR (though ADSR sustain level makes hold phase brief)
     float decayMs = 150.0f;
-    float sustainLevel = 1.0f; // 0.0 to 1.0, relevant for ADSR, AHDS
+    float sustainLevel = 1.0f; // 0.0 to 1.0, relevant for envelopes with sustain
+    bool hasSustain = true;
     float releaseMs = 100.0f;
-
-    // Velocity sensitivities (0.0 to 1.0 range, affect time or level)
-    // For simplicity, these are not yet implemented in the generator's process method
-    // but are included for future expansion and API compatibility.
-    float velocityToAttack = 0.0f; // e.g., 1.0 means max velocity makes attack time 0
-    float velocityToLevel = 0.0f;  // e.g., 1.0 means velocity fully scales output level
 
     // Default constructor
     EnvelopeSettingsCpp() = default;
 
     // Parameterized constructor (useful for JNI mapping)
-    EnvelopeSettingsCpp(ModelEnvelopeTypeInternalCpp t, float atk, float hld, float dec, float sus, float rel, float velAtk, float velLvl)
-        : type(t), attackMs(atk), holdMs(hld), decayMs(dec), sustainLevel(sus), releaseMs(rel),
-          velocityToAttack(velAtk), velocityToLevel(velLvl) {}
+    EnvelopeSettingsCpp(float atk, float dec, float sus, bool hasSus, float rel)
+        : attackMs(atk), decayMs(dec), sustainLevel(sus), hasSustain(hasSus), releaseMs(rel) {}
 };
 
 class EnvelopeGenerator {
@@ -66,8 +51,6 @@ private:
     float attackRate;  // Rate of change per sample
     float decayRate;   // Rate of change per sample
     float releaseRate; // Rate of change per sample
-    float holdTimeSamples; // Hold time in samples
-    float holdSamplesRemaining;
 
     void calculateRates(float triggerVelocity);
 };
