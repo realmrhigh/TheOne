@@ -1,13 +1,13 @@
 package com.high.theone.features.sampleeditor
 
 import android.content.Context
-import com.example.theone.audio.AudioEngine // Actual interface
-import com.example.theone.domain.ProjectManager // Actual interface
-import com.example.theone.features.drumtrack.model.PadSettings
-import com.example.theone.model.PlaybackMode
-import com.example.theone.model.Sample
-import com.example.theone.model.SampleMetadata
-import com.example.theone.model.SynthModels
+import com.high.theone.audio.AudioEngine // Actual interface
+import com.high.theone.domain.ProjectManager // Actual interface
+import com.high.theone.features.drumtrack.model.PadSettings
+import com.high.theone.model.PlaybackMode
+import com.high.theone.model.Sample
+import com.high.theone.model.SampleMetadata
+import com.high.theone.model.SynthModels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -16,7 +16,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 
-// Mock implementation for com.example.theone.audio.AudioEngine
+// Mock implementation for com.high.theone.audio.AudioEngine
 class TestAudioEngineImpl : AudioEngine {
     var playSampleSliceCalledWith: Triple<String, Long, Long>? = null
 
@@ -54,7 +54,7 @@ class TestAudioEngineImpl : AudioEngine {
     // The interface methods are what matter here.
 }
 
-// Mock implementation for com.example.theone.domain.ProjectManager
+// Mock implementation for com.high.theone.domain.ProjectManager
 class TestProjectManagerImpl : ProjectManager {
     var updatedSampleMetadata: SampleMetadata? = null
     var samples = mutableMapOf<String, SampleMetadata>()

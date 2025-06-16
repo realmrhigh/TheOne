@@ -4,12 +4,12 @@ import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.test.core.app.ApplicationProvider
-import com.example.theone.model.PlaybackMode
-import com.example.theone.model.SampleMetadata
-import com.example.theone.model.Sequence // Assuming this is the correct Sequence model
-import com.example.theone.model.SynthModels.EnvelopeSettings
-import com.example.theone.model.SynthModels.LFOSettings
-import com.example.theone.features.drumtrack.model.PadSettings // Required for native_updatePadSettings argument
+import com.high.theone.model.PlaybackMode
+import com.high.theone.model.SampleMetadata
+import com.high.theone.model.Sequence // Assuming this is the correct Sequence model
+import com.high.theone.model.SynthModels.EnvelopeSettings
+import com.high.theone.model.SynthModels.LFOSettings
+import com.high.theone.features.drumtrack.model.PadSettings // Required for native_updatePadSettings argument
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

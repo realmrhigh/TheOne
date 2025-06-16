@@ -1,10 +1,10 @@
 package com.high.theone.features.drumtrack
 
-import com.example.theone.audio.AudioEngine
-import com.example.theone.domain.ProjectManager
-import com.example.theone.model.AudioInputSource // Not used by this VM, but keep for FakeAudioEngine consistency
-import com.example.theone.model.SampleMetadata
-import com.example.theone.features.drumtrack.model.PadSettings
+import com.high.theone.audio.AudioEngine
+import com.high.theone.domain.ProjectManager
+import com.high.theone.model.AudioInputSource // Not used by this VM, but keep for FakeAudioEngine consistency
+import com.high.theone.model.SampleMetadata
+import com.high.theone.features.drumtrack.model.PadSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
