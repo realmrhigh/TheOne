@@ -11,4 +11,4 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import android.net.Uri
 
-// ...existing code...
+// This file was removed because it was a duplicate stub and caused DI issues. All ProjectManager references should use com.high.theone.domain.ProjectManager.
