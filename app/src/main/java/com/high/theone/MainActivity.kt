@@ -25,11 +25,11 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.theone.audio.AudioEngineControl
-import com.example.theone.features.debug.DebugScreen
-import com.example.theone.features.drumtrack.DrumTrackViewModel
-import com.example.theone.features.drumtrack.ui.DrumPadScreen
-import com.example.theone.features.sequencer.StepSequencerScreen
+import com.high.theone.audio.AudioEngineControl
+import com.high.theone.features.debug.DebugScreen
+import com.high.theone.features.drumtrack.DrumTrackViewModel
+import com.high.theone.features.drumtrack.ui.DrumPadScreen
+import com.high.theone.features.sequencer.StepSequencerScreen
 import com.high.theone.ui.theme.TheOneTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope

@@ -1,7 +1,7 @@
 package com.high.theone
 
 import android.app.Application
-import com.example.theone.audio.AudioEngineControl // Import the interface
+import com.high.theone.audio.AudioEngineControl // Import the interface
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope

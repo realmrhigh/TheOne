@@ -1,4 +1,4 @@
-package com.example.theone.features.sampleeditor
+package com.high.theone.features.sampleeditor
 
 import android.content.Context
 import com.example.theone.audio.AudioEngine // Actual interface
@@ -15,7 +15,6 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
-import java.util.UUID
 
 // Mock implementation for com.example.theone.audio.AudioEngine
 class TestAudioEngineImpl : AudioEngine {

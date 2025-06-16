@@ -1,14 +1,13 @@
-package com.example.theone.features.sampler
+package com.high.theone.features.sampler
 
-import com.example.theone.audio.AudioEngine
-import com.example.theone.domain.ProjectManager
-import com.example.theone.model.AudioInputSource
-import com.example.theone.model.SampleMetadata
+import com.high.theone.audio.AudioEngine
+import com.high.theone.domain.ProjectManager
+import com.high.theone.model.AudioInputSource
+import com.high.theone.model.SampleMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*

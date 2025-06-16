@@ -1,6 +1,6 @@
-package com.example.theone.domain
+package com.high.theone.domain
 
-import com.example.theone.model.SampleMetadata
+import com.high.theone.model.SampleMetadata
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
