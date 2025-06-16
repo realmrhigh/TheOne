@@ -270,6 +270,8 @@ static std::string JStringToString(JNIEnv* env, jstring jStr) {
     //                     } // end for events
     //                 } // end for tracks
     //                 // TODO: Report playhead position back to Kotlin if needed (e.g., via a JNI callback)
+    //                 // This would require a Java callback interface and cached jobject/global ref.
+    //                 // For now, this is a placeholder for future implementation.
     //             } // end while ticks to process
     //         } // end if gCurrentSequence && isPlaying
     //     } // end if gAudioStreamSampleRate > 0 && gCurrentTickDurationMs > 0
@@ -510,473 +512,155 @@ static MyAudioInputCallback myInputCallback;
 
 static std::unique_ptr<theone::audio::AudioEngine> audioEngineInstance;
 
+// --- MIGRATED JNI: com.high.theone.audio.AudioEngine ---
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_theone_audio_AudioEngine_native_1startAudioRecording(
-        JNIEnv *env,
-        jobject /* thiz */,
-        jint jFd,
-        jstring jStoragePathForMetadata,
-        jint jSampleRate,
-        jint jChannels,
-        jlong offset) {
-
-    std::lock_guard<std::mutex> lock(gRecordingStateMutex);
-
-    if (mIsRecording.load()) {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "startAudioRecording: Already recording.");
-        if (jFd >= 0) close(jFd);
-        return JNI_FALSE;
-    }
-
-    const char* pathChars = env->GetStringUTFChars(jStoragePathForMetadata, nullptr);
-    if (pathChars) {
-        mCurrentRecordingFilePath = pathChars;
-        env->ReleaseStringUTFChars(jStoragePathForMetadata, pathChars);
-    } else {
-        mCurrentRecordingFilePath = "";
-    }
-
-    if (jFd < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Invalid file descriptor provided (%d).", jFd);
-        mCurrentRecordingFilePath = "";
-        return JNI_FALSE;
-    }
-    mRecordingFileDescriptor = jFd; // Store the original FD for closing by Kotlin
-
-    drwav_data_format wavFormat;
-    wavFormat.container = drwav_container_riff;
-    wavFormat.format = DR_WAVE_FORMAT_IEEE_FLOAT;
-    wavFormat.channels = static_cast<uint32_t>(jChannels);
-    wavFormat.sampleRate = static_cast<uint32_t>(jSampleRate);
-    wavFormat.bitsPerSample = 32;
-
-    // Use drwav_init_write_sequential_pcm_frames with custom write and seek procedures
-    // We pass the original jFd (cast to void*) as pUserData to our callbacks.
-    // dr_wav will not close this FD; Kotlin side is responsible.
-    // We need to dup the fd because dr_wav_init_write_sequential_pcm_frames will call lseek, which will modify the file offset of the fd.
-    // If we don't dup the fd, then the original fd's offset will be modified, which could cause problems for other code that uses the original fd.
-    // For simplicity, and if Kotlin guarantees closure, we can use the original fd.
-    // Let's assume Kotlin passes a valid, readable FD that it will close.
-    // If lseek is needed for the offset:
-    if (offset > 0) {
-        if (lseek(jFd, static_cast<off_t>(offset), SEEK_SET) == -1) {
-            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to lseek to offset %lld for FD %d: %s", (long long)offset, jFd, strerror(errno));
-            return JNI_FALSE;
-        }
-    }
-    // Now jFd is positioned at the correct offset.
-
-    if (!drwav_init_write_sequential_pcm_frames(&mWavWriter, &wavFormat, 0, drwav_write_proc_fd, (void*)(intptr_t)jFd, nullptr)) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize drwav writer with procs for FD: %d", mRecordingFileDescriptor);
-        mCurrentRecordingFilePath = "";
-        return JNI_FALSE;
-    }
-    mWavWriterInitialized = true;
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "dr_wav writer initialized with procs for FD: %d", mRecordingFileDescriptor);
-
-    oboe::AudioStreamBuilder builder;
-    builder.setDirection(oboe::Direction::Input)
-            ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-            ->setSharingMode(oboe::SharingMode::Exclusive)
-            ->setFormat(oboe::AudioFormat::Float)
-            ->setChannelCount(static_cast<oboe::ChannelCount>(jChannels))
-            ->setSampleRate(static_cast<int32_t>(jSampleRate))
-            ->setInputPreset(oboe::InputPreset::VoiceRecognition)
-            ->setCallback(&myInputCallback);
-
-    oboe::Result result = builder.openManagedStream(mInputStream);
-    if (result != oboe::Result::OK) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to open Oboe input stream: %s", oboe::convertToText(result));
-        drwav_uninit(&mWavWriter); // Uninit writer if Oboe fails
-        mWavWriterInitialized = false;
-        mCurrentRecordingFilePath = "";
-        return JNI_FALSE;
-    }
-
-    result = mInputStream->requestStart();
-    if (result != oboe::Result::OK) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to start Oboe input stream: %s", oboe::convertToText(result));
-        mInputStream->close();
-        drwav_uninit(&mWavWriter);
-        mWavWriterInitialized = false;
-        mCurrentRecordingFilePath = "";
-        return JNI_FALSE;
-    }
-
-    mIsRecording.store(true);
-    mPeakRecordingLevel.store(0.0f);
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Audio recording started successfully to path: %s", mCurrentRecordingFilePath.c_str());
-    return JNI_TRUE;
+Java_com_high_theone_audio_AudioEngine_native_1initialize(
+    JNIEnv* env, jobject /* thiz */, jint sampleRate, jint bufferSize, jboolean enableLowLatency) {
+    if (!audioEngineInstance) audioEngineInstance = std::make_unique<theone::audio::AudioEngine>();
+    return audioEngineInstance && audioEngineInstance->initialize(sampleRate, bufferSize, enableLowLatency) ? JNI_TRUE : JNI_FALSE;
 }
-
-extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_example_theone_audio_AudioEngine_native_1stopAudioRecording(
-        JNIEnv *env,
-        jobject /* thiz */) {
-    std::lock_guard<std::mutex> lock(gRecordingStateMutex);
-
-    if (!mIsRecording.load()) {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "stopAudioRecording: Not recording.");
-        return nullptr;
-    }
-    mIsRecording.store(false);
-
-    if (mInputStream) {
-        mInputStream->requestStop();
-        mInputStream->close();
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Oboe input stream stopped and closed.");
-    }
-
-    drwav_uint64 totalFramesWritten = 0;
-    std::string tempRecordingPath = mCurrentRecordingFilePath;
-
-    if (mWavWriterInitialized) {
-        totalFramesWritten = mWavWriter.totalPCMFrameCount;
-        if (!drwav_uninit(&mWavWriter)) {
-            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "stopAudioRecording: Failed to uninitialize drwav writer.");
-        } else {
-            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "dr_wav writer uninitialized. Total frames: %llu", (unsigned long long)totalFramesWritten);
-        }
-        mWavWriterInitialized = false;
-    }
-
-    // Kotlin is responsible for closing the mRecordingFileDescriptor
-    mRecordingFileDescriptor = -1;
-    mCurrentRecordingFilePath = "";
-
-    jstring jRecordedPath = env->NewStringUTF(tempRecordingPath.c_str());
-    jclass longClass = env->FindClass("java/lang/Long");
-    jmethodID longConstructor = env->GetMethodID(longClass, "<init>", "(J)V");
-    jobject jTotalFrames = env->NewObject(longClass, longConstructor, static_cast<jlong>(totalFramesWritten));
-    jclass objectClass = env->FindClass("java/lang/Object");
-    jobjectArray resultArray = env->NewObjectArray(2, objectClass, nullptr);
-    env->SetObjectArrayElement(resultArray, 0, jRecordedPath);
-    env->SetObjectArrayElement(resultArray, 1, jTotalFrames);
-
-    env->DeleteLocalRef(jRecordedPath);
-    env->DeleteLocalRef(jTotalFrames);
-    env->DeleteLocalRef(longClass);
-    env->DeleteLocalRef(objectClass);
-
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Audio recording stopped. Path: %s, Frames: %llu",
-                        tempRecordingPath.c_str(), (unsigned long long)totalFramesWritten);
-    return resultArray;
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1shutdown(
+    JNIEnv* env, jobject /* thiz */) {
+    if (audioEngineInstance) audioEngineInstance->shutdown();
 }
-
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setMetronomeState(
+    JNIEnv* env, jobject /* thiz */, jboolean isEnabled, jfloat bpm, jint timeSignatureNum, jint timeSignatureDen, jstring soundPrimaryUri, jstring soundSecondaryUri) {
+    if (audioEngineInstance) audioEngineInstance->setMetronomeState(isEnabled, bpm, timeSignatureNum, timeSignatureDen, JStringToString(env, soundPrimaryUri), JStringToString(env, soundSecondaryUri));
+}
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_theone_audio_AudioEngine_native_1initOboe(
-        JNIEnv* env,
-        jobject /* this */) {
-    if (audioEngineInstance && audioEngineInstance->isOboeInitialized()) {
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine already initialized.");
-        return JNI_TRUE;
-    }
-    audioEngineInstance = std::make_unique<theone::audio::AudioEngine>();
-    if (audioEngineInstance && audioEngineInstance->initialize()) {
-        // If global gAudioStreamSampleRate is still used by parts of native-lib.cpp not yet refactored:
-        // gAudioStreamSampleRate = static_cast<uint32_t>(audioEngineInstance->getOboeReportedSampleRate()); // You'd need a getter in AudioEngine
-        // Same for gMetronomeState if it's still global and needs the sample rate.
-        // For now, assuming AudioEngine internally manages what it needs.
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine initialized via native_initOboe.");
-        return JNI_TRUE;
-    }
-    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize AudioEngine via native_initOboe.");
-    audioEngineInstance.reset(); // Ensure cleanup if init failed
+Java_com_high_theone_audio_AudioEngine_native_1loadSampleToMemory(
+    JNIEnv* env, jobject /* thiz */, jstring sampleId, jstring filePathUri) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    return audioEngineInstance->loadSampleToMemory(JStringToString(env, sampleId), JStringToString(env, filePathUri)) ? JNI_TRUE : JNI_FALSE;
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1unloadSample(
+    JNIEnv* env, jobject /* thiz */, jstring sampleId) {
+    if (audioEngineInstance) audioEngineInstance->unloadSample(JStringToString(env, sampleId));
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1playPadSample(
+    JNIEnv* env, jobject /* thiz */, jstring noteInstanceId, jstring trackId, jstring padId) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    return audioEngineInstance->playPadSample(JStringToString(env, noteInstanceId), JStringToString(env, trackId), JStringToString(env, padId)) ? JNI_TRUE : JNI_FALSE;
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1stopNote(
+    JNIEnv* env, jobject /* thiz */, jstring noteInstanceId, jfloat releaseTimeMs) {
+    if (audioEngineInstance) audioEngineInstance->stopNote(JStringToString(env, noteInstanceId), releaseTimeMs);
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1stopAllNotes(
+    JNIEnv* env, jobject /* thiz */, jstring trackId, jboolean immediate) {
+    if (audioEngineInstance) audioEngineInstance->stopAllNotes(JStringToString(env, trackId), immediate);
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1startAudioRecording(
+    JNIEnv* env, jobject /* thiz */, jstring filePathUri, jstring inputDeviceId) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    return audioEngineInstance->startAudioRecording(JStringToString(env, filePathUri), JStringToString(env, inputDeviceId)) ? JNI_TRUE : JNI_FALSE;
+}
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1stopAudioRecording(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return nullptr;
+    // TODO: Convert C++ SampleMetadata to Java SampleMetadata object
+    // For now, return null or a simple string. Full implementation would require a JNI mapping.
+    return nullptr;
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setTrackVolume(
+    JNIEnv* env, jobject /* thiz */, jstring trackId, jfloat volume) {
+    if (audioEngineInstance) audioEngineInstance->setTrackVolume(JStringToString(env, trackId), volume);
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setTrackPan(
+    JNIEnv* env, jobject /* thiz */, jstring trackId, jfloat pan) {
+    if (audioEngineInstance) audioEngineInstance->setTrackPan(JStringToString(env, trackId), pan);
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1addTrackEffect(
+    JNIEnv* env, jobject /* thiz */, jstring trackId, jobject effectInstance) {
+    // TODO: Convert effectInstance from Java to C++
+    // This requires a C++ Effect class and a Java-to-C++ mapping. For now, log and return false.
+    if (!audioEngineInstance) return JNI_FALSE;
     return JNI_FALSE;
 }
-
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_theone_audio_AudioEngine_native_1loadSampleToMemory(
-        JNIEnv *env,
-        jobject /* thiz */,
-        jstring jSampleId,
-        jint fd,
-        jlong offset,
-        jlong length) {
-    const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
-    std::string sampleIdStr(nativeSampleId);
-    env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
-    // Use audioEngineInstance for sample loading
-    return audioEngineInstance && audioEngineInstance->loadSampleToMemory(sampleIdStr, fd, offset, length) ? JNI_TRUE : JNI_FALSE;
+Java_com_high_theone_audio_AudioEngine_native_1removeTrackEffect(
+    JNIEnv* env, jobject /* thiz */, jstring trackId, jstring effectInstanceId) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    return audioEngineInstance->removeTrackEffect(JStringToString(env, trackId), JStringToString(env, effectInstanceId)) ? JNI_TRUE : JNI_FALSE;
 }
-
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setTransportBpm(
+    JNIEnv* env, jobject /* thiz */, jfloat bpm) {
+    if (audioEngineInstance) audioEngineInstance->setTransportBpm(bpm);
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setSampleEnvelope(
+    JNIEnv* env, jobject /* thiz */, jstring sampleId, jobject envelopeObj) {
+    if (!audioEngineInstance) return;
+    const std::string sampleIdStr = JStringToString(env, sampleId);
+    // TODO: Convert envelopeObj (EnvelopeSettings) from Java to C++ struct
+    // For now, just log and return
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_setSampleEnvelope called for %s", sampleIdStr.c_str());
+    // audioEngineInstance->setSampleEnvelope(sampleIdStr, envelopeSettingsCpp);
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setSampleLFO(
+    JNIEnv* env, jobject /* thiz */, jstring sampleId, jobject lfoObj) {
+    if (!audioEngineInstance) return;
+    const std::string sampleIdStr = JStringToString(env, sampleId);
+    // TODO: Convert lfoObj (LFOSettings) from Java to C++ struct
+    // For now, just log and return
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_setSampleLFO called for %s", sampleIdStr.c_str());
+    // audioEngineInstance->setSampleLFO(sampleIdStr, lfoSettingsCpp);
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setEffectParameter(
+    JNIEnv* env, jobject /* thiz */, jstring effectId, jstring parameter, jfloat value) {
+    if (!audioEngineInstance) return;
+    const std::string effectIdStr = JStringToString(env, effectId);
+    const std::string parameterStr = JStringToString(env, parameter);
+    audioEngineInstance->setEffectParameter(effectIdStr, parameterStr, value);
+}
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_theone_audio_AudioEngine_native_1playPadSample(
-        JNIEnv *env,
-        jobject /* thiz */,
-        jstring jNoteInstanceId,
-        jstring jTrackId,
-        jstring jPadId,
-        jstring jSampleId,
-        jstring jSliceId,
-        jfloat velocity,
-        jfloat coarseTune, // changed from jint to jfloat
-        jfloat fineTune,   // changed from jint to jfloat
-        jfloat pan,
-        jfloat volume,
-        jint jPlaybackModeOrdinal,
-        jfloat jAmpEnvAttackMs,
-        jfloat jAmpEnvDecayMs,
-        jfloat jAmpEnvSustainLevel,
-        jfloat jAmpEnvReleaseMs,
-        jobject jFilterEnvSettings_kotlin,
-        jobject jPitchEnvSettings_kotlin,
-        jobjectArray jLfos_kotlin) {
-    // Convert JNI strings to std::string
-    const char *nativeNoteInstanceId = env->GetStringUTFChars(jNoteInstanceId, nullptr);
-    const char *nativeTrackId = env->GetStringUTFChars(jTrackId, nullptr);
-    const char *nativePadId = env->GetStringUTFChars(jPadId, nullptr);
-    const char *nativeSampleId = env->GetStringUTFChars(jSampleId, nullptr);
-    std::string noteInstanceIdStr(nativeNoteInstanceId);
-    std::string trackIdStr(nativeTrackId);
-    std::string padIdStr(nativePadId);
-    std::string sampleIdStr(nativeSampleId);
-    env->ReleaseStringUTFChars(jNoteInstanceId, nativeNoteInstanceId);
-    env->ReleaseStringUTFChars(jTrackId, nativeTrackId);
-    env->ReleaseStringUTFChars(jPadId, nativePadId);
-    env->ReleaseStringUTFChars(jSampleId, nativeSampleId);
-    // Call AudioEngine's playPadSample with correct types
-    return audioEngineInstance && audioEngineInstance->playPadSample(noteInstanceIdStr, trackIdStr, padIdStr, sampleIdStr, velocity, coarseTune, fineTune, pan, volume, jPlaybackModeOrdinal, jAmpEnvAttackMs, jAmpEnvDecayMs, jAmpEnvSustainLevel, jAmpEnvReleaseMs) ? JNI_TRUE : JNI_FALSE;
+Java_com_high_theone_audio_AudioEngine_native_1addInsertEffect(
+    JNIEnv* env, jobject /* thiz */, jstring trackId, jstring effectType, jobject parametersMap) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    const std::string trackIdStr = JStringToString(env, trackId);
+    const std::string effectTypeStr = JStringToString(env, effectType);
+    // TODO: Convert parametersMap (Java Map) to C++ map
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_addInsertEffect: trackId=%s, effectType=%s", trackIdStr.c_str(), effectTypeStr.c_str());
+    // return audioEngineInstance->addInsertEffect(trackIdStr, effectTypeStr, cppParams) ? JNI_TRUE : JNI_FALSE;
+    return JNI_TRUE;
 }
-
-// Stub for ConvertKotlinEnvelopeSettings if missing
-struct EnvelopeSettingsCpp {};
-static EnvelopeSettingsCpp ConvertKotlinEnvelopeSettings(JNIEnv*, jobject) { return EnvelopeSettingsCpp(); }
-
-// Stub for EventCpp if missing
-namespace theone { namespace audio { struct EventCpp {}; } }
-
-// --- JNI PadSettings Conversion Helper Functions ---
-
-static theone::audio::PadTriggerEventCpp ConvertKotlinPadTriggerEvent(JNIEnv* env, jobject kotlinPadTriggerEvent) {
-    theone::audio::PadTriggerEventCpp cppPadTrigger;
-    if (!kotlinPadTriggerEvent) {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinPadTriggerEvent: kotlinPadTriggerEvent is null");
-        return cppPadTrigger; // Return empty
-    }
-
-    jclass padTriggerClass = env->GetObjectClass(kotlinPadTriggerEvent);
-    if (!padTriggerClass) {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinPadTriggerEvent: GetObjectClass failed for PadTrigger event object.");
-        if(env->ExceptionCheck()) env->ExceptionClear();
-        return cppPadTrigger;
-    }
-
-    jfieldID padIdFid = env->GetFieldID(padTriggerClass, "padId", "Ljava/lang/String;");
-    jfieldID velocityFid = env->GetFieldID(padTriggerClass, "velocity", "I");
-    jfieldID durationTicksFid = env->GetFieldID(padTriggerClass, "durationTicks", "J");
-
-    if (!padIdFid || !velocityFid || !durationTicksFid) {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinPadTriggerEvent: Failed to get one or more field IDs for EventType.PadTrigger");
-        env->DeleteLocalRef(padTriggerClass);
-        if(env->ExceptionCheck()) env->ExceptionClear();
-        return cppPadTrigger;
-    }
-
-    jstring jPadId = (jstring)env->GetObjectField(kotlinPadTriggerEvent, padIdFid);
-    cppPadTrigger.padId = JStringToString(env, jPadId); // JStringToString should handle null jPadId
-    if (jPadId) env->DeleteLocalRef(jPadId);
-
-    cppPadTrigger.velocity = env->GetIntField(kotlinPadTriggerEvent, velocityFid);
-    cppPadTrigger.durationTicks = env->GetLongField(kotlinPadTriggerEvent, durationTicksFid);
-
-    env->DeleteLocalRef(padTriggerClass);
-    return cppPadTrigger;
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1removeInsertEffect(
+    JNIEnv* env, jobject /* thiz */, jstring trackId, jstring effectId) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    const std::string trackIdStr = JStringToString(env, trackId);
+    const std::string effectIdStr = JStringToString(env, effectId);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_removeInsertEffect: trackId=%s, effectId=%s", trackIdStr.c_str(), effectIdStr.c_str());
+    // return audioEngineInstance->removeInsertEffect(trackIdStr, effectIdStr) ? JNI_TRUE : JNI_FALSE;
+    return JNI_TRUE;
 }
-
-// Update ConvertKotlinEvent to use SequenceEventCpp
-static theone::audio::SequenceEventCpp ConvertKotlinEvent(JNIEnv* env, jobject kotlinEvent) {
-    theone::audio::SequenceEventCpp cppEvent;
-    if (!kotlinEvent) {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: kotlinEvent is null");
-        return cppEvent;
-    }
-
-    jclass eventClass = env->GetObjectClass(kotlinEvent);
-    if (!eventClass) {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: GetObjectClass failed for Event object.");
-        if(env->ExceptionCheck()) env->ExceptionClear();
-        return cppEvent;
-    }
-
-    jfieldID idFid = env->GetFieldID(eventClass, "id", "Ljava/lang/String;");
-    jfieldID trackIdFid = env->GetFieldID(eventClass, "trackId", "Ljava/lang/String;");
-    jfieldID startTimeTicksFid = env->GetFieldID(eventClass, "startTimeTicks", "J");
-    jfieldID typeFid = env->GetFieldID(eventClass, "type", "Lcom/example/theone/model/EventType;");
-
-    if (!idFid || !trackIdFid || !startTimeTicksFid || !typeFid) {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: Failed to get one or more common field IDs for Event");
-        env->DeleteLocalRef(eventClass);
-        if(env->ExceptionCheck()) env->ExceptionClear();
-        return cppEvent;
-    }
-
-    jstring jId = (jstring)env->GetObjectField(kotlinEvent, idFid);
-    cppEvent.id = JStringToString(env, jId);
-    if (jId) env->DeleteLocalRef(jId);
-
-    jstring jEventTrackId = (jstring)env->GetObjectField(kotlinEvent, trackIdFid);
-    cppEvent.trackId = JStringToString(env, jEventTrackId);
-    if (jEventTrackId) env->DeleteLocalRef(jEventTrackId);
-
-    cppEvent.startTimeTicks = env->GetLongField(kotlinEvent, startTimeTicksFid);
-
-    jobject kotlinEventTypeObj = env->GetObjectField(kotlinEvent, typeFid);
-    if (kotlinEventTypeObj) {
-        jclass padTriggerEventTypeClass = env->FindClass("com/example/theone/model/EventType$PadTrigger");
-        if (padTriggerEventTypeClass) {
-            if (env->IsInstanceOf(kotlinEventTypeObj, padTriggerEventTypeClass)) {
-                cppEvent.type = theone::audio::EventTriggerTypeCpp::PAD_TRIGGER;
-                cppEvent.padTrigger = ConvertKotlinPadTriggerEvent(env, kotlinEventTypeObj);
-            } else {
-                __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: EventType is not PadTrigger.");
-            }
-            env->DeleteLocalRef(padTriggerEventTypeClass);
-        } else {
-             __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: Could not find EventType$PadTrigger class. Check path.");
-             if(env->ExceptionCheck()) env->ExceptionClear();
-        }
-        env->DeleteLocalRef(kotlinEventTypeObj);
-    } else {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinEvent: Event 'type' field is null");
-    }
-
-    env->DeleteLocalRef(eventClass);
-    return cppEvent;
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1getAudioLevels(
+    JNIEnv* env, jobject /* thiz */, jstring trackId) {
+    if (!audioEngineInstance) return nullptr;
+    const std::string trackIdStr = JStringToString(env, trackId);
+    // For now, return dummy levels (L, R)
+    jfloatArray result = env->NewFloatArray(2);
+    float levels[2] = {0.0f, 0.0f};
+    // TODO: Look up actual levels for the track
+    env->SetFloatArrayRegion(result, 0, 2, levels);
+    return result;
 }
-
-// Update ConvertKotlinTrack to use SequenceTrackCpp
-static theone::audio::SequenceTrackCpp ConvertKotlinTrack(JNIEnv* env, jobject kotlinTrack) {
-    theone::audio::SequenceTrackCpp cppTrack;
-    if (!kotlinTrack) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: kotlinTrack is null"); return cppTrack; }
-
-    jclass trackClass = env->GetObjectClass(kotlinTrack);
-    if (!trackClass) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: GetObjectClass failed for Track object."); return cppTrack; }
-
-    jfieldID idFid = env->GetFieldID(trackClass, "id", "Ljava/lang/String;");
-    jfieldID eventsFid = env->GetFieldID(trackClass, "events", "Ljava/util/List;");
-
-    if (!idFid || !eventsFid) {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: Failed to get one or more field IDs for Track");
-        env->DeleteLocalRef(trackClass);
-        return cppTrack;
-    }
-
-    jstring jId = (jstring)env->GetObjectField(kotlinTrack, idFid);
-    cppTrack.id = JStringToString(env, jId);
-    if (jId) env->DeleteLocalRef(jId);
-
-    // Convert events list
-    jobject jEventsList = env->GetObjectField(kotlinTrack, eventsFid);
-    if (jEventsList) {
-        jclass listClass = env->GetObjectClass(jEventsList);
-        jmethodID listSizeMethod = env->GetMethodID(listClass, "size", "()I");
-        jmethodID listGetMethod = env->GetMethodID(listClass, "get", "(I)Ljava/lang/Object;");
-
-        if (listSizeMethod && listGetMethod) {
-            jint eventsCount = env->CallIntMethod(jEventsList, listSizeMethod);
-            for (jint i = 0; i < eventsCount; ++i) {
-                jobject jEvent = env->CallObjectMethod(jEventsList, listGetMethod, i);
-                theone::audio::SequenceEventCpp cppEvent = ConvertKotlinEvent(env, jEvent);
-                cppTrack.events.push_back(cppEvent);
-                if (jEvent) env->DeleteLocalRef(jEvent);
-            }
-        } else {
-            __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: Failed to get list methods for events");
-        }
-        env->DeleteLocalRef(listClass);
-    } else {
-        __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "ConvertKotlinTrack: events list is null");
-    }
-
-    env->DeleteLocalRef(trackClass);
-    return cppTrack;
-}
-
-static theone::audio::SequenceCpp ConvertKotlinSequence(JNIEnv* env, jobject kotlinSequence) {
-    theone::audio::SequenceCpp cppSequence;
-
-    if (!kotlinSequence) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: kotlinSequence is null"); return cppSequence; }
-
-    jclass sequenceClass = env->GetObjectClass(kotlinSequence);
-    if (!sequenceClass) { __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: GetObjectClass failed for Sequence object."); return cppSequence; }
-
-    jfieldID idFid = env->GetFieldID(sequenceClass, "id", "Ljava/lang/String;");
-    jfieldID nameFid = env->GetFieldID(sequenceClass, "name", "Ljava/lang/String;");
-    jfieldID bpmFid = env->GetFieldID(sequenceClass, "bpm", "F");
-    jfieldID timeSignatureNumFid = env->GetFieldID(sequenceClass, "timeSignatureNumerator", "I");
-    jfieldID timeSignatureDenFid = env->GetFieldID(sequenceClass, "timeSignatureDenominator", "I");
-    jfieldID barLengthFid = env->GetFieldID(sequenceClass, "barLength", "J");
-    jfieldID ppqnFid = env->GetFieldID(sequenceClass, "ppqn", "J");
-    jfieldID tracksFid = env->GetFieldID(sequenceClass, "tracks", "Ljava/util/Map;");
-
-    if (!idFid || !nameFid || !bpmFid || !timeSignatureNumFid || !timeSignatureDenFid || !barLengthFid || !ppqnFid || !tracksFid) {
-        __android_log_print(ANDROID_LOG_ERROR, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: Failed to get one or more field IDs for Sequence");
-        env->DeleteLocalRef(sequenceClass);
-        return cppSequence;
-    }
-
-    jstring jId = (jstring)env->GetObjectField(kotlinSequence, idFid);
-    cppSequence.id = JStringToString(env, jId);
-    if (jId) env->DeleteLocalRef(jId);
-
-    jstring jName = (jstring)env->GetObjectField(kotlinSequence, nameFid);
-    cppSequence.name = JStringToString(env, jName);
-    if (jName) env->DeleteLocalRef(jName);
-
-    cppSequence.bpm = env->GetFloatField(kotlinSequence, bpmFid);
-    cppSequence.timeSignatureNumerator = env->GetIntField(kotlinSequence, timeSignatureNumFid);
-    cppSequence.timeSignatureDenominator = env->GetIntField(kotlinSequence, timeSignatureDenFid);
-    cppSequence.barLength = env->GetLongField(kotlinSequence, barLengthFid);
-    cppSequence.ppqn = env->GetLongField(kotlinSequence, ppqnFid);
-
-    // Convert tracks map
-    jobject jTracksMap = env->GetObjectField(kotlinSequence, tracksFid);
-    if (jTracksMap) {
-        jclass mapClass = env->GetObjectClass(jTracksMap);
-        jmethodID mapEntrySetMethod = env->GetMethodID(mapClass, "entrySet", "()Ljava/util/Set;");
-        jobject jSet = env->CallObjectMethod(jTracksMap, mapEntrySetMethod);
-        jclass setClass = env->GetObjectClass(jSet);
-        jmethodID setIteratorMethod = env->GetMethodID(setClass, "iterator", "()Ljava/util/Iterator;");
-        jobject jIterator = env->CallObjectMethod(jSet, setIteratorMethod);
-        jclass iteratorClass = env->GetObjectClass(jIterator);
-        jmethodID hasNextMethod = env->GetMethodID(iteratorClass, "hasNext", "()Z");
-        jmethodID nextMethod = env->GetMethodID(iteratorClass, "next", "()Ljava/lang/Object;");
-        jclass mapEntryClass = nullptr;
-        jmethodID mapEntryGetKeyMethod = nullptr;
-        jmethodID mapEntryGetValueMethod = nullptr;
-        if (jIterator && hasNextMethod && nextMethod) {
-            while (env->CallBooleanMethod(jIterator, hasNextMethod)) {
-                jobject jMapEntry = env->CallObjectMethod(jIterator, nextMethod);
-                if (!mapEntryClass) {
-                    mapEntryClass = env->GetObjectClass(jMapEntry);
-                    mapEntryGetKeyMethod = env->GetMethodID(mapEntryClass, "getKey", "()Ljava/lang/Object;");
-                    mapEntryGetValueMethod = env->GetMethodID(mapEntryClass, "getValue", "()Ljava/lang/Object;");
-                }
-                jobject jTrackIdObj = env->CallObjectMethod(jMapEntry, mapEntryGetKeyMethod);
-                jobject jTrackObj = env->CallObjectMethod(jMapEntry, mapEntryGetValueMethod);
-                if (jTrackIdObj && jTrackObj) {
-                    theone::audio::SequenceTrackCpp cppTrack = ConvertKotlinTrack(env, jTrackObj);
-                    cppSequence.tracks.emplace(JStringToString(env, (jstring)jTrackIdObj), cppTrack);
-                }
-                if (jTrackIdObj) env->DeleteLocalRef(jTrackIdObj);
-                if (jTrackObj) env->DeleteLocalRef(jTrackObj);
-                if (jMapEntry) env->DeleteLocalRef(jMapEntry);
-            }
-        }
-        if (jIterator) env->DeleteLocalRef(jIterator);
-        if (jSet) env->DeleteLocalRef(jSet);
-        if (setClass) env->DeleteLocalRef(setClass);
-        if (iteratorClass) env->DeleteLocalRef(iteratorClass);
-        if (mapEntryClass) env->DeleteLocalRef(mapEntryClass);
-        env->DeleteLocalRef(mapClass);
-    } else {
-        __android_log_print(ANDROID_LOG_WARN, NATIVE_LIB_APP_NAME, "ConvertKotlinSequence: tracks map is null");
-    }
-
-    env->DeleteLocalRef(sequenceClass);
-    return cppSequence;
-}
+// --- END MIGRATED JNI ---
 
 // Implementation for drwav_write_proc_fd: writes data to a file descriptor
 static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite) {

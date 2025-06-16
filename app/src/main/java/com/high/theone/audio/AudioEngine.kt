@@ -18,55 +18,146 @@ import java.io.File
 
 class AudioEngine(private val context: Context) : AudioEngineControl {
     override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean {
-        // TODO: Implement initialization logic
-        return true
+        return withContext(Dispatchers.Default) {
+            native_initialize(sampleRate, bufferSize, enableLowLatency)
+        }
     }
     override suspend fun shutdown() {
-        // TODO: Implement shutdown logic
+        withContext(Dispatchers.Default) {
+            native_shutdown()
+        }
     }
     override suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, soundPrimaryUri: String, soundSecondaryUri: String?) {
-        // TODO: Implement metronome state logic
+        withContext(Dispatchers.Default) {
+            native_setMetronomeState(isEnabled, bpm, timeSignatureNum, timeSignatureDen, soundPrimaryUri, soundSecondaryUri)
+        }
     }
     override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean {
-        // TODO: Implement sample loading logic
-        return true
+        return withContext(Dispatchers.Default) {
+            native_loadSampleToMemory(sampleId, filePathUri)
+        }
     }
     override suspend fun unloadSample(sampleId: String) {
-        // TODO: Implement sample unloading logic
+        withContext(Dispatchers.Default) {
+            native_unloadSample(sampleId)
+        }
     }
     override suspend fun playPadSample(noteInstanceId: String, trackId: String, padId: String): Boolean {
-        // TODO: Implement pad sample playback
-        return true
+        return withContext(Dispatchers.Default) {
+            native_playPadSample(noteInstanceId, trackId, padId)
+        }
     }
     override suspend fun stopNote(noteInstanceId: String, releaseTimeMs: Float?) {
-        // TODO: Implement note stop logic
+        withContext(Dispatchers.Default) {
+            native_stopNote(noteInstanceId, releaseTimeMs)
+        }
     }
     override suspend fun stopAllNotes(trackId: String?, immediate: Boolean) {
-        // TODO: Implement stop all notes logic
+        withContext(Dispatchers.Default) {
+            native_stopAllNotes(trackId, immediate)
+        }
     }
     override suspend fun startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean {
-        // TODO: Implement audio recording start
-        return true
+        return withContext(Dispatchers.Default) {
+            native_startAudioRecording(filePathUri, inputDeviceId)
+        }
     }
     override suspend fun stopAudioRecording(): SampleMetadata? {
-        // TODO: Implement audio recording stop
-        return null
+        return withContext(Dispatchers.Default) {
+            native_stopAudioRecording()
+        }
     }
     override suspend fun setTrackVolume(trackId: String, volume: Float) {
-        // TODO: Implement set track volume
+        withContext(Dispatchers.Default) {
+            native_setTrackVolume(trackId, volume)
+        }
     }
     override suspend fun setTrackPan(trackId: String, pan: Float) {
-        // TODO: Implement set track pan
+        withContext(Dispatchers.Default) {
+            native_setTrackPan(trackId, pan)
+        }
     }
     override suspend fun addTrackEffect(trackId: String, effectInstance: EffectInstance): Boolean {
-        // TODO: Implement add track effect
-        return true
+        return withContext(Dispatchers.Default) {
+            native_addTrackEffect(trackId, effectInstance)
+        }
     }
     override suspend fun removeTrackEffect(trackId: String, effectInstanceId: String): Boolean {
-        // TODO: Implement remove track effect
-        return true
+        return withContext(Dispatchers.Default) {
+            native_removeTrackEffect(trackId, effectInstanceId)
+        }
     }
     override suspend fun setTransportBpm(bpm: Float) {
-        // TODO: Implement set transport BPM
+        withContext(Dispatchers.Default) {
+            native_setTransportBpm(bpm)
+        }
     }
+    /**
+     * Set the envelope for a loaded sample.
+     * @param sampleId The ID of the sample.
+     * @param envelope The envelope settings to apply.
+     */
+    override suspend fun setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings) {
+        withContext(Dispatchers.Default) {
+            native_setSampleEnvelope(sampleId, envelope)
+        }
+    }
+    /**
+     * Set the LFO for a loaded sample.
+     * @param sampleId The ID of the sample.
+     * @param lfo The LFO settings to apply.
+     */
+    override suspend fun setSampleLFO(sampleId: String, lfo: LFOSettings) {
+        withContext(Dispatchers.Default) {
+            native_setSampleLFO(sampleId, lfo)
+        }
+    }
+    /**
+     * Set a parameter on an effect instance.
+     * @param effectId The effect instance ID.
+     * @param parameter The parameter name.
+     * @param value The value to set.
+     */
+    override suspend fun setEffectParameter(effectId: String, parameter: String, value: Float) {
+        withContext(Dispatchers.Default) {
+            native_setEffectParameter(effectId, parameter, value)
+        }
+    }
+    /**
+     * Get the current audio levels (L/R) for a track.
+     * @param trackId The track ID.
+     * @return A FloatArray of [left, right] levels.
+     */
+    suspend fun getAudioLevels(trackId: String): FloatArray = withContext(Dispatchers.Default) {
+        native_getAudioLevels(trackId)
+    }
+
+    companion object {
+        init {
+            System.loadLibrary("theone")
+        }
+    }
+
+    // Native method declarations
+    private external fun native_initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean
+    private external fun native_shutdown()
+    private external fun native_setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, soundPrimaryUri: String, soundSecondaryUri: String?)
+    private external fun native_loadSampleToMemory(sampleId: String, filePathUri: String): Boolean
+    private external fun native_unloadSample(sampleId: String)
+    private external fun native_playPadSample(noteInstanceId: String, trackId: String, padId: String): Boolean
+    private external fun native_stopNote(noteInstanceId: String, releaseTimeMs: Float?)
+    private external fun native_stopAllNotes(trackId: String?, immediate: Boolean)
+    private external fun native_startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean
+    private external fun native_stopAudioRecording(): SampleMetadata?
+    private external fun native_setTrackVolume(trackId: String, volume: Float)
+    private external fun native_setTrackPan(trackId: String, pan: Float)
+    private external fun native_addTrackEffect(trackId: String, effectInstance: Any): Boolean
+    private external fun native_removeTrackEffect(trackId: String, effectInstanceId: String): Boolean
+    private external fun native_setTransportBpm(bpm: Float)
+    private external fun native_setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings)
+    private external fun native_setSampleLFO(sampleId: String, lfo: LFOSettings)
+    private external fun native_setEffectParameter(effectId: String, parameter: String, value: Float)
+    private external fun native_addInsertEffect(trackId: String, effectType: String, parameters: Map<String, Float>): Boolean
+    private external fun native_removeInsertEffect(trackId: String, effectId: String): Boolean
+    private external fun native_getAudioLevels(trackId: String): FloatArray
 }

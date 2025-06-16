@@ -61,6 +61,10 @@ public:
     float getRecordingLevelPeak();
 
 
+    // Envelope and LFO settings
+    void setSampleEnvelope(const std::string& sampleId, const EnvelopeSettingsCpp& envelope);
+    void setSampleLFO(const std::string& sampleId, const LFOSettingsCpp& lfo);
+
     // Oboe AudioStreamCallback methods
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream *oboeStream, void *audioData, int32_t numFrames) override;
     void onErrorBeforeClose(oboe::AudioStream *oboeStream, oboe::Result error) override;

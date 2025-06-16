@@ -3,6 +3,8 @@
 #include <algorithm> // For std::max, std::min
 #include <cmath>     // For M_PI, cosf, sinf, powf
 #include <string.h>  // For memset in onAudioReady
+#include <fcntl.h>   // For open
+#include <unistd.h>  // For close
 
 // Ensure M_PI and M_PI_2 are defined
 #ifndef M_PI
@@ -706,10 +708,43 @@ float AudioEngine::getOboeReportedLatencyMillis() const {
 // but adapted to use class members and appropriate mutexes.
 
 bool AudioEngine::loadSampleToMemory(const std::string& sampleId, int fd, long offset, long length) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::loadSampleToMemory (placeholder) for ID: %s", sampleId.c_str());
-    // TODO: Implement using sampleMap_ and sampleMapMutex_
-    // Similar logic to native-lib's native_loadSampleToMemory using dr_wav
-    return false;
+    if (fd < 0 || length <= 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Invalid fd (%d) or length (%ld)", fd, length);
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(sampleMapMutex_);
+    if (sampleMap_.count(sampleId) > 0) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "AudioEngine::loadSampleToMemory - Sample '%s' already loaded.", sampleId.c_str());
+        return true;
+    }
+    // Seek to offset
+    if (lseek(fd, offset, SEEK_SET) == -1) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to lseek to offset %ld: %s", offset, strerror(errno));
+        return false;
+    }
+    drwav wav;
+    if (!drwav_init_file_descriptor(&wav, fd, nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to init drwav for fd %d", fd);
+        return false;
+    }
+    size_t totalFrames = static_cast<size_t>(wav.totalPCMFrameCount);
+    size_t numChannels = wav.channels;
+    std::vector<float> audioData(totalFrames * numChannels);
+    drwav_uint64 framesRead = drwav_read_pcm_frames_f32(&wav, wav.totalPCMFrameCount, audioData.data());
+    if (framesRead != wav.totalPCMFrameCount) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "AudioEngine::loadSampleToMemory - Only read %llu/%llu frames", (unsigned long long)framesRead, (unsigned long long)wav.totalPCMFrameCount);
+    }
+    drwav_uninit(&wav);
+    LoadedSample sample;
+    sample.id = sampleId;
+    sample.format.channels = static_cast<uint16_t>(numChannels);
+    sample.format.sampleRate = static_cast<uint32_t>(wav.sampleRate);
+    sample.format.bitDepth = 32; // We use float
+    sample.audioData = std::move(audioData);
+    sample.frameCount = static_cast<size_t>(framesRead);
+    sampleMap_[sampleId] = std::move(sample);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::loadSampleToMemory - Loaded sample '%s' (%zu frames, %zu channels)", sampleId.c_str(), framesRead, numChannels);
+    return true;
 }
 
 bool AudioEngine::isSampleLoaded(const std::string& sampleId) {
@@ -739,10 +774,48 @@ bool AudioEngine::playPadSample(
     int playbackModeOrdinal, float ampEnvAttackMs, float ampEnvDecayMs,
     float ampEnvSustainLevel, float ampEnvReleaseMs
 ) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::playPadSample (placeholder)");
-    // TODO: Implement using activeSounds_, activeSoundsMutex_, padSettingsMap_, sampleMap_
-    // This would involve creating a PlayingSound object and adding to activeSounds_
-    return false;
+    // Lookup sample
+    const LoadedSample* samplePtr = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(sampleMapMutex_);
+        auto it = sampleMap_.find(sampleId);
+        if (it == sampleMap_.end()) {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "playPadSample: Sample '%s' not loaded.", sampleId.c_str());
+            return false;
+        }
+        samplePtr = &it->second;
+    }
+    // Lookup pad settings
+    std::shared_ptr<PadSettingsCpp> padSettingsPtr;
+    {
+        std::lock_guard<std::mutex> lock(padSettingsMutex_);
+        std::string padKey = trackId + "_" + padId;
+        auto it = padSettingsMap_.find(padKey);
+        if (it != padSettingsMap_.end()) {
+            padSettingsPtr = std::make_shared<PadSettingsCpp>(it->second);
+        }
+    }
+    // Calculate effective volume and pan
+    float effectiveVolume = std::max(0.0f, std::min(2.0f, volume * velocity));
+    float effectivePan = std::max(-1.0f, std::min(1.0f, pan));
+    // Create PlayingSound
+    PlayingSound sound(samplePtr, noteInstanceId, effectiveVolume, effectivePan);
+    sound.padSettings = padSettingsPtr;
+    sound.isActive.store(true);
+    // Set tuning
+    sound.totalTuningCoarse_ = static_cast<int>(coarseTune);
+    sound.totalTuningFine_ = static_cast<int>(fineTune);
+    // Set envelope (simplified, real impl would use EnvelopeGenerator)
+    // sound.ampEnvelopeGen = std::make_unique<EnvelopeGenerator>(ampEnvAttackMs, ampEnvDecayMs, ampEnvSustainLevel, ampEnvReleaseMs);
+    // Set playback mode
+    sound.isLooping = (playbackModeOrdinal == static_cast<int>(PlaybackModeCpp::LOOP));
+    // Add to active sounds
+    {
+        std::lock_guard<std::mutex> lock(activeSoundsMutex_);
+        activeSounds_.push_back(std::move(sound));
+    }
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "playPadSample: Triggered sample '%s' on pad '%s' (noteInstanceId: %s)", sampleId.c_str(), padId.c_str(), noteInstanceId.c_str());
+    return true;
 }
 
 void AudioEngine::setMetronomeState(bool isEnabled, float bpm, int timeSigNum, int timeSigDen,
@@ -783,16 +856,103 @@ void AudioEngine::setMetronomeVolume(float volume) {
 
 // --- Recording (Simplified Placeholders) ---
 bool AudioEngine::startAudioRecording(JNIEnv* env, jobject context, const std::string& filePathUri, int sampleRate, int channels) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::startAudioRecording (placeholder)");
-    // TODO: Implement full recording logic with mInputStream_, recordingStateMutex_ etc.
-    // This would involve setting up dr_wav with wavWriter_ and starting mInputStream_
-    return false;
+    std::lock_guard<std::mutex> lock(recordingStateMutex_);
+    if (isRecording_.load()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "startAudioRecording: Already recording.");
+        return false;
+    }
+    // Open file for writing
+    int fd = open(filePathUri.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to open file %s", filePathUri.c_str());
+        return false;
+    }
+    recordingFileDescriptor_ = fd;
+    // Setup dr_wav writer
+    drwav_data_format wavFormat;
+    wavFormat.container = drwav_container_riff;
+    wavFormat.format = DR_WAVE_FORMAT_IEEE_FLOAT;
+    wavFormat.channels = static_cast<uint32_t>(channels);
+    wavFormat.sampleRate = static_cast<uint32_t>(sampleRate);
+    wavFormat.bitsPerSample = 32;
+    if (!drwav_init_write_sequential_pcm_frames(&wavWriter_, &wavFormat, 0, drwav_write_proc_fd, (void*)(intptr_t)fd, nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to initialize drwav writer");
+        close(fd);
+        recordingFileDescriptor_ = -1;
+        return false;
+    }
+    wavWriterInitialized_ = true;
+    // Setup Oboe input stream
+    oboe::AudioStreamBuilder builder;
+    builder.setDirection(oboe::Direction::Input)
+           ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+           ->setSharingMode(oboe::SharingMode::Exclusive)
+           ->setFormat(oboe::AudioFormat::Float)
+           ->setChannelCount(static_cast<oboe::ChannelCount>(channels))
+           ->setSampleRate(sampleRate)
+           ->setInputPreset(oboe::InputPreset::VoiceRecognition)
+           ->setCallback(this);
+    oboe::Result result = builder.openManagedStream(mInputStream_);
+    if (result != oboe::Result::OK) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to open Oboe input stream: %s", oboe::convertToText(result));
+        drwav_uninit(&wavWriter_);
+        wavWriterInitialized_ = false;
+        close(fd);
+        recordingFileDescriptor_ = -1;
+        return false;
+    }
+    result = mInputStream_->requestStart();
+    if (result != oboe::Result::OK) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to start Oboe input stream: %s", oboe::convertToText(result));
+        mInputStream_->close();
+        drwav_uninit(&wavWriter_);
+        wavWriterInitialized_ = false;
+        close(fd);
+        recordingFileDescriptor_ = -1;
+        return false;
+    }
+    isRecording_.store(true);
+    peakRecordingLevel_.store(0.0f);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Audio recording started: %s", filePathUri.c_str());
+    return true;
 }
 
 jobjectArray AudioEngine::stopAudioRecording(JNIEnv* env) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::stopAudioRecording (placeholder)");
-    // TODO: Implement full stop logic, uninit dr_wav, close stream, return metadata
-    return nullptr;
+    std::lock_guard<std::mutex> lock(recordingStateMutex_);
+    if (!isRecording_.load()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "stopAudioRecording: Not recording.");
+        return nullptr;
+    }
+    isRecording_.store(false);
+    if (mInputStream_) {
+        mInputStream_->requestStop();
+        mInputStream_->close();
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Oboe input stream stopped and closed.");
+    }
+    drwav_uint64 totalFramesWritten = 0;
+    if (wavWriterInitialized_) {
+        totalFramesWritten = wavWriter_.totalPCMFrameCount;
+        drwav_uninit(&wavWriter_);
+        wavWriterInitialized_ = false;
+    }
+    if (recordingFileDescriptor_ != -1) {
+        close(recordingFileDescriptor_);
+        recordingFileDescriptor_ = -1;
+    }
+    // Prepare return: [filePath, totalFrames]
+    jclass stringClass = env->FindClass("java/lang/String");
+    jclass longClass = env->FindClass("java/lang/Long");
+    jmethodID longConstructor = env->GetMethodID(longClass, "<init>", "(J)V");
+    jobject jTotalFrames = env->NewObject(longClass, longConstructor, (jlong)totalFramesWritten);
+    jobjectArray resultArray = env->NewObjectArray(2, stringClass, nullptr);
+    // For now, filePath is not stored; you may want to keep it as a member if needed
+    env->SetObjectArrayElement(resultArray, 0, env->NewStringUTF(""));
+    env->SetObjectArrayElement(resultArray, 1, jTotalFrames);
+    env->DeleteLocalRef(jTotalFrames);
+    env->DeleteLocalRef(longClass);
+    env->DeleteLocalRef(stringClass);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Audio recording stopped. Frames: %llu", (unsigned long long)totalFramesWritten);
+    return resultArray;
 }
 
 bool AudioEngine::isRecordingActive() {
@@ -866,24 +1026,41 @@ void AudioEngine::loadSequenceData(const theone::audio::SequenceCpp& sequence) {
                         currentSequence_->tracks.size());
 }
 
-
-// --- Test Helpers ---
-int AudioEngine::getActiveSoundsCountForTest() const {
-    std::lock_guard<std::mutex> lock(activeSoundsMutex_);
-    return activeSounds_.size();
+// NOTE: The following methods are stubs for future implementation.
+// They log calls and ensure thread safety, but do not yet modify audio behavior.
+void AudioEngine::setSampleEnvelope(const std::string& sampleId, const EnvelopeSettingsCpp& envelope) {
+    std::lock_guard<std::mutex> lock(sampleMapMutex_);
+    auto it = sampleMap_.find(sampleId);
+    if (it != sampleMap_.end()) {
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "setSampleEnvelope: Updated envelope for sample '%s' (stub)", sampleId.c_str());
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "setSampleEnvelope: Sample '%s' not found", sampleId.c_str());
+    }
 }
-
-void AudioEngine::addPlayingSoundForTest(PlayingSound sound) {
-    std::lock_guard<std::mutex> lock(activeSoundsMutex_);
-    activeSounds_.push_back(std::move(sound));
+void AudioEngine::setSampleLFO(const std::string& sampleId, const LFOSettingsCpp& lfo) {
+    std::lock_guard<std::mutex> lock(sampleMapMutex_);
+    auto it = sampleMap_.find(sampleId);
+    if (it != sampleMap_.end()) {
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "setSampleLFO: Updated LFO for sample '%s' (stub)", sampleId.c_str());
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "setSampleLFO: Sample '%s' not found", sampleId.c_str());
+    }
 }
-
-void AudioEngine::setAudioStreamSampleRateForTest(uint32_t sampleRate) {
-    audioStreamSampleRate_.store(sampleRate);
-    // Also update metronome if it relies on this, though metronome isn't the focus here
-    // std::lock_guard<std::mutex> lock(metronomeStateMutex_);
-    // metronomeState_.audioStreamSampleRate = sampleRate;
-    // metronomeState_.updateSchedulingParameters();
+bool AudioEngine::addInsertEffect(const std::string& trackId, const std::string& effectType, const std::map<std::string, float>& parameters) {
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "addInsertEffect: trackId=%s, effectType=%s (stub)", trackId.c_str(), effectType.c_str());
+    return true;
+}
+bool AudioEngine::removeInsertEffect(const std::string& trackId, const std::string& effectId) {
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "removeInsertEffect: trackId=%s, effectId=%s (stub)", trackId.c_str(), effectId.c_str());
+    return true;
+}
+void AudioEngine::setEffectParameter(const std::string& effectId, const std::string& parameter, float value) {
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "setEffectParameter: effectId=%s, parameter=%s, value=%f (stub)", effectId.c_str(), parameter.c_str(), value);
+}
+FloatArray AudioEngine::getAudioLevels(const std::string& trackId) {
+    FloatArray levels = {0.0f, 0.0f};
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "getAudioLevels: trackId=%s (stub)", trackId.c_str());
+    return levels;
 }
 
 } // namespace audio
