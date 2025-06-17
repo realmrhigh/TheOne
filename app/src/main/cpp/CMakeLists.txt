@@ -57,9 +57,11 @@ target_include_directories(EnvelopeGeneratorTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} # For EnvelopeGenerator.h etc.
 )
 
-# Discover and add tests to CTest
+# Discover and add tests to CTest (only for non-Android builds)
 include(GoogleTest)
-gtest_discover_tests(EnvelopeGeneratorTests)
+if(NOT ANDROID)
+    gtest_discover_tests(EnvelopeGeneratorTests)
+endif()
 
 # Add AudioEngineTests executable
 add_executable(AudioEngineTests
@@ -80,5 +82,7 @@ target_include_directories(AudioEngineTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Discover and add tests for AudioEngineTests to CTest
-gtest_discover_tests(AudioEngineTests)
+# Discover and add tests for AudioEngineTests to CTest (only for non-Android builds)
+if(NOT ANDROID)
+    gtest_discover_tests(AudioEngineTests)
+endif()
