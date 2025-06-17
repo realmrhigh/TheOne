@@ -10,10 +10,10 @@ import androidx.core.net.toUri
 import com.high.theone.model.SampleMetadata
 import com.high.theone.model.AudioInputSource
 import com.high.theone.features.drumtrack.model.PadSettings
-import com.high.theone.model.SynthModels.LFOSettings
-import com.high.theone.model.SynthModels.EnvelopeSettings
+import com.high.theone.model.EnvelopeSettings
+import com.high.theone.model.LFOSettings
 import com.high.theone.model.PlaybackMode
-import com.high.theone.model.SynthModels.EffectInstance
+import com.high.theone.model.EffectInstance
 import java.io.File
 
 class AudioEngine(private val context: Context) : AudioEngineControl {
@@ -131,6 +131,12 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     suspend fun getAudioLevels(trackId: String): FloatArray = withContext(Dispatchers.Default) {
         native_getAudioLevels(trackId)
     }
+    /**
+     * Get the reported output latency in milliseconds from the audio engine (Oboe).
+     */
+    override suspend fun getReportedLatencyMillis(): Float = withContext(Dispatchers.Default) {
+        native_getReportedLatencyMillis()
+    }
 
     companion object {
         init {
@@ -160,4 +166,5 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     private external fun native_addInsertEffect(trackId: String, effectType: String, parameters: Map<String, Float>): Boolean
     private external fun native_removeInsertEffect(trackId: String, effectId: String): Boolean
     private external fun native_getAudioLevels(trackId: String): FloatArray
+    private external fun native_getReportedLatencyMillis(): Float
 }

@@ -29,7 +29,8 @@ public:
     void shutdown();   // Simplified shutdown method
 
     // Sample management (example, might be more complex)
-    bool loadSampleToMemory(const std::string& sampleId, int fd, long offset, long length);
+    // Update declaration to match new implementation
+    bool loadSampleToMemory(const std::string& sampleId, const std::string& filePath, long offset, long length);
     bool isSampleLoaded(const std::string& sampleId);
     void unloadSample(const std::string& sampleId);
     int getSampleRate(const std::string& sampleId);
@@ -63,7 +64,7 @@ public:
 
     // Envelope and LFO settings
     void setSampleEnvelope(const std::string& sampleId, const EnvelopeSettingsCpp& envelope);
-    void setSampleLFO(const std::string& sampleId, const LFOSettingsCpp& lfo);
+    void setSampleLFO(const std::string& sampleId, const LfoSettingsCpp& lfo);
 
     // Oboe AudioStreamCallback methods
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream *oboeStream, void *audioData, int32_t numFrames) override;
@@ -83,6 +84,16 @@ public:
 
     void loadSequenceData(const SequenceCpp& sequence);
 
+
+    // --- JNI/Native-lib required stubs ---
+    // These are not implemented, but are required for JNI linkage.
+    void stopNote(const std::string& noteInstanceId, float releaseTimeMs) {}
+    void stopAllNotes(const std::string& trackId, bool immediate) {}
+    void setTrackVolume(const std::string& trackId, float volume) {}
+    void setTrackPan(const std::string& trackId, float pan) {}
+    bool removeTrackEffect(const std::string& trackId, const std::string& effectInstanceId) { return false; }
+    void setTransportBpm(float bpm) {}
+    void setEffectParameter(const std::string& effectId, const std::string& parameter, float value) {}
 
 private:
     // Oboe Stream

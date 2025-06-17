@@ -16,29 +16,39 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.high.theone.model.LoopMode
 import com.high.theone.model.PlaybackMode
 import com.high.theone.model.SampleMetadata
-import com.high.theone.model.SynthModels.EffectSetting
-import com.high.theone.model.SynthModels.EnvelopeSettings
-import com.high.theone.model.SynthModels.LFOSettings
-import com.high.theone.model.SynthModels.ModulationRouting
+import com.high.theone.model.EnvelopeSettings
+import com.high.theone.model.EffectSetting
+import com.high.theone.model.LFOSettings
+import com.high.theone.model.ModulationRouting
 import java.util.UUID
 
 // Mock AudioEngineControl for preview
 class MockAudioEngineControl : com.high.theone.audio.AudioEngineControl {
     override suspend fun initialize(sampleRate: Int, bufferSize: Int, enableLowLatency: Boolean): Boolean = true
-    override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean = true // This is on interface
-    // This overload is not in AudioEngineControl interface, so remove override
-    suspend fun loadSampleToMemory(context: android.content.Context, sampleId: String, filePathUri: String): Boolean = true
+    override suspend fun shutdown() {}
+    override suspend fun loadSampleToMemory(sampleId: String, filePathUri: String): Boolean = true
     override suspend fun unloadSample(sampleId: String) {}
-    override fun isSampleLoaded(sampleId: String): Boolean = true
-    override suspend fun playSample(sampleId: String, noteInstanceId: String, volume: Float, pan: Float): Boolean = true
-
-    // Add missing interface methods
-    override suspend fun playPadSample(
-        noteInstanceId: String, trackId: String, padId: String, sampleId: String,
-        sliceId: String?, velocity: Float,
-        playbackMode: com.high.theone.model.PlaybackMode, // Corrected type
-        coarseTune: Int, fineTune: Int, pan: Float, volume: Float,
-        // TODO: Complete method signature and implementation
-    ): Boolean = true
+    override suspend fun playPadSample(noteInstanceId: String, trackId: String, padId: String): Boolean = true
+    override suspend fun stopNote(noteInstanceId: String, releaseTimeMs: Float?) {}
+    override suspend fun stopAllNotes(trackId: String?, immediate: Boolean) {}
+    override suspend fun startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean = true
+    override suspend fun stopAudioRecording(): SampleMetadata? = null
+    override suspend fun setTrackVolume(trackId: String, volume: Float) {}
+    override suspend fun setTrackPan(trackId: String, pan: Float) {}
+    override suspend fun addTrackEffect(trackId: String, effectInstance: com.high.theone.model.EffectInstance): Boolean = true
+    override suspend fun removeTrackEffect(trackId: String, effectInstanceId: String): Boolean = true
+    override suspend fun setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings) {}
+    override suspend fun setSampleLFO(sampleId: String, lfo: LFOSettings) {}
+    override suspend fun setEffectParameter(effectId: String, parameter: String, value: Float) {}
+    override suspend fun setTransportBpm(bpm: Float) {}
+    override suspend fun getReportedLatencyMillis(): Float = 0f
+    override suspend fun setMetronomeState(
+        isEnabled: Boolean,
+        bpm: Float,
+        timeSignatureNum: Int,
+        timeSignatureDen: Int,
+        soundPrimaryUri: String,
+        soundSecondaryUri: String?
+    ) {}
 }
 // TODO: Complete implementation as needed

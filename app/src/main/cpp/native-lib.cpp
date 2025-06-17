@@ -515,9 +515,9 @@ static std::unique_ptr<theone::audio::AudioEngine> audioEngineInstance;
 // --- MIGRATED JNI: com.high.theone.audio.AudioEngine ---
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1initialize(
-    JNIEnv* env, jobject /* thiz */, jint sampleRate, jint bufferSize, jboolean enableLowLatency) {
+    JNIEnv* env, jobject /* thiz */) {
     if (!audioEngineInstance) audioEngineInstance = std::make_unique<theone::audio::AudioEngine>();
-    return audioEngineInstance && audioEngineInstance->initialize(sampleRate, bufferSize, enableLowLatency) ? JNI_TRUE : JNI_FALSE;
+    return audioEngineInstance && audioEngineInstance->initialize() ? JNI_TRUE : JNI_FALSE;
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1shutdown(
@@ -531,9 +531,9 @@ Java_com_high_theone_audio_AudioEngine_native_1setMetronomeState(
 }
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1loadSampleToMemory(
-    JNIEnv* env, jobject /* thiz */, jstring sampleId, jstring filePathUri) {
+    JNIEnv* env, jobject /* thiz */, jstring sampleId, jstring filePath, jlong offset, jlong length) {
     if (!audioEngineInstance) return JNI_FALSE;
-    return audioEngineInstance->loadSampleToMemory(JStringToString(env, sampleId), JStringToString(env, filePathUri)) ? JNI_TRUE : JNI_FALSE;
+    return audioEngineInstance->loadSampleToMemory(JStringToString(env, sampleId), JStringToString(env, filePath), offset, length) ? JNI_TRUE : JNI_FALSE;
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1unloadSample(
@@ -542,9 +542,18 @@ Java_com_high_theone_audio_AudioEngine_native_1unloadSample(
 }
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1playPadSample(
-    JNIEnv* env, jobject /* thiz */, jstring noteInstanceId, jstring trackId, jstring padId) {
+    JNIEnv* env, jobject /* thiz */, jstring noteInstanceId, jstring trackId, jstring padId,
+    jstring sampleId, jfloat velocity, jfloat coarseTune, jfloat fineTune, jfloat pan, jfloat volume,
+    jint playbackModeOrdinal, jfloat ampEnvAttackMs, jfloat ampEnvDecayMs, jfloat ampEnvSustainLevel, jfloat ampEnvReleaseMs) {
     if (!audioEngineInstance) return JNI_FALSE;
-    return audioEngineInstance->playPadSample(JStringToString(env, noteInstanceId), JStringToString(env, trackId), JStringToString(env, padId)) ? JNI_TRUE : JNI_FALSE;
+    return audioEngineInstance->playPadSample(
+        JStringToString(env, noteInstanceId),
+        JStringToString(env, trackId),
+        JStringToString(env, padId),
+        JStringToString(env, sampleId),
+        velocity, coarseTune, fineTune, pan, volume,
+        playbackModeOrdinal, ampEnvAttackMs, ampEnvDecayMs, ampEnvSustainLevel, ampEnvReleaseMs
+    ) ? JNI_TRUE : JNI_FALSE;
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1stopNote(
@@ -558,9 +567,13 @@ Java_com_high_theone_audio_AudioEngine_native_1stopAllNotes(
 }
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1startAudioRecording(
-    JNIEnv* env, jobject /* thiz */, jstring filePathUri, jstring inputDeviceId) {
+    JNIEnv* env, jobject thiz, jstring filePathUri, jstring inputDeviceId) {
     if (!audioEngineInstance) return JNI_FALSE;
-    return audioEngineInstance->startAudioRecording(JStringToString(env, filePathUri), JStringToString(env, inputDeviceId)) ? JNI_TRUE : JNI_FALSE;
+    // TODO: Use inputDeviceId if needed. For now, pass default sampleRate and channels.
+    const std::string filePath = JStringToString(env, filePathUri);
+    int sampleRate = 44100; // Default/stub value
+    int channels = 2;       // Default/stub value
+    return audioEngineInstance->startAudioRecording(env, thiz, filePath, sampleRate, channels) ? JNI_TRUE : JNI_FALSE;
 }
 extern "C" JNIEXPORT jobject JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1stopAudioRecording(
@@ -659,6 +672,12 @@ Java_com_high_theone_audio_AudioEngine_native_1getAudioLevels(
     // TODO: Look up actual levels for the track
     env->SetFloatArrayRegion(result, 0, 2, levels);
     return result;
+}
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1getReportedLatencyMillis(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return -1.0f;
+    return audioEngineInstance->getOboeReportedLatencyMillis();
 }
 // --- END MIGRATED JNI ---
 

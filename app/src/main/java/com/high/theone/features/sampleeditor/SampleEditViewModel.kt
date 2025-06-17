@@ -25,12 +25,12 @@ class SampleEditViewModel(
     val trimEndMs: StateFlow<Long> = _trimEndMs.asStateFlow()
 
     init {
-        // The SampleMetadata from previous subtask has 'duration', not 'durationMs'.
+        // The SampleMetadata from previous subtask has 'durationMs', not 'duration'.
         // And its constructor already handles setting trimEndMs to duration if it's 0.
         // So, we trust initialSampleMetadata is already correctly initialized.
         // If initialSampleMetadata.trimEndMs is 0, it implies it was meant to be full duration.
-        val correctedTrimEndMs = if (initialSampleMetadata.trimEndMs == 0L && initialSampleMetadata.duration > 0L) {
-            initialSampleMetadata.duration
+        val correctedTrimEndMs = if (initialSampleMetadata.trimEndMs == 0L && initialSampleMetadata.durationMs > 0L) {
+            initialSampleMetadata.durationMs
         } else {
             initialSampleMetadata.trimEndMs
         }

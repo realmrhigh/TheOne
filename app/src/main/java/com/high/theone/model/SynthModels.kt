@@ -9,11 +9,11 @@ enum class EnvelopeType {
 
 // Envelope settings for amplitude, filter, pitch, etc.
 data class EnvelopeSettings(
-    val attack: Float = 0.01f,
-    val decay: Float = 0.1f,
-    val sustain: Float = 1.0f,
-    val release: Float = 0.2f,
-    val hold: Float = 0.0f,
+    val attackMs: Float = 10f,
+    val decayMs: Float = 100f,
+    val sustainLevel: Float = 1.0f,
+    val releaseMs: Float = 200f,
+    val holdMs: Float = 0f,
     val type: EnvelopeType = EnvelopeType.ADSR,
     val hasSustain: Boolean = true
 )

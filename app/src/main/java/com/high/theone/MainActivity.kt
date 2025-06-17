@@ -1,6 +1,5 @@
 package com.high.theone
 
-import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -35,8 +34,6 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import javax.inject.Inject
 
@@ -45,24 +42,6 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var audioEngine: AudioEngineControl
-
-    private fun copyAssetToCache(context: Context, assetName: String, cacheFileName: String): String? {
-        val assetManager = context.assets
-        try {
-            val inputStream = assetManager.open(assetName)
-            val cacheDir = context.cacheDir
-            val outFile = File(cacheDir, cacheFileName)
-            val outputStream = FileOutputStream(outFile)
-            inputStream.copyTo(outputStream)
-            inputStream.close()
-            outputStream.close()
-            Log.i("MainActivity", "Copied asset '$assetName' to '${outFile.absolutePath}'")
-            return outFile.absolutePath
-        } catch (e: IOException) {
-            Log.e("MainActivity", "Failed to copy asset $assetName to cache: ${e.message}", e)
-            return null
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,13 +80,9 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i("MainActivity", "onDestroy called, preparing to shutdown AudioEngine.")
-        if (this::audioEngine.isInitialized && audioEngine.isInitialized()) {
-            CoroutineScope(Dispatchers.IO).launch {
-                audioEngine.shutdown()
-                Log.i("MainActivity", "AudioEngine shutdown complete. IsInitialized after shutdown: ${audioEngine.isInitialized()}")
-            }
-        } else {
-            Log.w("MainActivity", "AudioEngine was not initialized or not injected, skip shutdown.")
+        CoroutineScope(Dispatchers.IO).launch {
+            audioEngine.shutdown()
+            Log.i("MainActivity", "AudioEngine shutdown complete.")
         }
     }
 }

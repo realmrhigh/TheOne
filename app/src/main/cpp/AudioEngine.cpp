@@ -702,14 +702,21 @@ float AudioEngine::getOboeReportedLatencyMillis() const {
     return -1.0f;
 }
 
+// Add a write proc for file descriptors
+template<typename T>
+static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite) {
+    int fd = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
+    ssize_t written = write(fd, pData, bytesToWrite);
+    return written < 0 ? 0 : static_cast<size_t>(written);
+}
 
 // --- Placeholder/Simplified Implementations for other methods from AudioEngine.h ---
 // These would need full implementations similar to what was in native-lib.cpp,
 // but adapted to use class members and appropriate mutexes.
 
-bool AudioEngine::loadSampleToMemory(const std::string& sampleId, int fd, long offset, long length) {
-    if (fd < 0 || length <= 0) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Invalid fd (%d) or length (%ld)", fd, length);
+bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::string& filePath, long offset, long length) {
+    if (filePath.empty() || length <= 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Invalid filePath or length");
         return false;
     }
     std::lock_guard<std::mutex> lock(sampleMapMutex_);
@@ -717,14 +724,20 @@ bool AudioEngine::loadSampleToMemory(const std::string& sampleId, int fd, long o
         __android_log_print(ANDROID_LOG_WARN, APP_NAME, "AudioEngine::loadSampleToMemory - Sample '%s' already loaded.", sampleId.c_str());
         return true;
     }
-    // Seek to offset
-    if (lseek(fd, offset, SEEK_SET) == -1) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to lseek to offset %ld: %s", offset, strerror(errno));
+    FILE* file = fopen(filePath.c_str(), "rb");
+    if (!file) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to open file %s", filePath.c_str());
+        return false;
+    }
+    if (fseek(file, offset, SEEK_SET) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to fseek to offset %ld", offset);
+        fclose(file);
         return false;
     }
     drwav wav;
-    if (!drwav_init_file_descriptor(&wav, fd, nullptr)) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to init drwav for fd %d", fd);
+    if (!drwav_init_file(&wav, filePath.c_str(), nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to init drwav for file %s", filePath.c_str());
+        fclose(file);
         return false;
     }
     size_t totalFrames = static_cast<size_t>(wav.totalPCMFrameCount);
@@ -735,6 +748,7 @@ bool AudioEngine::loadSampleToMemory(const std::string& sampleId, int fd, long o
         __android_log_print(ANDROID_LOG_WARN, APP_NAME, "AudioEngine::loadSampleToMemory - Only read %llu/%llu frames", (unsigned long long)framesRead, (unsigned long long)wav.totalPCMFrameCount);
     }
     drwav_uninit(&wav);
+    fclose(file);
     LoadedSample sample;
     sample.id = sampleId;
     sample.format.channels = static_cast<uint16_t>(numChannels);
@@ -743,7 +757,7 @@ bool AudioEngine::loadSampleToMemory(const std::string& sampleId, int fd, long o
     sample.audioData = std::move(audioData);
     sample.frameCount = static_cast<size_t>(framesRead);
     sampleMap_[sampleId] = std::move(sample);
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::loadSampleToMemory - Loaded sample '%s' (%zu frames, %zu channels)", sampleId.c_str(), framesRead, numChannels);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::loadSampleToMemory - Loaded sample '%s' (%llu frames, %zu channels)", sampleId.c_str(), (unsigned long long)framesRead, numChannels);
     return true;
 }
 
@@ -869,13 +883,20 @@ bool AudioEngine::startAudioRecording(JNIEnv* env, jobject context, const std::s
     }
     recordingFileDescriptor_ = fd;
     // Setup dr_wav writer
+    FILE* file = fdopen(fd, "wb");
+    if (!file) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to fdopen for fd %d", fd);
+        close(fd);
+        recordingFileDescriptor_ = -1;
+        return false;
+    }
     drwav_data_format wavFormat;
     wavFormat.container = drwav_container_riff;
     wavFormat.format = DR_WAVE_FORMAT_IEEE_FLOAT;
     wavFormat.channels = static_cast<uint32_t>(channels);
     wavFormat.sampleRate = static_cast<uint32_t>(sampleRate);
     wavFormat.bitsPerSample = 32;
-    if (!drwav_init_write_sequential_pcm_frames(&wavWriter_, &wavFormat, 0, drwav_write_proc_fd, (void*)(intptr_t)fd, nullptr)) {
+    if (!drwav_init_write_sequential_pcm_frames(&wavWriter_, &wavFormat, 0, drwav_write_proc_fd<void>, (void*)(intptr_t)fd, nullptr)) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to initialize drwav writer");
         close(fd);
         recordingFileDescriptor_ = -1;
@@ -1037,30 +1058,8 @@ void AudioEngine::setSampleEnvelope(const std::string& sampleId, const EnvelopeS
         __android_log_print(ANDROID_LOG_WARN, APP_NAME, "setSampleEnvelope: Sample '%s' not found", sampleId.c_str());
     }
 }
-void AudioEngine::setSampleLFO(const std::string& sampleId, const LFOSettingsCpp& lfo) {
-    std::lock_guard<std::mutex> lock(sampleMapMutex_);
-    auto it = sampleMap_.find(sampleId);
-    if (it != sampleMap_.end()) {
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "setSampleLFO: Updated LFO for sample '%s' (stub)", sampleId.c_str());
-    } else {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "setSampleLFO: Sample '%s' not found", sampleId.c_str());
-    }
-}
-bool AudioEngine::addInsertEffect(const std::string& trackId, const std::string& effectType, const std::map<std::string, float>& parameters) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "addInsertEffect: trackId=%s, effectType=%s (stub)", trackId.c_str(), effectType.c_str());
-    return true;
-}
-bool AudioEngine::removeInsertEffect(const std::string& trackId, const std::string& effectId) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "removeInsertEffect: trackId=%s, effectId=%s (stub)", trackId.c_str(), effectId.c_str());
-    return true;
-}
-void AudioEngine::setEffectParameter(const std::string& effectId, const std::string& parameter, float value) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "setEffectParameter: effectId=%s, parameter=%s, value=%f (stub)", effectId.c_str(), parameter.c_str(), value);
-}
-FloatArray AudioEngine::getAudioLevels(const std::string& trackId) {
-    FloatArray levels = {0.0f, 0.0f};
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "getAudioLevels: trackId=%s (stub)", trackId.c_str());
-    return levels;
+void AudioEngine::setSampleLFO(const std::string& sampleId, const LfoSettingsCpp& lfo) {
+    // TODO: Implement LFO assignment logic
 }
 
 } // namespace audio

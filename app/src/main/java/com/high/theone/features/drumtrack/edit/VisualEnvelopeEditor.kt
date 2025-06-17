@@ -13,10 +13,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.high.theone.model.SynthModels.EffectSetting
-import com.high.theone.model.SynthModels.EnvelopeSettings
-import com.high.theone.model.SynthModels.LFOSettings
-import com.high.theone.model.SynthModels.ModulationRouting
+import com.high.theone.model.EnvelopeSettings
+import com.high.theone.model.EffectSetting
+import com.high.theone.model.LFOSettings
+import com.high.theone.model.ModulationRouting
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.pow
@@ -38,5 +38,15 @@ fun VisualEnvelopeEditor(
     onSettingsChange: (EnvelopeSettings) -> Unit, // Will be used later for drag
     lineColor: Color = Color.Blue, // MaterialTheme.colorScheme.primary would be better
     pointColor: Color = Color.Red  // MaterialTheme.colorScheme.secondary
-    // ...rest of the code remains unchanged...
-)
+) {
+    // TODO: Implement the actual envelope drawing and editing UI
+    // For now, just draw a placeholder line
+    Canvas(modifier = modifier.fillMaxWidth().height(120.dp)) {
+        drawLine(
+            color = lineColor,
+            start = Offset(0f, size.height),
+            end = Offset(size.width, 0f),
+            strokeWidth = 4f
+        )
+    }
+}

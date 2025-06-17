@@ -16,19 +16,29 @@ enum class EnvelopeStage {
     RELEASE
 };
 
+// Add C++ enum for envelope type to match test and settings usage
+enum class ModelEnvelopeTypeInternalCpp {
+    ADSR,
+    AHDSR,
+    AR,
+    CUSTOM
+};
+
 struct EnvelopeSettingsCpp {
     float attackMs = 5.0f;
     float decayMs = 150.0f;
     float sustainLevel = 1.0f; // 0.0 to 1.0, relevant for envelopes with sustain
     bool hasSustain = true;
     float releaseMs = 100.0f;
+    float holdMs = 0.0f; // Add hold for AHDSR
+    ModelEnvelopeTypeInternalCpp type = ModelEnvelopeTypeInternalCpp::ADSR;
 
     // Default constructor
     EnvelopeSettingsCpp() = default;
 
     // Parameterized constructor (useful for JNI mapping)
     EnvelopeSettingsCpp(float atk, float dec, float sus, bool hasSus, float rel)
-        : attackMs(atk), decayMs(dec), sustainLevel(sus), hasSustain(hasSus), releaseMs(rel) {}
+        : attackMs(atk), decayMs(dec), sustainLevel(sus), hasSustain(hasSus), releaseMs(rel), holdMs(0.0f), type(ModelEnvelopeTypeInternalCpp::ADSR) {}
 };
 
 class EnvelopeGenerator {

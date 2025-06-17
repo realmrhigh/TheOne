@@ -2,10 +2,10 @@ package com.high.theone.audio
 
 import android.content.Context
 import com.high.theone.model.SampleMetadata
-import com.high.theone.model.SynthModels.EnvelopeSettings
-import com.high.theone.model.SynthModels.LFOSettings
+import com.high.theone.model.EnvelopeSettings
+import com.high.theone.model.LFOSettings
 import com.high.theone.model.PlaybackMode
-import com.high.theone.model.SynthModels.EffectInstance
+import com.high.theone.model.EffectInstance
 
 interface AudioEngineControl {
     // Initialization & Config
@@ -36,6 +36,14 @@ interface AudioEngineControl {
     suspend fun addTrackEffect(trackId: String, effectInstance: EffectInstance): Boolean
     suspend fun removeTrackEffect(trackId: String, effectInstanceId: String): Boolean
 
+    // Effects and Modulation
+    suspend fun setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings)
+    suspend fun setSampleLFO(sampleId: String, lfo: LFOSettings)
+    suspend fun setEffectParameter(effectId: String, parameter: String, value: Float)
+
     // Transport
     suspend fun setTransportBpm(bpm: Float)
+
+    // Latency reporting
+    suspend fun getReportedLatencyMillis(): Float
 }

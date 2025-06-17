@@ -14,11 +14,13 @@ data class Sample(
 
 @Serializable
 data class SampleMetadata(
-    val durationMs: Int = 0,
+    val durationMs: Long = 0L,
     val sampleRate: Int = 44100,
     val channels: Int = 1,
     val rootNote: Int = 60,
-    val tags: List<String> = emptyList()
+    val tags: List<String> = emptyList(),
+    val trimStartMs: Long = 0L,
+    val trimEndMs: Long = 0L
 )
 
 // SampleLayer for multi-layered drum pads

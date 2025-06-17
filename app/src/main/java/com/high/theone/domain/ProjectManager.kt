@@ -8,8 +8,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
-import kotlin.Result
 import android.net.Uri
+
+sealed class Result<out T, out E> {
+    data class Success<out T>(val value: T) : Result<T, Nothing>()
+    data class Failure<out E>(val error: E) : Result<Nothing, E>()
+}
 
 interface ProjectManager {
     fun getCurrentProject(): StateFlow<Project?>

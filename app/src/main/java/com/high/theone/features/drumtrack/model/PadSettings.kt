@@ -3,10 +3,11 @@ package com.high.theone.features.drumtrack.model
 import com.high.theone.model.LayerTriggerRule
 import com.high.theone.model.PlaybackMode
 import com.high.theone.model.SampleLayer
-import com.high.theone.model.SynthModels.EffectSetting
-import com.high.theone.model.SynthModels.EnvelopeSettings
-import com.high.theone.model.SynthModels.LFOSettings
-import com.high.theone.model.SynthModels.ModulationRouting
+import com.high.theone.model.EnvelopeSettings
+import com.high.theone.model.EffectSetting
+import com.high.theone.model.LFOSettings
+import com.high.theone.model.ModulationRouting
+import com.high.theone.model.EnvelopeType
 
 // PlaybackMode is now defined in com.high.theone.model.SharedModels
 
@@ -29,16 +30,16 @@ data class PadSettings(
     var polyphony: Int = 16,
 
     // --- Envelopes (non-nullable as per editor's expectation) ---
-    var ampEnvelope: EnvelopeSettings = EnvelopeSettings( // Using consolidated EnvelopeSettings
-        type = com.high.theone.model.ModelEnvelopeTypeInternal.ADSR, // Explicitly use model's enum
+    var ampEnvelope: EnvelopeSettings = EnvelopeSettings(
+        type = EnvelopeType.ADSR, // Use the correct enum
         attackMs = 5f,
         holdMs = 0f,
         decayMs = 150f,
-        sustainLevel = 1.0f, // Now non-nullable in model
+        sustainLevel = 1.0f,
         releaseMs = 100f
     ),
-    var pitchEnvelope: EnvelopeSettings = EnvelopeSettings( // Non-nullable
-        type = com.high.theone.model.ModelEnvelopeTypeInternal.ADSR,
+    var pitchEnvelope: EnvelopeSettings = EnvelopeSettings(
+        type = EnvelopeType.ADSR,
         attackMs = 5f,
         holdMs = 0f,
         decayMs = 150f,
