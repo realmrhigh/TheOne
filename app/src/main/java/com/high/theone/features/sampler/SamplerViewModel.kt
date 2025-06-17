@@ -3,14 +3,15 @@ package com.high.theone.features.sampler
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.high.theone.audio.AudioEngineControl
+import com.high.theone.audio.MicrophoneInput
 import com.high.theone.domain.ProjectManager
 import com.high.theone.model.AudioInputSource
 import com.high.theone.model.Sample
 import com.high.theone.model.SampleMetadata
-import com.high.theone.model.SynthModels.EffectSetting
-import com.high.theone.model.SynthModels.EnvelopeSettings
-import com.high.theone.model.SynthModels.LFOSettings
-import com.high.theone.model.SynthModels.ModulationRouting
+import com.high.theone.model.EnvelopeSettings
+import com.high.theone.model.EffectSetting
+import com.high.theone.model.LFOSettings
+import com.high.theone.model.ModulationRouting
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,7 @@ import javax.inject.Inject
 class SamplerViewModel @Inject constructor(
     private val projectManager: ProjectManager,
     private val audioEngine: AudioEngineControl,
+    private val microphoneInput: MicrophoneInput,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -57,6 +59,24 @@ class SamplerViewModel @Inject constructor(
 
     fun stopSample() {
         // Implement sample stop
+    }
+
+    fun startMicrophoneRecording() {
+        microphoneInput.startRecording()
+        // Optionally update state
+    }
+
+    fun stopMicrophoneRecording() {
+        microphoneInput.stopRecording()
+        // Optionally update state
+    }
+
+    fun getMicrophoneAmplitude(): Float {
+        return microphoneInput.getAmplitude()
+    }
+
+    fun isMicrophoneRecording(): Boolean {
+        return microphoneInput.isRecording()
     }
 
     // Implement other methods and logic for your ViewModel

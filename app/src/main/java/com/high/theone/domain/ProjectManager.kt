@@ -24,5 +24,6 @@ interface ProjectManager {
     fun getSamplesFromPool(): List<SampleMetadata>
     suspend fun updateSampleMetadata(sample: SampleMetadata): Boolean
     suspend fun getSampleById(sampleId: String): SampleMetadata?
+    suspend fun loadSample(file: File): Sample
     // Add any other required methods
 }

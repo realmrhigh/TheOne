@@ -1,12 +1,13 @@
 package com.high.theone.model
 import java.util.UUID
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Contextual
 
 // --- Sample and SampleMetadata models for drum/synth engine ---
 
 @Serializable
 data class Sample(
-    val id: UUID = UUID.randomUUID(),
+    @Contextual val id: UUID = UUID.randomUUID(),
     val name: String = "",
     val filePath: String = "",
     val metadata: SampleMetadata = SampleMetadata()
@@ -27,6 +28,6 @@ data class SampleMetadata(
 @Serializable
 data class SampleLayer(
     val sample: Sample = Sample(),
-    val velocityRange: IntRange = 1..127,
+    @Contextual val velocityRange: IntRange = 1..127,
     val gain: Float = 1.0f
 )

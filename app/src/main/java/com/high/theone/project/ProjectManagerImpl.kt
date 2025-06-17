@@ -20,24 +20,24 @@ class ProjectManagerImpl @Inject constructor() : ProjectManager {
     // TODO: Implement sample pool management
     private val _samplePool = mutableListOf<SampleMetadata>()
 
-    override suspend fun createNewProject(name: String, templateName: String?): Result<Project, Error> {
+    override suspend fun createNewProject(name: String, templateName: String?): com.high.theone.domain.Result<Project, Error> {
         // TODO: Implement project creation
-        return Result.failure(NotImplementedError("createNewProject not implemented"))
+        return com.high.theone.domain.Result.Failure(NotImplementedError("createNewProject not implemented"))
     }
 
-    override suspend fun loadProject(projectUri: Uri): Result<Project, Error> {
+    override suspend fun loadProject(projectUri: Uri): com.high.theone.domain.Result<Project, Error> {
         // TODO: Implement project loading
-        return Result.failure(NotImplementedError("loadProject not implemented"))
+        return com.high.theone.domain.Result.Failure(NotImplementedError("loadProject not implemented"))
     }
 
-    override suspend fun saveProject(project: Project): Result<Unit, Error> {
+    override suspend fun saveProject(project: Project): com.high.theone.domain.Result<Unit, Error> {
         // TODO: Implement project saving
-        return Result.failure(NotImplementedError("saveProject not implemented"))
+        return com.high.theone.domain.Result.Failure(NotImplementedError("saveProject not implemented"))
     }
 
-    override suspend fun addSampleToPool(name: String, sourceFileUri: Uri, copyToProjectDir: Boolean): Result<SampleMetadata, Error> {
+    override suspend fun addSampleToPool(name: String, sourceFileUri: Uri, copyToProjectDir: Boolean): com.high.theone.domain.Result<SampleMetadata, Error> {
         // TODO: Implement sample import
-        return Result.failure(NotImplementedError("addSampleToPool not implemented"))
+        return com.high.theone.domain.Result.Failure(NotImplementedError("addSampleToPool not implemented"))
     }
 
     override fun getSamplesFromPool(): List<SampleMetadata> {
@@ -53,6 +53,14 @@ class ProjectManagerImpl @Inject constructor() : ProjectManager {
     override suspend fun getSampleById(sampleId: String): SampleMetadata? {
         // TODO: Implement sample lookup
         return null
+    }
+
+    override suspend fun loadSample(file: File): Sample {
+        // Basic stub: just create a Sample with the file name and path
+        return Sample(
+            name = file.nameWithoutExtension,
+            filePath = file.absolutePath
+        )
     }
 
     // Add other methods from ProjectManager as needed, with TODOs
