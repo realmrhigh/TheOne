@@ -95,22 +95,44 @@ public:
     void setTransportBpm(float bpm) {}
     void setEffectParameter(const std::string& effectId, const std::string& parameter, float value) {}
 
+    // 🎛️ Audio Processing Functions
+    void processSamplePlayback(float* outputBuffer, int32_t numFrames, int32_t channelCount);
+    void generateTestTone(float* outputBuffer, int32_t numFrames, int32_t channelCount);
+    void processMetronome(float* outputBuffer, int32_t numFrames, int32_t channelCount);
+    void applyMasterProcessing(float* outputBuffer, int32_t numFrames, int32_t channelCount, float masterVolume);
+
+    // 🎵 Audio Control
+    void setMasterVolume(float volume) { masterVolume_.store(volume); }
+    float getMasterVolume() const { return masterVolume_.load(); }
+    void setTestToneEnabled(bool enabled) { testToneEnabled_.store(enabled); }
+    bool isTestToneEnabled() const { return testToneEnabled_.load(); }
+
+    // 🔥 EPIC SAMPLE TRIGGERING
+    void triggerSample(const std::string& sampleKey, float volume = 1.0f, float pan = 0.0f);
+    void stopAllSamples();
+    void loadTestSample(const std::string& sampleKey); // For quick testing
+
+    // 🎯 CONVENIENCE FUNCTIONS FOR TESTING
+    bool createAndTriggerTestSample(const std::string& sampleKey, float volume = 1.0f, float pan = 0.0f);
+
 private:
     // Oboe Stream
     oboe::ManagedStream outStream_;
-    oboe::ManagedStream mInputStream_; // For recording
-
-    // Sample map
-    std::map<std::string, LoadedSample> sampleMap_;
-    std::mutex sampleMapMutex_;
+    oboe::ManagedStream mInputStream_; // For recording    // Sample map (updated for new audio engine)
+    std::map<std::string, std::shared_ptr<SampleDataCpp>> sampleMap_;
+    std::mutex sampleMutex_;
 
     // Pad settings map
     std::map<std::string, PadSettingsCpp> padSettingsMap_;
     std::mutex padSettingsMutex_;
 
-    // Active sounds
+    // Active sounds (updated for new audio engine)
     mutable std::mutex activeSoundsMutex_;
-    std::vector<PlayingSound> activeSounds_;
+    std::vector<ActiveSound> activeSounds_;
+
+    // 🎛️ Audio Control Variables
+    std::atomic<float> masterVolume_{0.7f};      // Default comfortable volume
+    std::atomic<bool> testToneEnabled_{false};   // Test tone for debugging
 
     // Metronome
     MetronomeState metronomeState_;

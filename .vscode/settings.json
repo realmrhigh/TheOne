@@ -2,6 +2,7 @@
     "files.associations": {
         "chrono": "cpp",
         "xlocale": "cpp",
-        "ostream": "cpp"
+        "ostream": "cpp",
+        "memory": "cpp"
     }
 }

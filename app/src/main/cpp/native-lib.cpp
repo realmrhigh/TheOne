@@ -679,6 +679,54 @@ Java_com_high_theone_audio_AudioEngine_native_1getReportedLatencyMillis(
     if (!audioEngineInstance) return -1.0f;
     return audioEngineInstance->getOboeReportedLatencyMillis();
 }
+
+// 🔥 EPIC SAMPLE TRIGGERING JNI FUNCTIONS
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1triggerSample(
+    JNIEnv* env, jobject /* thiz */, jstring sampleKey, jfloat volume, jfloat pan) {
+    if (!audioEngineInstance) return;
+    audioEngineInstance->triggerSample(JStringToString(env, sampleKey), volume, pan);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1stopAllSamples(
+    JNIEnv* env, jobject /* thiz */) {
+    if (audioEngineInstance) audioEngineInstance->stopAllSamples();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1loadTestSample(
+    JNIEnv* env, jobject /* thiz */, jstring sampleKey) {
+    if (!audioEngineInstance) return;
+    audioEngineInstance->loadTestSample(JStringToString(env, sampleKey));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setMasterVolume(
+    JNIEnv* env, jobject /* thiz */, jfloat volume) {
+    if (audioEngineInstance) audioEngineInstance->setMasterVolume(volume);
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1getMasterVolume(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return 0.0f;
+    return audioEngineInstance->getMasterVolume();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setTestToneEnabled(
+    JNIEnv* env, jobject /* thiz */, jboolean enabled) {
+    if (audioEngineInstance) audioEngineInstance->setTestToneEnabled(enabled == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1isTestToneEnabled(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    return audioEngineInstance->isTestToneEnabled() ? JNI_TRUE : JNI_FALSE;
+}
+
 // --- END MIGRATED JNI ---
 
 // Implementation for drwav_write_proc_fd: writes data to a file descriptor
@@ -691,4 +739,12 @@ static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t byt
         return 0;
     }
     return static_cast<size_t>(bytesWritten);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1createAndTriggerTestSample(
+    JNIEnv* env, jobject /* thiz */, jstring sampleKey, jfloat volume, jfloat pan) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    bool result = audioEngineInstance->createAndTriggerTestSample(JStringToString(env, sampleKey), volume, pan);
+    return result ? JNI_TRUE : JNI_FALSE;
 }

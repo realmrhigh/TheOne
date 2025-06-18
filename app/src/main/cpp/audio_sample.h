@@ -49,6 +49,42 @@ struct LoadedSample {
     }
 };
 
+// 🎵 EPIC SAMPLE DATA STRUCTURE
+struct SampleDataCpp {
+    std::string id;
+    std::vector<float> samples;  // Audio data as floats
+    size_t sampleCount;          // Total number of samples
+    uint32_t sampleRate;         // Sample rate
+    uint16_t channels;           // Number of channels
+    
+    SampleDataCpp() : sampleCount(0), sampleRate(44100), channels(1) {}
+    
+    SampleDataCpp(const std::string& sampleId, const std::vector<float>& audioData, 
+                  size_t count, uint32_t rate, uint16_t ch)
+        : id(sampleId), samples(audioData), sampleCount(count), 
+          sampleRate(rate), channels(ch) {}
+};
+
+// 🔥 ACTIVE SOUND FOR PLAYBACK
+struct ActiveSound {
+    std::string sampleKey;           // Which sample to play
+    float currentSampleIndex;        // Current playback position (float for pitch shifting)
+    float playbackSpeed;             // Speed multiplier (1.0 = normal, 2.0 = double speed)
+    float volume;                    // Volume multiplier
+    float pan;                       // Pan position (-1.0 = left, 1.0 = right, 0.0 = center)
+    EnvelopeGenerator envelope;      // Amplitude envelope
+    bool isActive;                   // Whether this sound is still playing
+    
+    ActiveSound(const std::string& key, float vol = 1.0f, float panPos = 0.0f)
+        : sampleKey(key), currentSampleIndex(0.0f), playbackSpeed(1.0f),
+          volume(vol), pan(panPos), isActive(true) {
+        // Initialize envelope with basic ADSR
+        EnvelopeSettingsCpp envSettings(10.0f, 100.0f, 0.7f, true, 300.0f); // 10ms attack, 100ms decay, 70% sustain, 300ms release
+        envelope.configure(envSettings, 44100.0f, 1.0f); // Configure with sample rate
+        envelope.triggerOn(1.0f); // Start the envelope
+    }
+};
+
 struct PlayingSound {
     const LoadedSample* loadedSamplePtr;
     size_t currentFrame; // Kept for now, but fractionalFramePosition will be primary for playback

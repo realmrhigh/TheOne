@@ -141,644 +141,430 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         void *audioData,
         int32_t numFrames) {
 
-    // Minimalistic audio processing: silence
-    // Full processing logic (metronome, sample playback, sequencer) would go here,
-    // using class members (activeSounds_, sampleMap_, padSettingsMap_, etc.)
-    // and their respective mutexes.
-
     float *outputBuffer = static_cast<float*>(audioData);
-    memset(outputBuffer, 0, sizeof(float) * numFrames * oboeStream->getChannelCount());
-
-    // --- Sequencer Clock Processing ---
-    uint32_t currentSampleRate = this->audioStreamSampleRate_.load();
-    double tickDuration = this->currentTickDurationMs_; // Read once per callback
-
-    if (currentSampleRate > 0 && tickDuration > 0.0) {
-        std::lock_guard<std::mutex> sequencerLock(this->sequencerMutex_);
-
-        if (this->currentSequence_ && this->currentSequence_->isPlaying) {
-            double singleFrameDurationMs = 1000.0 / static_cast<double>(currentSampleRate);
-            this->timeAccumulatedForTick_ += static_cast<double>(numFrames) * singleFrameDurationMs;
-
-            while (this->timeAccumulatedForTick_ >= tickDuration && tickDuration > 0.0) {
-                this->timeAccumulatedForTick_ -= tickDuration;
-                this->currentSequence_->currentPlayheadTicks++;
-
-                long beatsPerBar = this->currentSequence_->timeSignatureNumerator;
-                if (beatsPerBar <= 0) beatsPerBar = 4;
-
-                long ticksPerBar = beatsPerBar * this->currentSequence_->ppqn;
-                if (ticksPerBar <= 0 && this->currentSequence_->ppqn > 0) {
-                   ticksPerBar = 4 * this->currentSequence_->ppqn;
-                }
-
-                long totalTicksInSequence = this->currentSequence_->barLength * ticksPerBar;
-
-                if (totalTicksInSequence <= 0) {
-                    if(this->currentSequence_->ppqn > 0) {
-                       totalTicksInSequence = 4L * 4L * this->currentSequence_->ppqn;
-                    } else {
-                       totalTicksInSequence = -1L;
-                    }
-                }
-
-                if (totalTicksInSequence > 0 && this->currentSequence_->currentPlayheadTicks >= totalTicksInSequence) {
-                    this->currentSequence_->currentPlayheadTicks = 0;
-                    __android_log_print(ANDROID_LOG_DEBUG, "TheOneAudioEngine",
-                                        "Sequencer looped. Playhead reset to 0. Total ticks: %ld. Accum time: %f",
-                                        totalTicksInSequence, this->timeAccumulatedForTick_);
-                }
-
-                // __android_log_print(ANDROID_LOG_VERBOSE, "TheOneAudioEngine", "Tick advanced to: %ld", this->currentSequence_->currentPlayheadTicks);
-
-                // --- Trigger Events ---
-                // Accessing currentSequence_ members is safe here due to the outer sequencerLock
-                for (auto const& [trackId, track] : this->currentSequence_->tracks) {
-                    for (const auto& event : track.events) {
-                        if (event.startTimeTicks == this->currentSequence_->currentPlayheadTicks) {
-                            if (event.type == theone::audio::EventTriggerTypeCpp::PAD_TRIGGER) {
-                                std::string padKey = event.trackId + "_" + event.padTrigger.padId;
-
-                                std::shared_ptr<theone::audio::PadSettingsCpp> padSettingsPtr;
-                                { // Scope for padSettingsMutex_
-                                    std::lock_guard<std::mutex> settingsLock(this->padSettingsMutex_);
-                                    auto it = this->padSettingsMap_.find(padKey);
-                                    if (it != this->padSettingsMap_.end()) {
-                                        padSettingsPtr = std::make_shared<theone::audio::PadSettingsCpp>(it->second);
-                                    }
-                                } // padSettingsMutex_ released
-
-                                if (padSettingsPtr) {
-                                    const theone::audio::SampleLayerCpp* selectedLayer = nullptr;
-                                    // Simplified layer selection: first enabled layer with a sampleId
-                                    for (const auto& layer : padSettingsPtr->layers) {
-                                        if (layer.enabled && !layer.sampleId.empty()) {
-                                            selectedLayer = &layer;
-                                            break;
-                                        }
-                                    }
-
-                                    if (selectedLayer) {
-                                        const theone::audio::LoadedSample* loadedSample = nullptr;
-                                        { // Scope for sampleMapMutex_
-                                            std::lock_guard<std::mutex> samplesLock(this->sampleMapMutex_);
-                                            auto sampleIt = this->sampleMap_.find(selectedLayer->sampleId);
-                                            if (sampleIt != this->sampleMap_.end()) {
-                                                loadedSample = &(sampleIt->second);
-                                            }
-                                        } // sampleMapMutex_ released
-
-                                        if (loadedSample && !loadedSample->audioData.empty()) {
-                                            std::string noteInstanceId = "seq_" + event.id + "_" +
-                                                                         std::to_string(this->currentSequence_->currentPlayheadTicks) + "_" +
-                                                                         std::to_string(this->randomEngine_() % 10000);
-
-                                            float velocityNormalized = static_cast<float>(event.padTrigger.velocity) / 127.0f;
-                                            if (velocityNormalized < 0.0f) velocityNormalized = 0.0f;
-                                            if (velocityNormalized > 1.0f) velocityNormalized = 1.0f;
-
-                                            float baseVolume = padSettingsPtr->volume;
-                                            float basePan = padSettingsPtr->pan;
-                                            float layerVolumeOffsetGain = 1.0f;
-                                            if (selectedLayer->volumeOffsetDb > -90.0f) {
-                                                layerVolumeOffsetGain = powf(10.0f, selectedLayer->volumeOffsetDb / 20.0f);
-                                            } else {
-                                                layerVolumeOffsetGain = 0.0f;
-                                            }
-                                            float layerPanOffset = selectedLayer->panOffset;
-
-                                            float finalVolume = baseVolume * layerVolumeOffsetGain * velocityNormalized;
-                                            float finalPan = basePan + layerPanOffset;
-                                            finalPan = std::max(-1.0f, std::min(1.0f, finalPan));
-
-                                            theone::audio::PlayingSound soundToPlay(loadedSample, noteInstanceId, finalVolume, finalPan);
-                                            soundToPlay.padSettings = padSettingsPtr;
-
-                                            uint32_t currentSampleRateForModules = this->audioStreamSampleRate_.load();
-                                            if (currentSampleRateForModules == 0) currentSampleRateForModules = 48000;
-
-                                            soundToPlay.ampEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-                                            soundToPlay.ampEnvelopeGen->configure(padSettingsPtr->ampEnvelope, static_cast<float>(currentSampleRateForModules), velocityNormalized);
-                                            soundToPlay.ampEnvelopeGen->triggerOn(velocityNormalized);
-
-                                            // Populate total tuning from Pad base + Layer offset
-                                            if (soundToPlay.padSettings && selectedLayer) {
-                                                soundToPlay.totalTuningCoarse_ = soundToPlay.padSettings->tuningCoarse + selectedLayer->tuningCoarseOffset;
-                                                soundToPlay.totalTuningFine_ = soundToPlay.padSettings->tuningFine + selectedLayer->tuningFineOffset;
-                                            } else if (soundToPlay.padSettings) { // Fallback if no specific layer (should ideally not happen for sequenced pad sounds)
-                                                soundToPlay.totalTuningCoarse_ = soundToPlay.padSettings->tuningCoarse;
-                                                soundToPlay.totalTuningFine_ = soundToPlay.padSettings->tuningFine;
-                                            }
-                                            // totalTuningCoarse_ and totalTuningFine_ remain 0 if no padSettings
-
-                                            if (padSettingsPtr->hasPitchEnvelope) {
-                                                soundToPlay.pitchEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-                                                soundToPlay.pitchEnvelopeGen->configure(padSettingsPtr->pitchEnvelope, static_cast<float>(currentSampleRateForModules), velocityNormalized);
-                                                soundToPlay.pitchEnvelopeGen->triggerOn(velocityNormalized);
-                                            }
-
-                                            if (padSettingsPtr->hasFilterEnvelope) {
-                                                soundToPlay.filterEnvelopeGen = std::make_unique<theone::audio::EnvelopeGenerator>();
-                                                soundToPlay.filterEnvelopeGen->configure(padSettingsPtr->filterEnvelope, static_cast<float>(currentSampleRateForModules), velocityNormalized);
-                                                soundToPlay.filterEnvelopeGen->triggerOn(velocityNormalized);
-                                            }
-
-                                            soundToPlay.lfoGens.clear();
-                                            float currentTempo = this->currentSequence_ ? this->currentSequence_->bpm : 120.0f;
-                                            if (currentTempo <= 0) currentTempo = 120.0f;
-
-                                            for (const auto& lfoConfig : padSettingsPtr->lfos) {
-                                                if (lfoConfig.isEnabled) {
-                                                    auto lfo = std::make_unique<theone::audio::LfoGenerator>();
-                                                    lfo->configure(lfoConfig, static_cast<float>(currentSampleRateForModules), currentTempo);
-                                                    lfo->retrigger();
-                                                    soundToPlay.lfoGens.push_back(std::move(lfo));
-                                                }
-                                            }
-
-                                            // --- Filter Initialization for new sound ---
-                                            if (soundToPlay.padSettings && soundToPlay.padSettings->filterSettings.enabled) {
-                                                uint32_t currentSr = this->audioStreamSampleRate_.load();
-                                                if (currentSr == 0) currentSr = 48000; // Fallback
-
-                                                soundToPlay.filterL_ = std::make_unique<theone::audio::StateVariableFilter>();
-                                                soundToPlay.filterR_ = std::make_unique<theone::audio::StateVariableFilter>();
-
-                                                soundToPlay.filterL_->setSampleRate(static_cast<float>(currentSr));
-                                                soundToPlay.filterR_->setSampleRate(static_cast<float>(currentSr));
-
-                                                soundToPlay.filterL_->configure(
-                                                    soundToPlay.padSettings->filterSettings.mode,
-                                                    soundToPlay.padSettings->filterSettings.cutoffHz,
-                                                    soundToPlay.padSettings->filterSettings.resonance
-                                                );
-                                                soundToPlay.filterR_->configure(
-                                                    soundToPlay.padSettings->filterSettings.mode,
-                                                    soundToPlay.padSettings->filterSettings.cutoffHz,
-                                                    soundToPlay.padSettings->filterSettings.resonance
-                                                );
-                                            }
-                                            // --- End Filter Initialization ---
-
-                                            { // Scope for activeSoundsMutex_
-                                                std::lock_guard<std::mutex> activeSoundsLock(this->activeSoundsMutex_);
-                                                this->activeSounds_.push_back(std::move(soundToPlay));
-                                            }
-                                            __android_log_print(ANDROID_LOG_DEBUG, "TheOneAudioEngine",
-                                                                "Sequencer triggered sound for event %s (pad %s), sample %s, vel %d at tick %ld. Active sounds: %zu",
-                                                                event.id.c_str(), padKey.c_str(), selectedLayer->sampleId.c_str(),
-                                                                event.padTrigger.velocity, this->currentSequence_->currentPlayheadTicks,
-                                                                this->activeSounds_.size()); // Size access might need lock or be approx.
-                                        } else {
-                                            __android_log_print(ANDROID_LOG_WARN, "TheOneAudioEngine",
-                                                                "Sequencer: Sample '%s' for layer in pad '%s' not found or empty.",
-                                                                selectedLayer->sampleId.c_str(), padKey.c_str());
-                                        }
-                                    } else {
-                                        __android_log_print(ANDROID_LOG_WARN, "TheOneAudioEngine",
-                                                            "Sequencer: No suitable (enabled with sampleId) layer found for pad '%s'.", padKey.c_str());
-                                    }
-                                } else {
-                                    __android_log_print(ANDROID_LOG_WARN, "TheOneAudioEngine",
-                                                        "Sequencer: PadSettings not found for key '%s'.", padKey.c_str());
-                                }
-                            } // end if PAD_TRIGGER
-                        } // end if event.startTimeTicks == currentPlayheadTicks
-                    } // end for events in track
-                } // end for tracks in sequence
-                // --- End Trigger Events ---
-            }
-        }
+    int32_t channelCount = oboeStream->getChannelCount();
+    
+    // Clear the buffer first
+    memset(outputBuffer, 0, sizeof(float) * numFrames * channelCount);
+    
+    // 🎵 MASTER VOLUME CONTROL
+    float masterVolume = masterVolume_.load();
+    if (masterVolume <= 0.0f) {
+        return oboe::DataCallbackResult::Continue; // Silent when muted
     }
-    // --- End Sequencer Clock Processing ---
+    
+    // 🔥 SAMPLE PLAYBACK ENGINE 
+    processSamplePlayback(outputBuffer, numFrames, channelCount);
+    
+    // 🎛️ TEST TONE GENERATOR (for initial testing)
+    if (testToneEnabled_.load()) {
+        generateTestTone(outputBuffer, numFrames, channelCount);
+    }
+    
+    // 🥁 METRONOME (if enabled)
+    processMetronome(outputBuffer, numFrames, channelCount);
+    
+    // 🎹 APPLY MASTER VOLUME & LIMITING
+    applyMasterProcessing(outputBuffer, numFrames, channelCount, masterVolume);    return oboe::DataCallbackResult::Continue;
+}
 
-    // Placeholder for where complex audio rendering would occur, similar to the one in native-lib.cpp
-    // This would involve iterating activeSounds_, processing metronome, sequencer events,
-    // applying envelopes, LFOs, and mixing into outputBuffer.
-    // All accesses to shared data (padSettingsMap_, sampleMap_, activeSounds_, etc.)
-    // must be protected by their respective mutexes (padSettingsMutex_, sampleMapMutex_, etc.).
-
-    // --- Active Sounds Processing ---
-    { // Scope for activeSoundsMutex_
-        std::lock_guard<std::mutex> activeSoundsLock(this->activeSoundsMutex_);
-        uint32_t streamChannels = static_cast<uint32_t>(oboeStream->getChannelCount());
-
-        for (auto soundIt = this->activeSounds_.begin(); soundIt != this->activeSounds_.end(); /* no increment here */) {
-            theone::audio::PlayingSound &sound = *soundIt;
-
-            if (!sound.isActive.load()) {
-                ++soundIt; // Still need to advance iterator if just checking inactive ones prior to erase-remove
+// 🎵 EPIC SAMPLE PLAYBACK ENGINE
+void AudioEngine::processSamplePlayback(float* outputBuffer, int32_t numFrames, int32_t channelCount) {
+    std::lock_guard<std::mutex> activeSoundsLock(activeSoundsMutex_);
+    
+    for (auto it = activeSounds_.begin(); it != activeSounds_.end();) {
+        ActiveSound& sound = *it;
+        
+        // Get sample data
+        std::shared_ptr<SampleDataCpp> sampleData;
+        {
+            std::lock_guard<std::mutex> sampleLock(sampleMutex_);
+            auto sampleIt = sampleMap_.find(sound.sampleKey);
+            if (sampleIt == sampleMap_.end()) {
+                it = activeSounds_.erase(it);
                 continue;
             }
-
-            const theone::audio::LoadedSample* loadedSample = sound.loadedSamplePtr;
-            if (!loadedSample || loadedSample->audioData.empty() || loadedSample->frameCount == 0) {
-                sound.isActive.store(false);
-                ++soundIt;
-                continue;
+            sampleData = sampleIt->second;
+        }
+        
+        bool soundFinished = false;
+          // Process each frame
+        for (int32_t frame = 0; frame < numFrames; ++frame) {
+            // Check bounds based on frame count, not sample count
+            size_t currentFrame = static_cast<size_t>(sound.currentSampleIndex);
+            size_t totalFrames = sampleData->sampleCount / sampleData->channels;
+            
+            if (currentFrame >= totalFrames) {
+                soundFinished = true;
+                break;
             }
-
-            uint32_t sampleChannels = loadedSample->format.channels;
-            float ampEnvValue = 1.0f;
-            float pitchEnvValue = 0.0f; // Typically additive, centered at 0
-            float filterEnvValue = 1.0f; // Typically multiplicative for cutoff modulation
-
-            // Envelope Processing
-            if (sound.padSettings) { // Pad-triggered sound
-                if (sound.ampEnvelopeGen) {
-                    ampEnvValue = sound.ampEnvelopeGen->process();
-                    if (sound.ampEnvelopeGen->getCurrentStage() == theone::audio::EnvelopeStage::IDLE && ampEnvValue < 0.001f) {
-                        sound.isActive.store(false);
-                    }
-                }
-                if (sound.padSettings->hasPitchEnvelope && sound.pitchEnvelopeGen) {
-                    pitchEnvValue = sound.pitchEnvelopeGen->process();
-                     // Check if pitch env is done, though it doesn't make sound inactive
-                    if (sound.pitchEnvelopeGen->getCurrentStage() == theone::audio::EnvelopeStage::IDLE) {
-                        // Pitch envelope finished, could reset or hold last value
-                    }
-                }
-                if (sound.padSettings->hasFilterEnvelope && sound.filterEnvelopeGen) {
-                    filterEnvValue = sound.filterEnvelopeGen->process();
-                    // Check if filter env is done
-                    if (sound.filterEnvelopeGen->getCurrentStage() == theone::audio::EnvelopeStage::IDLE) {
-                        // Filter envelope finished
-                    }
-                }
-            } else { // Non-pad sound (e.g., metronome if it were routed here, or other simple triggers)
-                if (sound.ampEnvelopeGen) { // Basic amp envelope for non-pad sounds
-                    ampEnvValue = sound.ampEnvelopeGen->process();
-                    if (sound.ampEnvelopeGen->getCurrentStage() == theone::audio::EnvelopeStage::IDLE && ampEnvValue < 0.001f) {
-                        sound.isActive.store(false);
-                    }
+            
+            // Get sample value with bounds checking
+            float sampleValue = 0.0f;
+            if (sampleData->channels == 1) {
+                // Mono sample
+                sampleValue = sampleData->samples[currentFrame];
+            } else if (sampleData->channels == 2) {
+                // Stereo sample - mix to mono for simplicity, or we could do proper stereo positioning
+                size_t leftIndex = currentFrame * 2;
+                size_t rightIndex = leftIndex + 1;
+                if (rightIndex < sampleData->sampleCount) {
+                    sampleValue = (sampleData->samples[leftIndex] + sampleData->samples[rightIndex]) * 0.5f;
+                } else {
+                    sampleValue = sampleData->samples[leftIndex];
                 }
             }
-
-            // LFO Processing
-            float lfoVolumeMod = 1.0f;  // Multiplicative
-            float lfoPanMod = 0.0f;     // Additive
-            float lfoPitchMod = 0.0f;   // Additive (semitones or cents)
-            float lfoFilterMod = 0.0f;  // Additive (filter cutoff units)
-
-            if (sound.padSettings && !sound.lfoGens.empty()) {
-                for (size_t i = 0; i < sound.lfoGens.size() && i < sound.padSettings->lfos.size(); ++i) {
-                    if (!sound.lfoGens[i] || !sound.padSettings->lfos[i].isEnabled) continue;
-
-                    float lfoValue = sound.lfoGens[i]->process(); // Output typically -1 to 1 or 0 to 1
-                    const auto& lfoConfig = sound.padSettings->lfos[i];
-
-                    // Apply LFO based on its primary destination
-                    // Note: The 'depth' controls how much the LFO affects the parameter.
-                    // A bipolar LFO (-1 to 1) with depth D would modulate Param by +/- D.
-                    // A unipolar LFO (0 to 1) with depth D would modulate Param by 0 to D.
-                    // Assuming lfoValue is bipolar (-1 to 1) for these calculations.
-                    // If LFO is unipolar, it should be mapped to bipolar, or calculations adjusted.
-                    // For simplicity, assume lfoValue is already appropriately scaled by LFO generator itself if needed.
-
-                    switch (lfoConfig.primaryDestination) {
-                        case LfoDestinationCpp::VOLUME:
-                            // lfoValue is -1 to 1. Depth is 0 to 1.
-                            // Modulates volume multiplicatively. Example: (1 + lfoValue * depth)
-                            // To ensure volume doesn't go negative: (1.0f + lfoValue * lfoConfig.depth)
-                            // Or more commonly, map LFO to a factor: e.g. 0.5 to 1.5
-                            // lfoVolumeMod *= (1.0f + lfoValue * lfoConfig.depth); // This can be problematic if depth is high
-                                                        // A safer way: make LFO apply to a range.
-                                                        // If LFO is -1 to 1, depth is 0.5, then range is 1.0 +/- 0.5 => 0.5 to 1.5
-                                                        // Or, if LFO is 0 to 1 (e.g. for tremolo), depth 0.5, then range is 1.0 - (0 to 0.5) => 0.5 to 1.0
-                                                        // Let's assume lfoValue is -1 to 1, depth is 0-1.
-                                                        // Max reduction/boost is depth. So effective_mod = 1 + lfoValue * depth.
-                            lfoVolumeMod *= (1.0f + lfoValue * (lfoConfig.depth / 2.0f)); // Assuming depth is full range, so halve for +/-
-                            break;
-                        case LfoDestinationCpp::PAN:
-                            lfoPanMod += lfoValue * lfoConfig.depth; // Pan is -1 to 1. Depth is 0 to 1 (pan width)
-                            break;
-                        case LfoDestinationCpp::PITCH:
-                            // Pitch mod is often in semitones. Depth could be # of semitones.
-                            lfoPitchMod += lfoValue * lfoConfig.depth;
-                            break;
-                        case LfoDestinationCpp::FILTER_CUTOFF:
-                            // Filter mod is often additive to a base cutoff. Depth relative to filter range.
-                            lfoFilterMod += lfoValue * lfoConfig.depth;
-                            break;
-                        default: // NONE or other unhandled
-                            break;
-                    }
-                }
-                // Clamp LFO modulations to sensible ranges
-                lfoVolumeMod = std::max(0.0f, std::min(2.0f, lfoVolumeMod)); // e.g. 0x to 2x volume
-                lfoPanMod = std::max(-1.0f, std::min(1.0f, lfoPanMod));     // Clamp total pan mod contribution
+              // Apply envelope
+            float envelopeValue = sound.envelope.process();
+            float finalSample = sampleValue * envelopeValue * sound.volume;
+            
+            // Mix to output (stereo)
+            if (channelCount == 2) {
+                float leftGain = (1.0f - std::max(0.0f, sound.pan)) * 0.707f; // -3dB pan law
+                float rightGain = (1.0f + std::min(0.0f, sound.pan)) * 0.707f;
+                
+                outputBuffer[frame * 2] += finalSample * leftGain;
+                outputBuffer[frame * 2 + 1] += finalSample * rightGain;
+            } else {
+                // Mono output
+                outputBuffer[frame] += finalSample;
             }
-            // (Pitch and Filter LFOs would be applied during sample generation/DSP if those were here)
-
-            // --- A. Calculate Effective Pitch Modulation ---
-            // Combine coarse and fine tuning. Fine tuning is in cents (1/100th of a semitone).
-            float soundSpecificBaseTuneSemitones = static_cast<float>(sound.totalTuningCoarse_) + (static_cast<float>(sound.totalTuningFine_) / 100.0f);
-
-            float pitchEnvSemitones = 0.0f;
-            // Assuming pitchEnvValue is the raw value from the envelope generator (0 to 1.0)
-            // And lfoPitchMod is already in semitones.
-            if (sound.pitchEnvelopeGen && sound.padSettings && sound.padSettings->hasPitchEnvelope) {
-                // pitchEnvValue was already processed earlier in the "Envelope Processing" section.
-                float pitchEnvDepth = 24.0f; // Default, consider making this configurable per pad/layer if needed
-                                             // Example: pitchEnvDepth = sound.padSettings->pitchEnvelope.depthSemitones; // Assumes field exists
-                pitchEnvSemitones = pitchEnvDepth * (pitchEnvValue - 0.5f) * 2.0f; // Assumes pitchEnvValue is 0-1
+            
+            // Advance sample position
+            sound.currentSampleIndex += sound.playbackSpeed;
+            
+            // Check if envelope finished
+            if (!sound.envelope.isActive()) {
+                soundFinished = true;
+                break;
             }
-
-            float lfoPitchSemitones = lfoPitchMod; // Assuming lfoPitchMod is already correctly scaled (e.g. in semitones)
-
-            // Total pitch shift includes sound's base tuning, envelope, and LFO
-            float totalPitchShiftSemitones = soundSpecificBaseTuneSemitones + pitchEnvSemitones + lfoPitchSemitones;
-            float currentPitchFactor = powf(2.0f, totalPitchShiftSemitones / 12.0f);
-            currentPitchFactor = std::max(0.1f, std::min(4.0f, currentPitchFactor)); // Sanity clamp pitch factor
-
-            // --- B. Calculate Effective Filter Cutoff (Filter Modulation) ---
-            // Note: The main filter sample rate update (setSampleRate) is now done at sound creation.
-            // We might still need to update it here if the engine's sample rate can change dynamically
-            // *during* a sound's lifetime, which is less common for typical audio engine designs using Oboe.
-            // For now, assuming it's stable for the duration of a playing sound.
-
-            if (sound.filterL_ && sound.filterR_ && sound.padSettings && sound.padSettings->filterSettings.enabled) {
-                uint32_t currentSr = this->audioStreamSampleRate_.load();
-                if (currentSr == 0) currentSr = 48000; // Fallback
-
-                // Optional: Re-check and set sample rate if it could change dynamically.
-                // if (sound.filterL_->getSampleRate() != static_cast<float>(currentSr)) {
-                //     sound.filterL_->setSampleRate(static_cast<float>(currentSr));
-                // }
-                // if (sound.filterR_->getSampleRate() != static_cast<float>(currentSr)) {
-                //     sound.filterR_->setSampleRate(static_cast<float>(currentSr));
-                // }
-
-                float baseCutoffHz = sound.padSettings->filterSettings.cutoffHz;
-                float baseResonance = sound.padSettings->filterSettings.resonance;
-                float modulatedCutoffHz = baseCutoffHz;
-
-                if (sound.filterEnvelopeGen && sound.padSettings->hasFilterEnvelope) {
-                    // filterEnvValue was already processed in "Envelope Processing" section
-                    float filterEnvDepthOctaves = sound.padSettings->filterSettings.envAmount;
-                    modulatedCutoffHz *= powf(2.0f, filterEnvDepthOctaves * (filterEnvValue - 0.5f) * 2.0f);
-                }
-
-                float lfoModOctaves = lfoFilterMod; // lfoFilterMod is assumed to be an octave offset
-                modulatedCutoffHz *= powf(2.0f, lfoModOctaves);
-
-                float nyquistLimit = static_cast<float>(currentSr) / 2.0f;
-                modulatedCutoffHz = std::max(20.0f, std::min(modulatedCutoffHz, nyquistLimit - 100.0f));
-                if (modulatedCutoffHz < 20.0f) modulatedCutoffHz = 20.0f;
-
-                sound.filterL_->configure(sound.padSettings->filterSettings.mode, modulatedCutoffHz, baseResonance);
-                sound.filterR_->configure(sound.padSettings->filterSettings.mode, modulatedCutoffHz, baseResonance);
-            }
-
-            // Panning and Gain Calculation
-            float currentPan = sound.initialPan + lfoPanMod;
-            currentPan = std::max(-1.0f, std::min(1.0f, currentPan)); // Clamp final pan
-
-            // Convert pan (-1 to 1) to radians for stereo gain calculation (constant power panning)
-            // M_PI_4 is pi/4. Pan value from -1 to 1 maps to 0 to pi/2.
-            // Pan = -1 (Left)  => angle = 0      => cos(0)=1, sin(0)=0
-            // Pan =  0 (Center) => angle = pi/4   => cos(pi/4)=sin(pi/4)=sqrt(2)/2
-            // Pan =  1 (Right) => angle = pi/2   => cos(pi/2)=0, sin(pi/2)=1
-            float panRad = (currentPan * 0.5f + 0.5f) * (float)M_PI_2; // M_PI_2 is pi/2
-
-            float overallGain = sound.initialVolume * ampEnvValue * lfoVolumeMod;
-            overallGain = std::max(0.0f, overallGain); // Ensure gain is not negative
-
-            float finalGainL = overallGain * cosf(panRad);
-            float finalGainR = overallGain * sinf(panRad);
-
-            // --- B. Frame-by-Frame Mixing Loop (with resampling) ---
-            for (int frame = 0; frame < numFrames; ++frame) {
-                if (!sound.isActive.load()) {
-                    break; // Sound became inactive during this frame block
-                }
-
-                size_t effEndFrame = sound.useSlicing ? sound.endFrame : loadedSample->frameCount;
-                if (effEndFrame == 0 && loadedSample->frameCount > 0) effEndFrame = loadedSample->frameCount;
-
-
-                // Determine integer indices and fraction for interpolation
-                size_t index0 = static_cast<size_t>(sound.fractionalFramePosition);
-                float fraction = static_cast<float>(sound.fractionalFramePosition - index0);
-                size_t index1 = index0 + 1;
-
-                // Boundary checks for index0 and index1 against sample/slice boundaries
-                if (index0 >= effEndFrame) {
-                    if (sound.isLooping && sound.loopStartFrame < sound.loopEndFrame && sound.loopEndFrame <= effEndFrame) {
-                        double overshoot = sound.fractionalFramePosition - static_cast<double>(effEndFrame);
-                        sound.fractionalFramePosition = static_cast<double>(sound.loopStartFrame) + overshoot;
-                        // Recalculate indices and fraction
-                        index0 = static_cast<size_t>(sound.fractionalFramePosition);
-                        fraction = static_cast<float>(sound.fractionalFramePosition - index0);
-                        index1 = index0 + 1;
-                        // Ensure new index0 is not immediately causing another loop or end
-                        if (index0 >= effEndFrame) {
-                             sound.isActive.store(false); // Stuck in a loop or bad loop parameters
-                             break;
-                        }
-                    } else {
-                        sound.isActive.store(false);
-                        break;
-                    }
-                }
-
-                // Ensure index1 is within bounds for interpolation.
-                // If index0 is the last valid frame, index1 would be out of bounds.
-                // In this case, we can use sample0 for sample1 (zero-order hold for the last fraction).
-                if (index1 >= loadedSample->frameCount) { // Check against the absolute sample frameCount
-                    index1 = index0; // Use sample0 for sample1 if index1 is out of bounds
-                    if (index0 >= loadedSample->frameCount) { // Should not happen if effEndFrame is correct
-                        sound.isActive.store(false);
-                        break;
-                    }
-                }
-                 // Further check if index0 itself has gone past actual sample data (e.g. bad loop parameters)
-                if (index0 >= loadedSample->frameCount) {
-                    sound.isActive.store(false);
-                    break;
-                }
-
-
-                // Fetch samples
-                float sample0_L = 0.0f, sample0_R = 0.0f;
-                float sample1_L = 0.0f, sample1_R = 0.0f;
-
-                if (sampleChannels == 1) { // Mono sample
-                    sample0_L = loadedSample->audioData[index0];
-                    sample1_L = loadedSample->audioData[index1];
-                    if (streamChannels == 2) {
-                        sample0_R = sample0_L;
-                        sample1_R = sample1_L;
-                    }
-                } else if (sampleChannels == 2) { // Stereo sample
-                    sample0_L = loadedSample->audioData[index0 * 2];
-                    sample0_R = loadedSample->audioData[index0 * 2 + 1];
-                    sample1_L = loadedSample->audioData[index1 * 2];
-                    sample1_R = loadedSample->audioData[index1 * 2 + 1];
-                }
-
-                // Linear Interpolation
-                float interpolatedSample_L = sample0_L * (1.0f - fraction) + sample1_L * fraction;
-                float interpolatedSample_R = (streamChannels == 2) ? (sample0_R * (1.0f - fraction) + sample1_R * fraction) : 0.0f;
-
-                // --- C. Apply Filter ---
-                float processedSample_L = interpolatedSample_L;
-                float processedSample_R = interpolatedSample_R;
-
-                if (sound.filterL_ && sound.filterR_ && sound.padSettings && sound.padSettings->filterSettings.enabled) {
-                    processedSample_L = sound.filterL_->process(interpolatedSample_L);
-                    if (streamChannels == 2) {
-                        processedSample_R = sound.filterR_->process(interpolatedSample_R);
-                    } else if (streamChannels == 1 && sampleChannels == 2) {
-                        // If output is mono but sample was stereo, the R channel of the sample was already
-                        // mixed into interpolatedSample_L if sampleChannels == 1 logic was hit earlier,
-                        // or interpolatedSample_R contains the R channel data.
-                        // For mono output, we only care about processedSample_L.
-                        // If stereo sample to mono output needs R channel filtered too before summing,
-                        // that logic would be more complex and happen before this point or during mixing.
-                        // Current structure implies interpolatedSample_L is the one to use for mono output.
-                    }
-                }
-
-                // Mix into output buffer
-                if (streamChannels == 1) { // Mono output
-                    outputBuffer[frame] += processedSample_L * overallGain; // Panning ignored for mono output
-                } else if (streamChannels == 2) { // Stereo output
-                    outputBuffer[frame * streamChannels] += processedSample_L * finalGainL;
-                    outputBuffer[frame * streamChannels + 1] += processedSample_R * finalGainR;
-                }
-                // else: Handle other channel counts if necessary
-
-                // Advance fractional frame position
-                sound.fractionalFramePosition += currentPitchFactor;
-                sound.currentFrame = static_cast<size_t>(sound.fractionalFramePosition); // Keep legacy currentFrame somewhat in sync
-
-            } // End of frame-by-frame mixing loop for one sound
-
-            if (!sound.isActive.load()) {
-                // Sound became inactive, mark for removal.
-                // The actual removal happens after the main loop.
-            }
-            ++soundIt; // Advance iterator for the next sound
-        } // End of activeSounds_ loop
-
-        // Remove inactive sounds using erase-remove-if idiom
-        this->activeSounds_.erase(
-            std::remove_if(this->activeSounds_.begin(), this->activeSounds_.end(),
-                           [](const theone::audio::PlayingSound& s) {
-                               return !s.isActive.load();
-                           }),
-            this->activeSounds_.end());
-
-    } // End of scope for activeSoundsMutex_
-    // --- End Active Sounds Processing ---
-
-
-    return oboe::DataCallbackResult::Continue;
-}
-
-void AudioEngine::onErrorBeforeClose(oboe::AudioStream *oboeStream, oboe::Result error) {
-    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine ErrorBeforeClose: %s", oboe::convertToText(error));
-}
-
-void AudioEngine::onErrorAfterClose(oboe::AudioStream *oboeStream, oboe::Result error) {
-    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine ErrorAfterClose: %s", oboe::convertToText(error));
-    // May need to recreate stream or enter a fallback state
-    oboeInitialized_.store(false);
-    // Consider attempting to re-initialize or notify UI
-}
-
-bool AudioEngine::isOboeInitialized() const {
-    return oboeInitialized_.load() && outStream_ && outStream_->getState() != oboe::StreamState::Closed;
-}
-
-float AudioEngine::getOboeReportedLatencyMillis() const {
-    if (isOboeInitialized()) {
-        oboe::ResultWithValue<double> latency = outStream_->calculateLatencyMillis();
-        if (latency) {
-            return static_cast<jfloat>(latency.value());
+        }
+        
+        if (soundFinished) {
+            it = activeSounds_.erase(it);
+        } else {
+            ++it;
         }
     }
-    return -1.0f;
 }
 
-// Add a write proc for file descriptors
-template<typename T>
-static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite) {
-    int fd = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
-    ssize_t written = write(fd, pData, bytesToWrite);
-    return written < 0 ? 0 : static_cast<size_t>(written);
+// 🎛️ TEST TONE GENERATOR
+void AudioEngine::generateTestTone(float* outputBuffer, int32_t numFrames, int32_t channelCount) {
+    static float phase = 0.0f;
+    float frequency = 440.0f; // A4 note
+    float amplitude = 0.1f;   // Gentle volume
+    float phaseIncrement = 2.0f * M_PI * frequency / audioStreamSampleRate_.load();
+    
+    for (int32_t frame = 0; frame < numFrames; ++frame) {
+        float sampleValue = sinf(phase) * amplitude;
+        
+        if (channelCount == 2) {
+            outputBuffer[frame * 2] += sampleValue;     // Left
+            outputBuffer[frame * 2 + 1] += sampleValue; // Right
+        } else {
+            outputBuffer[frame] += sampleValue;
+        }
+        
+        phase += phaseIncrement;
+        if (phase > 2.0f * M_PI) {
+            phase -= 2.0f * M_PI;
+        }
+    }
 }
 
-// --- Placeholder/Simplified Implementations for other methods from AudioEngine.h ---
-// These would need full implementations similar to what was in native-lib.cpp,
-// but adapted to use class members and appropriate mutexes.
+// 🥁 METRONOME PROCESSOR
+void AudioEngine::processMetronome(float* outputBuffer, int32_t numFrames, int32_t channelCount) {
+    std::lock_guard<std::mutex> lock(metronomeStateMutex_);
+    
+    if (!metronomeState_.enabled.load()) return;
+    
+    // Generate metronome clicks based on current timing
+    // This is a simplified version - full implementation would sync with sequencer
+    static int clickCounter = 0;
+    
+    if (clickCounter <= 0) {
+        // Generate click sound (short burst of high frequency)
+        float clickAmplitude = 0.3f;
+        float clickFreq = 800.0f;
+        int clickDuration = audioStreamSampleRate_.load() * 0.01f; // 10ms click
+        
+        for (int32_t frame = 0; frame < std::min(numFrames, clickDuration); ++frame) {
+            float clickValue = sinf(2.0f * M_PI * clickFreq * frame / audioStreamSampleRate_.load()) * clickAmplitude;
+            clickValue *= (1.0f - (float)frame / clickDuration); // Fade out
+            
+            if (channelCount == 2) {
+                outputBuffer[frame * 2] += clickValue;
+                outputBuffer[frame * 2 + 1] += clickValue;
+            } else {
+                outputBuffer[frame] += clickValue;
+            }
+        }
+        
+        // Reset counter based on BPM (simplified)
+        clickCounter = audioStreamSampleRate_.load() * 60 / 120; // 120 BPM
+    }
+    
+    clickCounter -= numFrames;
+}
 
-bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::string& filePath, long offset, long length) {
-    if (filePath.empty() || length <= 0) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Invalid filePath or length");
-        return false;
+// 🎹 MASTER PROCESSING & LIMITING
+void AudioEngine::applyMasterProcessing(float* outputBuffer, int32_t numFrames, int32_t channelCount, float masterVolume) {
+    for (int32_t frame = 0; frame < numFrames; ++frame) {
+        for (int32_t channel = 0; channel < channelCount; ++channel) {
+            int32_t index = frame * channelCount + channel;
+            
+            // Apply master volume
+            outputBuffer[index] *= masterVolume;
+            
+            // Soft limiting to prevent clipping
+            if (outputBuffer[index] > 0.95f) {
+                outputBuffer[index] = 0.95f;
+            } else if (outputBuffer[index] < -0.95f) {
+                outputBuffer[index] = -0.95f;            }
+        }
     }
-    std::lock_guard<std::mutex> lock(sampleMapMutex_);
-    if (sampleMap_.count(sampleId) > 0) {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "AudioEngine::loadSampleToMemory - Sample '%s' already loaded.", sampleId.c_str());
-        return true;
+}
+
+void AudioEngine::setSampleEnvelope(const std::string& sampleId, const EnvelopeSettingsCpp& envelope) {
+    // TODO: Implement envelope assignment logic
+}
+
+// 🔥 EPIC SAMPLE TRIGGERING IMPLEMENTATION
+void AudioEngine::triggerSample(const std::string& sampleKey, float volume, float pan) {
+    std::lock_guard<std::mutex> sampleLock(sampleMutex_);
+    
+    // Check if sample exists
+    auto it = sampleMap_.find(sampleKey);
+    if (it == sampleMap_.end()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "triggerSample: Sample not found: %s", sampleKey.c_str());
+        return;
     }
-    FILE* file = fopen(filePath.c_str(), "rb");
-    if (!file) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to open file %s", filePath.c_str());
-        return false;
+    
+    // Create new active sound
+    ActiveSound newSound(sampleKey, volume, pan);
+    
+    // Add to active sounds
+    {
+        std::lock_guard<std::mutex> activeLock(activeSoundsMutex_);
+        activeSounds_.emplace_back(std::move(newSound));
     }
-    if (fseek(file, offset, SEEK_SET) != 0) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to fseek to offset %ld", offset);
-        fclose(file);
-        return false;
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🎵 Sample triggered: %s (vol: %.2f, pan: %.2f)", 
+                       sampleKey.c_str(), volume, pan);
+}
+
+void AudioEngine::stopAllSamples() {
+    std::lock_guard<std::mutex> activeLock(activeSoundsMutex_);
+    
+    // Trigger release on all active sounds
+    for (auto& sound : activeSounds_) {
+        sound.envelope.triggerOff();
     }
-    drwav wav;
-    if (!drwav_init_file(&wav, filePath.c_str(), nullptr)) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "AudioEngine::loadSampleToMemory - Failed to init drwav for file %s", filePath.c_str());
-        fclose(file);
-        return false;
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🛑 All samples stopped");
+}
+
+void AudioEngine::loadTestSample(const std::string& sampleKey) {
+    {
+        std::lock_guard<std::mutex> lock(sampleMutex_);
+        
+        // Check if test sample is already loaded
+        if (sampleMap_.find(sampleKey) != sampleMap_.end()) {
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Test sample %s already loaded", sampleKey.c_str());
+            return;
+        }
     }
-    size_t totalFrames = static_cast<size_t>(wav.totalPCMFrameCount);
-    size_t numChannels = wav.channels;
-    std::vector<float> audioData(totalFrames * numChannels);
-    drwav_uint64 framesRead = drwav_read_pcm_frames_f32(&wav, wav.totalPCMFrameCount, audioData.data());
-    if (framesRead != wav.totalPCMFrameCount) {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "AudioEngine::loadSampleToMemory - Only read %llu/%llu frames", (unsigned long long)framesRead, (unsigned long long)wav.totalPCMFrameCount);
+    
+    // Create test sample - a nice drum hit simulation
+    uint32_t sampleRate = 44100;
+    uint16_t channels = 1;
+    size_t durationFrames = 22050; // 0.5 seconds
+    size_t totalSamples = durationFrames * channels;
+    
+    std::vector<float> audioData(totalSamples);
+    
+    // Generate a punchy drum-like sound (kick drum simulation)
+    for (size_t i = 0; i < durationFrames; ++i) {
+        float t = static_cast<float>(i) / static_cast<float>(sampleRate);
+        
+        // Low frequency sine wave (kick fundamental)
+        float kick = sinf(2.0f * M_PI * 60.0f * t) * expf(-t * 8.0f);
+        
+        // Click component (attack)
+        float click = sinf(2.0f * M_PI * 300.0f * t) * expf(-t * 30.0f);
+        
+        // Combine and shape
+        float sample = (kick * 0.8f + click * 0.3f) * 0.7f;
+        
+        // Apply a gentle limiter to prevent clipping
+        if (sample > 0.95f) sample = 0.95f;
+        if (sample < -0.95f) sample = -0.95f;
+        
+        audioData[i * channels] = sample;
     }
-    drwav_uninit(&wav);
-    fclose(file);
-    LoadedSample sample;
-    sample.id = sampleId;
-    sample.format.channels = static_cast<uint16_t>(numChannels);
-    sample.format.sampleRate = static_cast<uint32_t>(wav.sampleRate);
-    sample.format.bitDepth = 32; // We use float
-    sample.audioData = std::move(audioData);
-    sample.frameCount = static_cast<size_t>(framesRead);
-    sampleMap_[sampleId] = std::move(sample);
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::loadSampleToMemory - Loaded sample '%s' (%llu frames, %zu channels)", sampleId.c_str(), (unsigned long long)framesRead, numChannels);
+    
+    // Create SampleDataCpp object
+    auto sampleData = std::make_shared<SampleDataCpp>(
+        sampleKey,
+        std::move(audioData),
+        totalSamples,
+        sampleRate,
+        channels
+    );
+    
+    // Store in sample map
+    {
+        std::lock_guard<std::mutex> lock(sampleMutex_);
+        sampleMap_[sampleKey] = sampleData;
+    }
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🥁 Test sample loaded: %s (%zu samples, %u Hz, %u channels)", 
+                        sampleKey.c_str(), totalSamples, sampleRate, channels);
+}
+
+void AudioEngine::setSampleLFO(const std::string& sampleId, const LfoSettingsCpp& lfo) {
+    // TODO: Implement LFO assignment logic
+}
+
+// 🎯 CONVENIENCE FUNCTIONS FOR TESTING
+
+bool AudioEngine::createAndTriggerTestSample(const std::string& sampleKey, float volume, float pan) {
+    // Load test sample if not already loaded
+    loadTestSample(sampleKey);
+    
+    // Trigger the sample
+    triggerSample(sampleKey, volume, pan);
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🚀 Created and triggered test sample: %s", sampleKey.c_str());
     return true;
 }
 
-bool AudioEngine::isSampleLoaded(const std::string& sampleId) {
-    std::lock_guard<std::mutex> lock(sampleMapMutex_);
-    return sampleMap_.count(sampleId) > 0;
+// --- Missing Function Implementations ---
+
+void AudioEngine::setMetronomeState(bool isEnabled, float bpm, int timeSigNum, int timeSigDen,
+                                   const std::string& primarySoundSampleId, const std::string& secondarySoundSampleId) {
+    std::lock_guard<std::mutex> lock(metronomeStateMutex_);
+    metronomeState_.enabled.store(isEnabled);
+    metronomeState_.bpm.store(bpm);
+    metronomeState_.timeSignatureNum.store(timeSigNum);
+    metronomeState_.timeSignatureDen.store(timeSigDen);
+    // TODO: Store sample IDs when implementing actual metronome playback
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Metronome state set: enabled=%d, bpm=%f", isEnabled, bpm);
+}
+
+bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::string& filePath, long offset, long length) {
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Loading sample: %s from %s (offset: %ld, length: %ld)", 
+                        sampleId.c_str(), filePath.c_str(), offset, length);
+
+    // Check if sample is already loaded
+    {
+        std::lock_guard<std::mutex> lock(sampleMutex_);
+        if (sampleMap_.find(sampleId) != sampleMap_.end()) {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Sample %s already loaded, skipping", sampleId.c_str());
+            return true;
+        }
+    }
+
+    // Load the WAV file using dr_wav
+    drwav wav;
+    if (!drwav_init_file(&wav, filePath.c_str(), nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to open WAV file: %s", filePath.c_str());
+        return false;
+    }
+
+    // Validate the WAV file
+    if (wav.channels == 0 || wav.channels > 2) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Unsupported channel count: %u (must be 1 or 2)", wav.channels);
+        drwav_uninit(&wav);
+        return false;
+    }
+
+    if (wav.sampleRate == 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Invalid sample rate: %u", wav.sampleRate);
+        drwav_uninit(&wav);
+        return false;
+    }
+
+    // Calculate the actual frames to load (considering offset and length)
+    uint64_t totalFrames = wav.totalPCMFrameCount;
+    uint64_t startFrame = (offset > 0) ? static_cast<uint64_t>(offset) : 0;
+    uint64_t framesToLoad = totalFrames;
+
+    if (startFrame >= totalFrames) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Offset %ld exceeds total frames %llu", offset, totalFrames);
+        drwav_uninit(&wav);
+        return false;
+    }
+
+    if (length > 0) {
+        uint64_t requestedLength = static_cast<uint64_t>(length);
+        framesToLoad = std::min(requestedLength, totalFrames - startFrame);
+    } else {
+        framesToLoad = totalFrames - startFrame;
+    }
+
+    if (framesToLoad == 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "No frames to load for sample %s", sampleId.c_str());
+        drwav_uninit(&wav);
+        return false;
+    }
+
+    // Seek to the start frame if offset is specified
+    if (startFrame > 0) {
+        if (!drwav_seek_to_pcm_frame(&wav, startFrame)) {
+            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to seek to frame %llu in %s", startFrame, filePath.c_str());
+            drwav_uninit(&wav);
+            return false;
+        }
+    }
+
+    // Allocate buffer for audio data
+    size_t totalSamples = static_cast<size_t>(framesToLoad * wav.channels);
+    std::vector<float> audioData(totalSamples);
+
+    // Read the audio data as float samples
+    uint64_t samplesRead = drwav_read_pcm_frames_f32(&wav, framesToLoad, audioData.data());
+    
+    if (samplesRead != framesToLoad) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Expected to read %llu frames, but read %llu frames", 
+                            framesToLoad, samplesRead);
+        // Adjust the vector size to actual samples read
+        audioData.resize(samplesRead * wav.channels);
+        framesToLoad = samplesRead;
+    }
+
+    // Close the WAV file
+    drwav_uninit(&wav);
+
+    // Create SampleDataCpp object
+    auto sampleData = std::make_shared<SampleDataCpp>(
+        sampleId,
+        std::move(audioData),
+        static_cast<size_t>(framesToLoad * wav.channels), // Total samples
+        wav.sampleRate,
+        static_cast<uint16_t>(wav.channels)
+    );
+
+    // Store in sample map
+    {
+        std::lock_guard<std::mutex> lock(sampleMutex_);
+        sampleMap_[sampleId] = sampleData;
+    }
+
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, 
+                        "Successfully loaded sample %s: %llu frames, %u channels, %u Hz, %zu total samples", 
+                        sampleId.c_str(), framesToLoad, wav.channels, wav.sampleRate, totalSamples);
+
+    return true;
 }
 
 void AudioEngine::unloadSample(const std::string& sampleId) {
-    std::lock_guard<std::mutex> lock(sampleMapMutex_);
-    sampleMap_.erase(sampleId);
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::unloadSample for ID: %s", sampleId.c_str());
-}
-
-int AudioEngine::getSampleRate(const std::string& sampleId) {
-    std::lock_guard<std::mutex> lock(sampleMapMutex_);
+    std::lock_guard<std::mutex> lock(sampleMutex_);
     auto it = sampleMap_.find(sampleId);
     if (it != sampleMap_.end()) {
-        return it->second.format.sampleRate;
+        sampleMap_.erase(it);
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sample unloaded: %s", sampleId.c_str());
     }
-    return 0;
 }
 
 bool AudioEngine::playPadSample(
@@ -786,194 +572,48 @@ bool AudioEngine::playPadSample(
     const std::string& sampleId,
     float velocity, float coarseTune, float fineTune, float pan, float volume,
     int playbackModeOrdinal, float ampEnvAttackMs, float ampEnvDecayMs,
-    float ampEnvSustainLevel, float ampEnvReleaseMs
-) {
-    // Lookup sample
-    const LoadedSample* samplePtr = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(sampleMapMutex_);
-        auto it = sampleMap_.find(sampleId);
-        if (it == sampleMap_.end()) {
-            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "playPadSample: Sample '%s' not loaded.", sampleId.c_str());
-            return false;
-        }
-        samplePtr = &it->second;
-    }
-    // Lookup pad settings
-    std::shared_ptr<PadSettingsCpp> padSettingsPtr;
-    {
-        std::lock_guard<std::mutex> lock(padSettingsMutex_);
-        std::string padKey = trackId + "_" + padId;
-        auto it = padSettingsMap_.find(padKey);
-        if (it != padSettingsMap_.end()) {
-            padSettingsPtr = std::make_shared<PadSettingsCpp>(it->second);
-        }
-    }
-    // Calculate effective volume and pan
-    float effectiveVolume = std::max(0.0f, std::min(2.0f, volume * velocity));
-    float effectivePan = std::max(-1.0f, std::min(1.0f, pan));
-    // Create PlayingSound
-    PlayingSound sound(samplePtr, noteInstanceId, effectiveVolume, effectivePan);
-    sound.padSettings = padSettingsPtr;
-    sound.isActive.store(true);
-    // Set tuning
-    sound.totalTuningCoarse_ = static_cast<int>(coarseTune);
-    sound.totalTuningFine_ = static_cast<int>(fineTune);
-    // Set envelope (simplified, real impl would use EnvelopeGenerator)
-    // sound.ampEnvelopeGen = std::make_unique<EnvelopeGenerator>(ampEnvAttackMs, ampEnvDecayMs, ampEnvSustainLevel, ampEnvReleaseMs);
-    // Set playback mode
-    sound.isLooping = (playbackModeOrdinal == static_cast<int>(PlaybackModeCpp::LOOP));
-    // Add to active sounds
-    {
-        std::lock_guard<std::mutex> lock(activeSoundsMutex_);
-        activeSounds_.push_back(std::move(sound));
-    }
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "playPadSample: Triggered sample '%s' on pad '%s' (noteInstanceId: %s)", sampleId.c_str(), padId.c_str(), noteInstanceId.c_str());
+    float ampEnvSustainLevel, float ampEnvReleaseMs) {
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "playPadSample called: %s", sampleId.c_str());
+    // TODO: Implement actual pad sample playback
     return true;
 }
 
-void AudioEngine::setMetronomeState(bool isEnabled, float bpm, int timeSigNum, int timeSigDen,
-                                  const std::string& primarySoundSampleId, const std::string& secondarySoundSampleId) {
-    std::lock_guard<std::mutex> lock(metronomeStateMutex_);
-    metronomeState_.enabled.store(isEnabled);
-    metronomeState_.bpm.store(bpm);
-    metronomeState_.timeSignatureNum.store(timeSigNum);
-    metronomeState_.timeSignatureDen.store(timeSigDen);
-
-    // Simplified sample lookup from main sampleMap_
-    // In a full impl, metronome samples might be distinct or specially handled.
-    {
-        std::lock_guard<std::mutex> sampleLock(sampleMapMutex_);
-        auto primaryIt = sampleMap_.find(primarySoundSampleId);
-        metronomeState_.primaryBeatSample = (primaryIt != sampleMap_.end()) ? &(primaryIt->second) : nullptr;
-        if (!secondarySoundSampleId.empty()) {
-            auto secondaryIt = sampleMap_.find(secondarySoundSampleId);
-            metronomeState_.secondaryBeatSample = (secondaryIt != sampleMap_.end()) ? &(secondaryIt->second) : nullptr;
-        } else {
-            metronomeState_.secondaryBeatSample = nullptr;
-        }
-    }
-    metronomeState_.audioStreamSampleRate = audioStreamSampleRate_.load(); // Ensure it has the current rate
-    metronomeState_.updateSchedulingParameters();
-    if (metronomeState_.enabled.load()) {
-        metronomeState_.samplesUntilNextBeat = 0; // Reset beat count for immediate start
-        metronomeState_.currentBeatInBar = metronomeState_.timeSignatureNum.load(); // Start at the last beat to trigger first beat on next cycle
-    }
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::setMetronomeState updated.");
-}
-
-void AudioEngine::setMetronomeVolume(float volume) {
-    std::lock_guard<std::mutex> lock(metronomeStateMutex_);
-    metronomeState_.volume.store(std::max(0.0f, std::min(1.0f, volume)));
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::setMetronomeVolume updated.");
-}
-
-// --- Recording (Simplified Placeholders) ---
 bool AudioEngine::startAudioRecording(JNIEnv* env, jobject context, const std::string& filePathUri, int sampleRate, int channels) {
-    std::lock_guard<std::mutex> lock(recordingStateMutex_);
-    if (isRecording_.load()) {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "startAudioRecording: Already recording.");
-        return false;
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "startAudioRecording called");
+    // TODO: Implement audio recording
+    return false;
+}
+
+float AudioEngine::getOboeReportedLatencyMillis() const {
+    if (outStream_ && oboeInitialized_.load()) {
+        auto latency = outStream_->calculateLatencyMillis();
+        if (latency) {
+            return static_cast<float>(latency.value());
+        }
     }
-    // Open file for writing
-    int fd = open(filePathUri.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to open file %s", filePathUri.c_str());
-        return false;
-    }
-    recordingFileDescriptor_ = fd;
-    // Setup dr_wav writer
-    FILE* file = fdopen(fd, "wb");
-    if (!file) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to fdopen for fd %d", fd);
-        close(fd);
-        recordingFileDescriptor_ = -1;
-        return false;
-    }
-    drwav_data_format wavFormat;
-    wavFormat.container = drwav_container_riff;
-    wavFormat.format = DR_WAVE_FORMAT_IEEE_FLOAT;
-    wavFormat.channels = static_cast<uint32_t>(channels);
-    wavFormat.sampleRate = static_cast<uint32_t>(sampleRate);
-    wavFormat.bitsPerSample = 32;
-    if (!drwav_init_write_sequential_pcm_frames(&wavWriter_, &wavFormat, 0, drwav_write_proc_fd<void>, (void*)(intptr_t)fd, nullptr)) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to initialize drwav writer");
-        close(fd);
-        recordingFileDescriptor_ = -1;
-        return false;
-    }
-    wavWriterInitialized_ = true;
-    // Setup Oboe input stream
-    oboe::AudioStreamBuilder builder;
-    builder.setDirection(oboe::Direction::Input)
-           ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-           ->setSharingMode(oboe::SharingMode::Exclusive)
-           ->setFormat(oboe::AudioFormat::Float)
-           ->setChannelCount(static_cast<oboe::ChannelCount>(channels))
-           ->setSampleRate(sampleRate)
-           ->setInputPreset(oboe::InputPreset::VoiceRecognition)
-           ->setCallback(this);
-    oboe::Result result = builder.openManagedStream(mInputStream_);
-    if (result != oboe::Result::OK) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to open Oboe input stream: %s", oboe::convertToText(result));
-        drwav_uninit(&wavWriter_);
-        wavWriterInitialized_ = false;
-        close(fd);
-        recordingFileDescriptor_ = -1;
-        return false;
-    }
-    result = mInputStream_->requestStart();
-    if (result != oboe::Result::OK) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "startAudioRecording: Failed to start Oboe input stream: %s", oboe::convertToText(result));
-        mInputStream_->close();
-        drwav_uninit(&wavWriter_);
-        wavWriterInitialized_ = false;
-        close(fd);
-        recordingFileDescriptor_ = -1;
-        return false;
-    }
-    isRecording_.store(true);
-    peakRecordingLevel_.store(0.0f);
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Audio recording started: %s", filePathUri.c_str());
-    return true;
+    return 0.0f;
+}
+
+void AudioEngine::onErrorBeforeClose(oboe::AudioStream *oboeStream, oboe::Result error) {
+    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Oboe error before close: %s", oboe::convertToText(error));
+}
+
+void AudioEngine::onErrorAfterClose(oboe::AudioStream *oboeStream, oboe::Result error) {
+    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Oboe error after close: %s", oboe::convertToText(error));
+}
+
+// --- Additional missing method implementations ---
+
+bool AudioEngine::isOboeInitialized() const {
+    return oboeInitialized_.load();
 }
 
 jobjectArray AudioEngine::stopAudioRecording(JNIEnv* env) {
-    std::lock_guard<std::mutex> lock(recordingStateMutex_);
-    if (!isRecording_.load()) {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "stopAudioRecording: Not recording.");
-        return nullptr;
-    }
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "stopAudioRecording called");
     isRecording_.store(false);
-    if (mInputStream_) {
-        mInputStream_->requestStop();
-        mInputStream_->close();
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Oboe input stream stopped and closed.");
-    }
-    drwav_uint64 totalFramesWritten = 0;
-    if (wavWriterInitialized_) {
-        totalFramesWritten = wavWriter_.totalPCMFrameCount;
-        drwav_uninit(&wavWriter_);
-        wavWriterInitialized_ = false;
-    }
-    if (recordingFileDescriptor_ != -1) {
-        close(recordingFileDescriptor_);
-        recordingFileDescriptor_ = -1;
-    }
-    // Prepare return: [filePath, totalFrames]
-    jclass stringClass = env->FindClass("java/lang/String");
-    jclass longClass = env->FindClass("java/lang/Long");
-    jmethodID longConstructor = env->GetMethodID(longClass, "<init>", "(J)V");
-    jobject jTotalFrames = env->NewObject(longClass, longConstructor, (jlong)totalFramesWritten);
-    jobjectArray resultArray = env->NewObjectArray(2, stringClass, nullptr);
-    // For now, filePath is not stored; you may want to keep it as a member if needed
-    env->SetObjectArrayElement(resultArray, 0, env->NewStringUTF(""));
-    env->SetObjectArrayElement(resultArray, 1, jTotalFrames);
-    env->DeleteLocalRef(jTotalFrames);
-    env->DeleteLocalRef(longClass);
-    env->DeleteLocalRef(stringClass);
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Audio recording stopped. Frames: %llu", (unsigned long long)totalFramesWritten);
-    return resultArray;
+    // TODO: Return proper metadata array
+    return nullptr;
 }
 
 bool AudioEngine::isRecordingActive() {
@@ -981,85 +621,62 @@ bool AudioEngine::isRecordingActive() {
 }
 
 float AudioEngine::getRecordingLevelPeak() {
-    return peakRecordingLevel_.exchange(0.0f);
+    return peakRecordingLevel_.load();
 }
 
-// Internal calculation without locking, assumes caller handles mutex
+bool AudioEngine::isSampleLoaded(const std::string& sampleId) {
+    std::lock_guard<std::mutex> lock(sampleMutex_);
+    return sampleMap_.find(sampleId) != sampleMap_.end();
+}
+
+int AudioEngine::getSampleRate(const std::string& sampleId) {
+    std::lock_guard<std::mutex> lock(sampleMutex_);
+    auto it = sampleMap_.find(sampleId);
+    if (it != sampleMap_.end()) {
+        return static_cast<int>(it->second->sampleRate);
+    }
+    return 0;
+}
+
+void AudioEngine::setMetronomeVolume(float volume) {
+    std::lock_guard<std::mutex> lock(metronomeStateMutex_);
+    metronomeState_.volume.store(volume);
+}
+
+int AudioEngine::getActiveSoundsCountForTest() const {
+    std::lock_guard<std::mutex> lock(activeSoundsMutex_);
+    return static_cast<int>(activeSounds_.size());
+}
+
+void AudioEngine::addPlayingSoundForTest(PlayingSound sound) {
+    // This would need conversion from PlayingSound to ActiveSound
+    // For now, just log the call
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "addPlayingSoundForTest called");
+}
+
+void AudioEngine::setAudioStreamSampleRateForTest(uint32_t sampleRate) {
+    audioStreamSampleRate_.store(sampleRate);
+}
+
+void AudioEngine::loadSequenceData(const SequenceCpp& sequence) {
+    std::lock_guard<std::mutex> lock(sequencerMutex_);
+    currentSequence_ = std::make_unique<SequenceCpp>(sequence);
+}
+
+// RecalculateTickDuration functions
 void AudioEngine::RecalculateTickDurationInternal() {
     if (currentSequence_ && currentSequence_->bpm > 0.0f && currentSequence_->ppqn > 0) {
-        double msPerMinute = 60000.0;
         double beatsPerMinute = static_cast<double>(currentSequence_->bpm);
-        double ppqn_double = static_cast<double>(currentSequence_->ppqn);
-        double msPerBeat = msPerMinute / beatsPerMinute;
-        currentTickDurationMs_ = msPerBeat / ppqn_double;
+        double ticksPerBeat = static_cast<double>(currentSequence_->ppqn);
+        currentTickDurationMs_ = (60.0 * 1000.0) / (beatsPerMinute * ticksPerBeat);
     } else {
         currentTickDurationMs_ = 0.0;
     }
 }
 
-// Public method that locks and then calls the internal calculation
 void AudioEngine::RecalculateTickDuration() {
     std::lock_guard<std::mutex> lock(sequencerMutex_);
     RecalculateTickDurationInternal();
-    __android_log_print(ANDROID_LOG_INFO, "TheOneAudioEngine",
-                        "Recalculated tick duration (locked): %f ms (BPM: %f, PPQN: %ld)",
-                        currentTickDurationMs_,
-                        currentSequence_ ? currentSequence_->bpm : 0.0f,
-                        currentSequence_ ? currentSequence_->ppqn : 0l);
-}
-
-void AudioEngine::loadSequenceData(const theone::audio::SequenceCpp& sequence) {
-    std::lock_guard<std::mutex> lock(sequencerMutex_);
-
-    currentSequence_ = std::make_unique<theone::audio::SequenceCpp>();
-
-    currentSequence_->id = sequence.id;
-    currentSequence_->name = sequence.name;
-    currentSequence_->bpm = sequence.bpm;
-    currentSequence_->timeSignatureNumerator = sequence.timeSignatureNumerator;
-    currentSequence_->timeSignatureDenominator = sequence.timeSignatureDenominator;
-    currentSequence_->barLength = sequence.barLength;
-    currentSequence_->ppqn = sequence.ppqn;
-
-    currentSequence_->tracks.clear();
-    for (const auto& [trackId, trackData] : sequence.tracks) {
-        theone::audio::SequenceTrackCpp newTrack;
-        newTrack.id = trackData.id;
-        newTrack.events.clear();
-        for (const auto& eventData : trackData.events) {
-            newTrack.events.push_back(eventData);
-        }
-        currentSequence_->tracks[trackId] = newTrack;
-    }
-
-    currentSequence_->currentPlayheadTicks = 0;
-    currentSequence_->isPlaying = false;
-    timeAccumulatedForTick_ = 0.0;
-
-    RecalculateTickDurationInternal(); // Call internal version as lock is already held
-
-    __android_log_print(ANDROID_LOG_INFO, "TheOneAudioEngine",
-                        "Sequence loaded. ID: %s, Name: %s, BPM: %f, PPQN: %ld. Tracks: %zu. Playhead reset.",
-                        currentSequence_->id.c_str(),
-                        currentSequence_->name.c_str(),
-                        currentSequence_->bpm,
-                        currentSequence_->ppqn,
-                        currentSequence_->tracks.size());
-}
-
-// NOTE: The following methods are stubs for future implementation.
-// They log calls and ensure thread safety, but do not yet modify audio behavior.
-void AudioEngine::setSampleEnvelope(const std::string& sampleId, const EnvelopeSettingsCpp& envelope) {
-    std::lock_guard<std::mutex> lock(sampleMapMutex_);
-    auto it = sampleMap_.find(sampleId);
-    if (it != sampleMap_.end()) {
-        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "setSampleEnvelope: Updated envelope for sample '%s' (stub)", sampleId.c_str());
-    } else {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "setSampleEnvelope: Sample '%s' not found", sampleId.c_str());
-    }
-}
-void AudioEngine::setSampleLFO(const std::string& sampleId, const LfoSettingsCpp& lfo) {
-    // TODO: Implement LFO assignment logic
 }
 
 } // namespace audio

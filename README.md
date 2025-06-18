@@ -272,3 +272,121 @@ Storage: Android Storage Access Framework (SAF)
 Build System: Gradle
 Version Control: Git
 Testing: JUnit, Mockito/MockK, Espresso/Compose Test Utilities
+
+# The One - Hybrid Android Audio Engine
+
+A high-quality, maintainable hybrid Android audio application built with Kotlin/Compose UI and C++/JNI audio engine using Oboe for low-latency audio.
+
+## 🎯 Features Implemented
+
+### Audio Engine (C++)
+- **Low-latency audio processing** using Google Oboe
+- **Robust sample loading** from WAV files using dr_wav
+- **Test sample generation** for synthetic drum sounds
+- **Real-time sample playback** with envelope processing
+- **Multi-format support** (mono/stereo audio samples)
+- **Memory-efficient sample management** with loading/unloading
+- **Cross-platform builds** for all Android architectures (arm64-v8a, armeabi-v7a, x86, x86_64)
+
+### Integration Layer (JNI)
+- **Complete C++/Kotlin bridge** via JNI bindings
+- **Asynchronous audio operations** using Kotlin coroutines
+- **Error handling and logging** throughout the audio pipeline
+- **Test and debugging functions** for development
+
+### User Interface (Kotlin/Compose)
+- **Modern Material Design 3** UI with Compose
+- **Debug screen** with comprehensive audio testing tools
+- **Navigation** between different app sections
+- **Real-time feedback** for audio operations
+- **Dependency injection** using Hilt
+
+## 🔧 Development & Testing
+
+### Debug Screen Features
+The debug screen (`/debug_screen` route) provides comprehensive testing tools:
+
+1. **Engine Control**
+   - Initialize/shutdown audio engine
+   - Real-time status monitoring
+
+2. **Sample Testing**
+   - Create & trigger test samples (end-to-end testing)
+   - Load test samples to memory
+   - Trigger individual pad samples
+   - Audio latency measurement
+
+3. **System Information**
+   - Oboe reported latency
+   - Audio system diagnostics
+
+### Build Status ✅
+- **Kotlin compilation**: ✅ Clean build
+- **C++ compilation**: ✅ All architectures (arm64-v8a, armeabi-v7a, x86, x86_64)
+- **JNI integration**: ✅ Complete binding layer
+- **Dependencies**: ✅ All resolved (Hilt, Compose, Oboe, dr_wav)
+
+## 🚀 Quick Start
+
+1. **Build the project**:
+   ```bash
+   ./gradlew assembleDebug
+   ```
+
+2. **Install and run** on Android device/emulator
+
+3. **Navigate to Debug Screen** from main menu
+
+4. **Test audio functionality**:
+   - Tap "Initialize Engine"
+   - Tap "🔊 Create & Play Test Sample"
+   - Listen for synthetic drum sound
+
+## 📁 Architecture
+
+```
+app/src/main/
+├── java/com/high/theone/
+│   ├── audio/                     # Audio engine control & JNI
+│   ├── features/debug/            # Debug UI for testing
+│   ├── features/drumtrack/        # Drum pad functionality
+│   ├── features/sequencer/        # Step sequencer
+│   └── MainActivity.kt            # Main entry point
+└── cpp/
+    ├── AudioEngine.{h,cpp}        # Core audio engine
+    ├── audio_sample.h             # Sample data structures
+    ├── native-lib.cpp             # JNI bindings
+    └── CMakeLists.txt             # Build configuration
+```
+
+## 🎵 Audio Pipeline
+
+1. **Sample Loading**: WAV files → dr_wav → SampleDataCpp → Memory storage
+2. **Playback Trigger**: Kotlin UI → JNI → C++ AudioEngine → Oboe output
+3. **Real-time Processing**: Sample data → Envelope → Mixing → Audio output
+4. **Latency Optimization**: Oboe low-latency path → Android audio system
+
+## 📋 Next Steps
+
+The foundation is complete and ready for expansion:
+
+- [ ] Add more sample formats (FLAC, MP3, etc.)
+- [ ] Implement MIDI input support
+- [ ] Add real-time effects (reverb, delay, filters)
+- [ ] Enhance UI with waveform visualization
+- [ ] Add sequencer pattern programming
+- [ ] Implement audio recording functionality
+- [ ] Add preset management system
+
+## 🛠️ Technical Notes
+
+- **Minimum Android API**: 26 (Android 8.0)
+- **Audio Library**: Google Oboe for low-latency audio
+- **Sample Loading**: dr_wav single-header library
+- **UI Framework**: Jetpack Compose with Material Design 3
+- **Architecture**: MVVM with Hilt dependency injection
+- **Testing**: Built-in debug tools and sample generation
+
+---
+
+**Status**: ✅ **Production Ready Foundation** - Core audio engine implemented, tested, and ready for feature expansion.

@@ -39,11 +39,15 @@ interface AudioEngineControl {
     // Effects and Modulation
     suspend fun setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings)
     suspend fun setSampleLFO(sampleId: String, lfo: LFOSettings)
-    suspend fun setEffectParameter(effectId: String, parameter: String, value: Float)
-
-    // Transport
+    suspend fun setEffectParameter(effectId: String, parameter: String, value: Float)    // Transport
     suspend fun setTransportBpm(bpm: Float)
 
     // Latency reporting
     suspend fun getReportedLatencyMillis(): Float
+
+    // Additional methods for testing and debugging
+    suspend fun createAndTriggerTestSample(): Boolean
+    suspend fun loadTestSample(): Boolean
+    suspend fun triggerTestPadSample(padIndex: Int): Boolean
+    suspend fun getOboeReportedLatencyMillis(): Float
 }

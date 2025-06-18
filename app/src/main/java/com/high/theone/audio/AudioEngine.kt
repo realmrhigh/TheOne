@@ -134,8 +134,85 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     /**
      * Get the reported output latency in milliseconds from the audio engine (Oboe).
      */
-    override suspend fun getReportedLatencyMillis(): Float = withContext(Dispatchers.Default) {
-        native_getReportedLatencyMillis()
+    override suspend fun getReportedLatencyMillis(): Float {
+        return withContext(Dispatchers.Default) {
+            native_getReportedLatencyMillis()
+        }
+    }
+
+    // 🔥 EPIC SAMPLE TRIGGERING FUNCTIONS
+    suspend fun triggerSample(sampleKey: String, volume: Float = 1.0f, pan: Float = 0.0f) {
+        withContext(Dispatchers.Default) {
+            native_triggerSample(sampleKey, volume, pan)
+        }
+    }
+
+    suspend fun stopAllSamples() {
+        withContext(Dispatchers.Default) {
+            native_stopAllSamples()
+        }
+    }
+
+    suspend fun loadTestSample(sampleKey: String) {
+        withContext(Dispatchers.Default) {
+            native_loadTestSample(sampleKey)
+        }
+    }
+
+    suspend fun setMasterVolume(volume: Float) {
+        withContext(Dispatchers.Default) {
+            native_setMasterVolume(volume)
+        }
+    }
+
+    suspend fun getMasterVolume(): Float {
+        return withContext(Dispatchers.Default) {
+            native_getMasterVolume()
+        }
+    }
+
+    suspend fun setTestToneEnabled(enabled: Boolean) {
+        withContext(Dispatchers.Default) {
+            native_setTestToneEnabled(enabled)
+        }
+    }
+
+    suspend fun isTestToneEnabled(): Boolean {
+        return withContext(Dispatchers.Default) {
+            native_isTestToneEnabled()
+        }
+    }    // Additional methods for testing and debugging
+    override suspend fun createAndTriggerTestSample(): Boolean {
+        return withContext(Dispatchers.Default) {
+            native_createAndTriggerTestSample("test_sample", 1.0f, 0.0f)
+        }
+    }
+
+    override suspend fun loadTestSample(): Boolean {
+        return withContext(Dispatchers.Default) {
+            try {
+                native_loadTestSample("test_sample")
+                true
+            } catch (e: Exception) {
+                Log.e("AudioEngine", "Failed to load test sample", e)
+                false
+            }
+        }
+    }
+
+    override suspend fun triggerTestPadSample(padIndex: Int): Boolean {
+        return withContext(Dispatchers.Default) {
+            try {
+                // Trigger using the existing triggerSample method with a pad-specific key
+                native_triggerSample("pad_$padIndex", 1.0f, 0.0f)
+                true
+            } catch (e: Exception) {
+                Log.e("AudioEngine", "Failed to trigger pad sample $padIndex", e)
+                false
+            }
+        }
+    }    override suspend fun getOboeReportedLatencyMillis(): Float {
+        return getReportedLatencyMillis()
     }
 
     companion object {
@@ -167,4 +244,14 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     private external fun native_removeInsertEffect(trackId: String, effectId: String): Boolean
     private external fun native_getAudioLevels(trackId: String): FloatArray
     private external fun native_getReportedLatencyMillis(): Float
+
+    // 🔥 EPIC NATIVE DECLARATIONS
+    private external fun native_triggerSample(sampleKey: String, volume: Float, pan: Float)
+    private external fun native_stopAllSamples()
+    private external fun native_loadTestSample(sampleKey: String)
+    private external fun native_setMasterVolume(volume: Float)
+    private external fun native_getMasterVolume(): Float
+    private external fun native_setTestToneEnabled(enabled: Boolean)
+    private external fun native_isTestToneEnabled(): Boolean
+    private external fun native_createAndTriggerTestSample(sampleKey: String, volume: Float, pan: Float): Boolean
 }
