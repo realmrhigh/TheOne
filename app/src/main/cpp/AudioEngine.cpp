@@ -160,12 +160,14 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     if (testToneEnabled_.load()) {
         generateTestTone(outputBuffer, numFrames, channelCount);
     }
-    
-    // 🥁 METRONOME (if enabled)
+      // 🥁 METRONOME (if enabled)
     processMetronome(outputBuffer, numFrames, channelCount);
     
-    // 🎹 APPLY MASTER VOLUME & LIMITING
-    applyMasterProcessing(outputBuffer, numFrames, channelCount, masterVolume);    return oboe::DataCallbackResult::Continue;
+    // �️ AVST PLUGIN PROCESSING
+    processPlugins(outputBuffer, numFrames, channelCount);
+    
+    // �🎹 APPLY MASTER VOLUME & LIMITING
+    applyMasterProcessing(outputBuffer, numFrames, channelCount, masterVolume);return oboe::DataCallbackResult::Continue;
 }
 
 // 🎵 EPIC SAMPLE PLAYBACK ENGINE
@@ -677,6 +679,248 @@ void AudioEngine::RecalculateTickDurationInternal() {
 void AudioEngine::RecalculateTickDuration() {
     std::lock_guard<std::mutex> lock(sequencerMutex_);
     RecalculateTickDurationInternal();
+}
+
+// 🎛️ ===== AVST PLUGIN SYSTEM IMPLEMENTATION ===== 🎛️
+
+bool AudioEngine::loadPlugin(const std::string& pluginId, const std::string& pluginName) {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    // Check if plugin is already loaded
+    if (loadedPlugins_.find(pluginId) != loadedPlugins_.end()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Plugin %s already loaded", pluginId.c_str());
+        return true;
+    }
+    
+    std::unique_ptr<avst::IAvstPlugin> plugin;
+    
+    // For now, we only support SketchingSynth - later we can add a factory system
+    if (pluginName == "SketchingSynth" || pluginId == "com.high.theone.sketchingsynth") {
+        plugin = std::make_unique<avst::SketchingSynth>();
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Unknown plugin: %s", pluginName.c_str());
+        return false;
+    }
+    
+    // Initialize plugin with current audio config
+    avst::AudioIOConfig config;
+    config.sampleRate = static_cast<float>(audioStreamSampleRate_.load());
+    config.maxBufferSize = 512; // Reasonable default
+    config.inputChannelCount = 0; // Synth doesn't need input
+    config.outputChannelCount = 2; // Stereo output
+    
+    if (!plugin->initialize(config)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize plugin: %s", pluginId.c_str());
+        return false;
+    }
+    
+    loadedPlugins_[pluginId] = std::move(plugin);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🎹 Plugin loaded: %s", pluginId.c_str());
+    return true;
+}
+
+bool AudioEngine::unloadPlugin(const std::string& pluginId) {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    auto it = loadedPlugins_.find(pluginId);
+    if (it == loadedPlugins_.end()) {
+        return false;
+    }
+    
+    it->second->shutdown();
+    loadedPlugins_.erase(it);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🎹 Plugin unloaded: %s", pluginId.c_str());
+    return true;
+}
+
+std::vector<std::string> AudioEngine::getLoadedPlugins() const {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    std::vector<std::string> pluginIds;
+    for (const auto& pair : loadedPlugins_) {
+        pluginIds.push_back(pair.first);
+    }
+    return pluginIds;
+}
+
+bool AudioEngine::setPluginParameter(const std::string& pluginId, const std::string& paramId, double value) {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    auto it = loadedPlugins_.find(pluginId);
+    if (it == loadedPlugins_.end()) {
+        return false;
+    }
+    
+    auto* param = it->second->getParameters().getParameter(paramId);
+    if (!param) {
+        return false;
+    }
+    
+    param->setValue(value);
+    return true;
+}
+
+double AudioEngine::getPluginParameter(const std::string& pluginId, const std::string& paramId) const {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    auto it = loadedPlugins_.find(pluginId);
+    if (it == loadedPlugins_.end()) {
+        return 0.0;
+    }
+    
+    const auto* param = it->second->getParameters().getParameter(paramId);
+    if (!param) {
+        return 0.0;
+    }
+    
+    return param->getValue();
+}
+
+std::vector<avst::ParameterInfo> AudioEngine::getPluginParameters(const std::string& pluginId) const {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    auto it = loadedPlugins_.find(pluginId);
+    if (it == loadedPlugins_.end()) {
+        return {};
+    }
+    
+    return it->second->getParameters().getAllParameterInfo();
+}
+
+void AudioEngine::sendMidiToPlugin(const std::string& pluginId, uint8_t status, uint8_t data1, uint8_t data2) {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    auto it = loadedPlugins_.find(pluginId);
+    if (it == loadedPlugins_.end()) {
+        return;
+    }
+    
+    avst::MidiMessage message;
+    message.status = status;
+    message.data1 = data1;
+    message.data2 = data2;
+    message.sampleOffset = 0; // Immediate
+    
+    it->second->processMidiMessage(message);
+}
+
+void AudioEngine::noteOnToPlugin(const std::string& pluginId, uint8_t note, uint8_t velocity) {
+    sendMidiToPlugin(pluginId, 0x90, note, velocity); // Note On, channel 0
+}
+
+void AudioEngine::noteOffToPlugin(const std::string& pluginId, uint8_t note, uint8_t velocity) {
+    sendMidiToPlugin(pluginId, 0x80, note, velocity); // Note Off, channel 0
+}
+
+bool AudioEngine::savePluginPreset(const std::string& pluginId, const std::string& presetName, const std::string& filePath) {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    auto it = loadedPlugins_.find(pluginId);
+    if (it == loadedPlugins_.end()) {
+        return false;
+    }
+    
+    return it->second->savePreset(presetName, filePath);
+}
+
+bool AudioEngine::loadPluginPreset(const std::string& pluginId, const std::string& filePath) {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    auto it = loadedPlugins_.find(pluginId);
+    if (it == loadedPlugins_.end()) {
+        return false;
+    }
+    
+    return it->second->loadPreset(filePath);
+}
+
+std::vector<std::string> AudioEngine::getPluginPresets(const std::string& pluginId) const {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    auto it = loadedPlugins_.find(pluginId);
+    if (it == loadedPlugins_.end()) {
+        return {};
+    }
+    
+    return it->second->getPresetList();
+}
+
+void AudioEngine::processPlugins(float* outputBuffer, int32_t numFrames, int32_t channelCount) {
+    std::lock_guard<std::mutex> lock(pluginsMutex_);
+    
+    if (loadedPlugins_.empty()) {
+        return; // No plugins to process
+    }
+    
+    // Ensure our plugin buffers are the right size
+    ensurePluginBuffersSize(numFrames, channelCount);
+    
+    // Process each loaded plugin
+    for (auto& pair : loadedPlugins_) {
+        const std::string& pluginId = pair.first;
+        auto& plugin = pair.second;
+        
+        // Clear plugin output buffers
+        for (int ch = 0; ch < channelCount; ++ch) {
+            std::fill(pluginOutputBuffers_[ch].begin(), 
+                     pluginOutputBuffers_[ch].begin() + numFrames, 0.0f);
+        }
+        
+        // Set up process context
+        avst::ProcessContext context;
+        context.inputs = nullptr; // Synths don't need input
+        context.numInputs = 0;
+        
+        // Setup output pointers
+        std::vector<float*> outputPtrs(channelCount);
+        for (int ch = 0; ch < channelCount; ++ch) {
+            outputPtrs[ch] = pluginOutputBuffers_[ch].data();
+        }
+        context.outputs = outputPtrs.data();
+        context.numOutputs = channelCount;
+        context.frameCount = numFrames;
+        
+        context.sampleRate = static_cast<float>(audioStreamSampleRate_.load());
+        context.tempo = 120.0; // TODO: Get from transport
+        context.timePosition = 0.0; // TODO: Get from transport
+        context.isPlaying = true; // TODO: Get from transport state
+        
+        // Process the plugin
+        try {
+            plugin->processAudio(context);
+            
+            // Mix plugin output into main output buffer
+            for (int32_t frame = 0; frame < numFrames; ++frame) {
+                for (int ch = 0; ch < channelCount; ++ch) {
+                    outputBuffer[frame * channelCount + ch] += 
+                        pluginOutputBuffers_[ch][frame] * 0.5f; // Mix at 50% for now
+                }
+            }
+        } catch (const std::exception& e) {
+            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, 
+                               "Plugin %s processing error: %s", pluginId.c_str(), e.what());
+        }
+    }
+}
+
+void AudioEngine::ensurePluginBuffersSize(int32_t numFrames, int32_t channelCount) {
+    // Resize buffer vectors if needed
+    if (pluginInputBuffers_.size() != static_cast<size_t>(channelCount)) {
+        pluginInputBuffers_.resize(channelCount);
+    }
+    if (pluginOutputBuffers_.size() != static_cast<size_t>(channelCount)) {
+        pluginOutputBuffers_.resize(channelCount);
+    }
+    
+    // Resize each channel buffer if needed
+    for (int ch = 0; ch < channelCount; ++ch) {
+        if (pluginInputBuffers_[ch].size() < static_cast<size_t>(numFrames)) {
+            pluginInputBuffers_[ch].resize(numFrames);
+        }
+        if (pluginOutputBuffers_[ch].size() < static_cast<size_t>(numFrames)) {
+            pluginOutputBuffers_[ch].resize(numFrames);
+        }
+    }
 }
 
 } // namespace audio

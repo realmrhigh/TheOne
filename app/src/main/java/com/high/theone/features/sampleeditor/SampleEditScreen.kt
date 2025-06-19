@@ -50,5 +50,16 @@ class MockAudioEngineControl : com.high.theone.audio.AudioEngineControl {
         soundPrimaryUri: String,
         soundSecondaryUri: String?
     ) {}
+    
+    // Additional methods for testing and debugging
+    override suspend fun createAndTriggerTestSample(): Boolean = true
+    override suspend fun loadTestSample(): Boolean = true
+    override suspend fun triggerTestPadSample(padIndex: Int): Boolean = true
+    override suspend fun getOboeReportedLatencyMillis(): Float = 0f
+    
+    // Real audio file operations
+    override suspend fun triggerSample(sampleKey: String, volume: Float, pan: Float) {}
+    override suspend fun stopAllSamples() {}
 }
+
 // TODO: Complete implementation as needed

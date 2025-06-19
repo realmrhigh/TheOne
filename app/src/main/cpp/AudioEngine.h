@@ -17,6 +17,10 @@ typedef _jobject* jobject;
 
 #include "SequenceCpp.h"
 
+// AVST Plugin System Integration
+#include "avst/IAvstPlugin.h"
+#include "avst/SketchingSynth.h"
+
 namespace theone {
 namespace audio {
 
@@ -110,10 +114,28 @@ public:
     // 🔥 EPIC SAMPLE TRIGGERING
     void triggerSample(const std::string& sampleKey, float volume = 1.0f, float pan = 0.0f);
     void stopAllSamples();
-    void loadTestSample(const std::string& sampleKey); // For quick testing
-
-    // 🎯 CONVENIENCE FUNCTIONS FOR TESTING
+    void loadTestSample(const std::string& sampleKey); // For quick testing    // 🎯 CONVENIENCE FUNCTIONS FOR TESTING
     bool createAndTriggerTestSample(const std::string& sampleKey, float volume = 1.0f, float pan = 0.0f);
+
+    // 🎛️ AVST PLUGIN SYSTEM
+    bool loadPlugin(const std::string& pluginId, const std::string& pluginName);
+    bool unloadPlugin(const std::string& pluginId);
+    std::vector<std::string> getLoadedPlugins() const;
+    
+    // Plugin parameter control
+    bool setPluginParameter(const std::string& pluginId, const std::string& paramId, double value);
+    double getPluginParameter(const std::string& pluginId, const std::string& paramId) const;
+    std::vector<avst::ParameterInfo> getPluginParameters(const std::string& pluginId) const;
+    
+    // Plugin MIDI control
+    void sendMidiToPlugin(const std::string& pluginId, uint8_t status, uint8_t data1, uint8_t data2);
+    void noteOnToPlugin(const std::string& pluginId, uint8_t note, uint8_t velocity);
+    void noteOffToPlugin(const std::string& pluginId, uint8_t note, uint8_t velocity);
+    
+    // Plugin preset management
+    bool savePluginPreset(const std::string& pluginId, const std::string& presetName, const std::string& filePath);
+    bool loadPluginPreset(const std::string& pluginId, const std::string& filePath);
+    std::vector<std::string> getPluginPresets(const std::string& pluginId) const;
 
 private:
     // Oboe Stream
@@ -159,10 +181,20 @@ private:
 
 private:
     void RecalculateTickDurationInternal(); // No lock
-    void RecalculateTickDuration();         // Locks, then calls internal
-
-    // Random engine for layer triggering
+    void RecalculateTickDuration();         // Locks, then calls internal    // Random engine for layer triggering
     std::mt19937 randomEngine_ {std::random_device{}()};
+
+    // 🎛️ AVST Plugin Management
+    std::map<std::string, std::unique_ptr<avst::IAvstPlugin>> loadedPlugins_;
+    std::mutex pluginsMutex_;
+    
+    // Plugin audio buffers (for multi-channel processing)
+    std::vector<std::vector<float>> pluginInputBuffers_;
+    std::vector<std::vector<float>> pluginOutputBuffers_;
+    
+    // Helper methods for plugin processing
+    void processPlugins(float* outputBuffer, int32_t numFrames, int32_t channelCount);
+    void ensurePluginBuffersSize(int32_t numFrames, int32_t channelCount);
 };
 
 } // namespace audio

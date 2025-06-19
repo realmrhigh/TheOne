@@ -13,7 +13,11 @@ add_library(theone SHARED
         EnvelopeGenerator.cpp
         LfoGenerator.cpp
         StateVariableFilter.cpp # Added SVF source file
-        AudioEngine.cpp # <-- Added AudioEngine implementation
+        AudioEngine.cpp # <-- Added AudioEngine implementation        # AVST Plugin System
+        avst/AvstParameter.cpp
+        avst/AvstParameterContainer.cpp
+        avst/IAvstPlugin.cpp
+        avst/SketchingSynth.cpp
 )
 
 find_library(log-lib log)
@@ -22,6 +26,11 @@ find_library(log-lib log)
 target_link_libraries(theone
         oboe
         ${log-lib}
+)
+
+# Add include directory for AVST headers
+target_include_directories(theone PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/avst
 )
 
 # Google Test Setup

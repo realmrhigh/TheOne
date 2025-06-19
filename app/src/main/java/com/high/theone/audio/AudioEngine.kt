@@ -138,16 +138,14 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         return withContext(Dispatchers.Default) {
             native_getReportedLatencyMillis()
         }
-    }
-
-    // 🔥 EPIC SAMPLE TRIGGERING FUNCTIONS
-    suspend fun triggerSample(sampleKey: String, volume: Float = 1.0f, pan: Float = 0.0f) {
+    }    // 🔥 EPIC SAMPLE TRIGGERING FUNCTIONS
+    override suspend fun triggerSample(sampleKey: String, volume: Float, pan: Float) {
         withContext(Dispatchers.Default) {
             native_triggerSample(sampleKey, volume, pan)
         }
     }
 
-    suspend fun stopAllSamples() {
+    override suspend fun stopAllSamples() {
         withContext(Dispatchers.Default) {
             native_stopAllSamples()
         }
@@ -215,6 +213,62 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
         return getReportedLatencyMillis()
     }
 
+    // 🎛️ ===== AVST PLUGIN SYSTEM ===== 🎛️
+    
+    suspend fun loadPlugin(pluginId: String, pluginName: String): Boolean {
+        return withContext(Dispatchers.Default) {
+            native_loadPlugin(pluginId, pluginName)
+        }
+    }
+    
+    suspend fun unloadPlugin(pluginId: String): Boolean {
+        return withContext(Dispatchers.Default) {
+            native_unloadPlugin(pluginId)
+        }
+    }
+    
+    suspend fun getLoadedPlugins(): List<String> {
+        return withContext(Dispatchers.Default) {
+            native_getLoadedPlugins().toList()
+        }
+    }
+    
+    suspend fun setPluginParameter(pluginId: String, paramId: String, value: Double): Boolean {
+        return withContext(Dispatchers.Default) {
+            native_setPluginParameter(pluginId, paramId, value)
+        }
+    }
+    
+    suspend fun getPluginParameter(pluginId: String, paramId: String): Double {
+        return withContext(Dispatchers.Default) {
+            native_getPluginParameter(pluginId, paramId)
+        }
+    }
+    
+    suspend fun noteOnToPlugin(pluginId: String, note: Int, velocity: Int) {
+        withContext(Dispatchers.Default) {
+            native_noteOnToPlugin(pluginId, note, velocity)
+        }
+    }
+    
+    suspend fun noteOffToPlugin(pluginId: String, note: Int, velocity: Int) {
+        withContext(Dispatchers.Default) {
+            native_noteOffToPlugin(pluginId, note, velocity)
+        }
+    }
+    
+    suspend fun savePluginPreset(pluginId: String, presetName: String, filePath: String): Boolean {
+        return withContext(Dispatchers.Default) {
+            native_savePluginPreset(pluginId, presetName, filePath)
+        }
+    }
+    
+    suspend fun loadPluginPreset(pluginId: String, filePath: String): Boolean {
+        return withContext(Dispatchers.Default) {
+            native_loadPluginPreset(pluginId, filePath)
+        }
+    }
+
     companion object {
         init {
             System.loadLibrary("theone")
@@ -250,8 +304,18 @@ class AudioEngine(private val context: Context) : AudioEngineControl {
     private external fun native_stopAllSamples()
     private external fun native_loadTestSample(sampleKey: String)
     private external fun native_setMasterVolume(volume: Float)
-    private external fun native_getMasterVolume(): Float
-    private external fun native_setTestToneEnabled(enabled: Boolean)
+    private external fun native_getMasterVolume(): Float    private external fun native_setTestToneEnabled(enabled: Boolean)
     private external fun native_isTestToneEnabled(): Boolean
     private external fun native_createAndTriggerTestSample(sampleKey: String, volume: Float, pan: Float): Boolean
+    
+    // 🎛️ AVST Plugin System Native Declarations
+    private external fun native_loadPlugin(pluginId: String, pluginName: String): Boolean
+    private external fun native_unloadPlugin(pluginId: String): Boolean
+    private external fun native_getLoadedPlugins(): Array<String>
+    private external fun native_setPluginParameter(pluginId: String, paramId: String, value: Double): Boolean
+    private external fun native_getPluginParameter(pluginId: String, paramId: String): Double
+    private external fun native_noteOnToPlugin(pluginId: String, note: Int, velocity: Int)
+    private external fun native_noteOffToPlugin(pluginId: String, note: Int, velocity: Int)
+    private external fun native_savePluginPreset(pluginId: String, presetName: String, filePath: String): Boolean
+    private external fun native_loadPluginPreset(pluginId: String, filePath: String): Boolean
 }

@@ -50,4 +50,8 @@ interface AudioEngineControl {
     suspend fun loadTestSample(): Boolean
     suspend fun triggerTestPadSample(padIndex: Int): Boolean
     suspend fun getOboeReportedLatencyMillis(): Float
+    
+    // Real audio file operations
+    suspend fun triggerSample(sampleKey: String, volume: Float = 1.0f, pan: Float = 0.0f)
+    suspend fun stopAllSamples()
 }
