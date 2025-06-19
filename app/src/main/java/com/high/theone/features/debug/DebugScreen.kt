@@ -402,7 +402,7 @@ fun DebugScreen(
                                 scope.launch {
                                     try {
                                         val audioEngine = audioEngineControl as? com.high.theone.audio.AudioEngine
-                                        audioEngine?.setPluginParameter("sketchingsynth", "volume", newVolume.toDouble())
+                                        audioEngine?.setPluginParameter("sketchingsynth", "master_volume", newVolume.toDouble())
                                     } catch (e: Exception) {
                                         Log.e("DebugScreen", "Parameter set failed", e)
                                     }
@@ -412,8 +412,7 @@ fun DebugScreen(
                         )
                         Text("%.2f".format(volume), modifier = Modifier.width(40.dp))
                     }
-                    
-                    // Cutoff frequency control
+                      // Cutoff frequency control
                     var cutoff by remember { mutableStateOf(0.5f) }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -427,7 +426,9 @@ fun DebugScreen(
                                 scope.launch {
                                     try {
                                         val audioEngine = audioEngineControl as? com.high.theone.audio.AudioEngine
-                                        audioEngine?.setPluginParameter("sketchingsynth", "cutoff", newCutoff.toDouble())
+                                        // Convert 0.0-1.0 slider to 20Hz-8000Hz range (logarithmic)
+                                        val cutoffHz = 20.0 + (8000.0 - 20.0) * newCutoff.toDouble()
+                                        audioEngine?.setPluginParameter("sketchingsynth", "filter_cutoff", cutoffHz)
                                     } catch (e: Exception) {
                                         Log.e("DebugScreen", "Parameter set failed", e)
                                     }
@@ -435,7 +436,7 @@ fun DebugScreen(
                             },
                             modifier = Modifier.weight(1f)
                         )
-                        Text("%.2f".format(cutoff), modifier = Modifier.width(40.dp))
+                        Text("%.0fHz".format(20 + (8000 - 20) * cutoff), modifier = Modifier.width(60.dp))
                     }
                     
                     Spacer(modifier = Modifier.height(8.dp))

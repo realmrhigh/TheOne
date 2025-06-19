@@ -120,10 +120,13 @@ void SimpleFilter::reset() {
 float SimpleFilter::process(float input) {
     if (type_ == LOWPASS) {
         lastOutput_ = lastOutput_ + coefficient_ * (input - lastOutput_);
-        return lastOutput_;
+        // Add slight gain compensation for low-pass filtering
+        return lastOutput_ * (1.0f + coefficient_ * 0.3f);
     } else { // HIGHPASS
         lastOutput_ = lastOutput_ + coefficient_ * (input - lastOutput_);
-        return input - lastOutput_;
+        float highpass = input - lastOutput_;
+        // Add gain compensation for high-pass filtering
+        return highpass * (1.0f + coefficient_ * 0.2f);
     }
 }
 
@@ -244,13 +247,18 @@ void SketchingSynth::processAudio(ProcessContext& context) {
             
             mixedOutput += voiceOutput;
         }
-        
-        // Apply filter with LFO modulation
+          // Apply filter with LFO modulation
         float baseCutoff = getParameterValue<float>("filter_cutoff", 1000.0f);
         float modCutoff = baseCutoff * (1.0f + filterMod * 0.5f);
         filter_->setCutoff(modCutoff);
         
         float filteredOutput = filter_->process(mixedOutput);
+        
+        // Add filter makeup gain to compensate for attenuation
+        // Lower cutoff = more gain needed
+        float cutoffNormalized = std::clamp((baseCutoff - 20.0f) / (8000.0f - 20.0f), 0.0f, 1.0f);
+        float makeupGain = 1.0f + (1.0f - cutoffNormalized) * 0.6f; // Up to 60% more gain at low cutoff
+        filteredOutput *= makeupGain;
         
         // Apply master volume with LFO modulation
         float masterVol = getParameterValue<float>("master_volume", 0.5f);
