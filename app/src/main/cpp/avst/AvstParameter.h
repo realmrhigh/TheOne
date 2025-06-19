@@ -24,7 +24,7 @@ enum class ParameterCategory {
 };
 
 // Touch-optimized parameter hints
-enum class ParameterHint {
+enum class ParameterHint : uint32_t {
     NONE = 0,
     LOGARITHMIC = 1 << 0,      // Frequency, gain parameters
     BIPOLAR = 1 << 1,          // -1.0 to +1.0 range
@@ -33,6 +33,15 @@ enum class ParameterHint {
     AUTOMATABLE = 1 << 4,      // Can be automated
     REALTIME_SAFE = 1 << 5     // Safe for audio thread
 };
+
+// Bitwise operators for ParameterHint
+inline ParameterHint operator|(ParameterHint a, ParameterHint b) {
+    return static_cast<ParameterHint>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+inline ParameterHint operator&(ParameterHint a, ParameterHint b) {
+    return static_cast<ParameterHint>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
 
 struct ParameterInfo {
     std::string id;                    // Unique identifier

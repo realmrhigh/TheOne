@@ -701,13 +701,12 @@ bool AudioEngine::loadPlugin(const std::string& pluginId, const std::string& plu
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Unknown plugin: %s", pluginName.c_str());
         return false;
     }
-    
-    // Initialize plugin with current audio config
+      // Initialize plugin with current audio config
     avst::AudioIOConfig config;
     config.sampleRate = static_cast<float>(audioStreamSampleRate_.load());
-    config.maxBufferSize = 512; // Reasonable default
-    config.inputChannelCount = 0; // Synth doesn't need input
-    config.outputChannelCount = 2; // Stereo output
+    config.maxBlockSize = 512; // Reasonable default
+    config.currentInputChannels = 0; // Synth doesn't need input
+    config.currentOutputChannels = 2; // Stereo output
     
     if (!plugin->initialize(config)) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize plugin: %s", pluginId.c_str());

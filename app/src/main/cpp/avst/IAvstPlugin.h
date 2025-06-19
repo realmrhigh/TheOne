@@ -147,14 +147,12 @@ using PluginCreateFunction = std::unique_ptr<IAvstPlugin>(*)();
 
 // Plugin registration macro for easy plugin creation
 #define AVST_PLUGIN_EXPORT(ClassName) \
-    extern "C" { \
-        std::unique_ptr<avst::IAvstPlugin> createAvstPlugin() { \
-            return std::make_unique<ClassName>(); \
-        } \
-        avst::PluginInfo getAvstPluginInfo() { \
-            auto plugin = std::make_unique<ClassName>(); \
-            return plugin->getPluginInfo(); \
-        } \
+    std::unique_ptr<avst::IAvstPlugin> createAvstPlugin() { \
+        return std::make_unique<ClassName>(); \
+    } \
+    avst::PluginInfo getAvstPluginInfo() { \
+        auto plugin = std::make_unique<ClassName>(); \
+        return plugin->getPluginInfo(); \
     }
 
 } // namespace avst

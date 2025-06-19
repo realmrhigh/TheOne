@@ -182,11 +182,9 @@ private:
 private:
     void RecalculateTickDurationInternal(); // No lock
     void RecalculateTickDuration();         // Locks, then calls internal    // Random engine for layer triggering
-    std::mt19937 randomEngine_ {std::random_device{}()};
-
-    // 🎛️ AVST Plugin Management
+    std::mt19937 randomEngine_ {std::random_device{}()};    // 🎛️ AVST Plugin Management
     std::map<std::string, std::unique_ptr<avst::IAvstPlugin>> loadedPlugins_;
-    std::mutex pluginsMutex_;
+    mutable std::mutex pluginsMutex_;
     
     // Plugin audio buffers (for multi-channel processing)
     std::vector<std::vector<float>> pluginInputBuffers_;

@@ -2,8 +2,13 @@
 #include <cmath>
 #include <algorithm>
 #include <android/log.h>
+#include <cstring>
 
 #define APP_NAME "SketchingSynth"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace avst {
 
