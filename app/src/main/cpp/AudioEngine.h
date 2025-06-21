@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <android/asset_manager.h>
 #include "PadSettings.h" // Assuming PadSettingsCpp is defined here
 #include "audio_sample.h" // For LoadedSample, PlayingSound etc. if managed by AudioEngine
 #include <oboe/Oboe.h>   // For Oboe types if AudioEngine manages stream
@@ -135,12 +136,18 @@ public:
     // Plugin preset management
     bool savePluginPreset(const std::string& pluginId, const std::string& presetName, const std::string& filePath);
     bool loadPluginPreset(const std::string& pluginId, const std::string& filePath);
-    std::vector<std::string> getPluginPresets(const std::string& pluginId) const;
-
+    std::vector<std::string> getPluginPresets(const std::string& pluginId) const;    // Asset management
+    void setAssetManager(AAssetManager* assetManager) {
+        assetManager_ = assetManager;
+    }
+    bool loadSampleFromAsset(const std::string& sampleId, const std::string& assetPath);
+    
 private:
+    AAssetManager* assetManager_ = nullptr;
+
     // Oboe Stream
     oboe::ManagedStream outStream_;
-    oboe::ManagedStream mInputStream_; // For recording    // Sample map (updated for new audio engine)
+    oboe::ManagedStream mInputStream_; // For recording// Sample map (updated for new audio engine)
     std::map<std::string, std::shared_ptr<SampleDataCpp>> sampleMap_;
     std::mutex sampleMutex_;
 

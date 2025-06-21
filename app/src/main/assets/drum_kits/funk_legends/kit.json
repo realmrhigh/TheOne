@@ -1,0 +1,99 @@
+{
+  "name": "Funk Legends",
+  "description": "Classic funk drum sounds straight from the golden era of groove",
+  "author": "Akai MPC500 Collection",
+  "category": "funk",
+  "color": "#FF6B35",
+  "tempo": 110,
+  "tags": ["funk", "groove", "classic", "vintage", "rhythm"],
+  "pads": {
+    "pad_0": {
+      "sample": "kick.wav",
+      "name": "Funk Kick",
+      "volume": 0.9,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.8,
+      "sustain": 0.3,
+      "release": 0.5,
+      "color": "#8B4513"
+    },
+    "pad_1": {
+      "sample": "snare.wav",
+      "name": "Funk Snare",
+      "volume": 0.85,
+      "pitch": 0,
+      "attack": 0.01,
+      "decay": 0.6,
+      "sustain": 0.2,
+      "release": 0.4,
+      "color": "#DC143C"
+    },
+    "pad_2": {
+      "sample": "hihat_closed.wav",
+      "name": "Closed Hat",
+      "volume": 0.7,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.1,
+      "sustain": 0.0,
+      "release": 0.1,
+      "color": "#FFD700"
+    },
+    "pad_3": {
+      "sample": "hihat_open.wav",
+      "name": "Open Hat",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.3,
+      "sustain": 0.1,
+      "release": 0.4,
+      "color": "#FFA500"
+    },
+    "pad_4": {
+      "sample": "tom_high.wav",
+      "name": "High Tom",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.5,
+      "sustain": 0.2,
+      "release": 0.6,
+      "color": "#FF1493"
+    },
+    "pad_5": {
+      "sample": "tom_mid.wav",
+      "name": "Mid Tom",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.6,
+      "sustain": 0.2,
+      "release": 0.7,
+      "color": "#FF69B4"
+    },
+    "pad_6": {
+      "sample": "tom_low.wav",
+      "name": "Floor Tom",
+      "volume": 0.85,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.8,
+      "sustain": 0.3,
+      "release": 0.9,
+      "color": "#FF1493"
+    },
+    "pad_7": {
+      "sample": "crash.wav",
+      "name": "Crash",
+      "volume": 0.9,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 1.5,
+      "sustain": 0.5,
+      "release": 2.0,
+      "color": "#32CD32"
+    }
+  }
+}

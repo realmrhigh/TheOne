@@ -1,0 +1,76 @@
+{
+  "name": "Natural Room",
+  "description": "Authentic room-recorded drums with natural acoustics and warm resonance",
+  "author": "Akai MPC500 Collection",
+  "category": "acoustic",
+  "color": "#8FBC8F",
+  "tempo": 100,
+  "tags": ["acoustic", "room", "natural", "organic", "warm"],
+  "pads": {
+    "pad_0": {
+      "sample": "kick.wav",
+      "name": "Room Kick",
+      "volume": 0.9,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.8,
+      "sustain": 0.3,
+      "release": 0.9,
+      "color": "#8B4513"
+    },
+    "pad_1": {
+      "sample": "snare.wav",
+      "name": "Room Snare",
+      "volume": 0.85,
+      "pitch": 0,
+      "attack": 0.01,
+      "decay": 0.7,
+      "sustain": 0.2,
+      "release": 0.8,
+      "color": "#CD853F"
+    },
+    "pad_2": {
+      "sample": "hihat_closed.wav",
+      "name": "Closed Hat",
+      "volume": 0.7,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.1,
+      "sustain": 0.0,
+      "release": 0.1,
+      "color": "#FFD700"
+    },    "pad_3": {
+      "sample": "hihat_open.wav",
+      "name": "Open Hat",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.5,
+      "sustain": 0.2,
+      "release": 0.7,
+      "color": "#FFA500"
+    },
+    "pad_4": {
+      "sample": "crash.wav",
+      "name": "Room Crash",
+      "volume": 0.9,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 1.8,
+      "sustain": 0.4,
+      "release": 2.2,
+      "color": "#32CD32"
+    },
+    "pad_5": {
+      "sample": "ride.wav",
+      "name": "Room Ride",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 1.2,
+      "sustain": 0.3,
+      "release": 1.6,
+      "color": "#DAA520"
+    }
+  }
+}

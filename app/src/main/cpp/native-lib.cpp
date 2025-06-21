@@ -1,6 +1,8 @@
 #include <jni.h>
 #include <string>
 #include <android/log.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
 #include <oboe/Oboe.h>
 #include <map> // For std::map
 #include "audio_sample.h" // Include the new header
@@ -858,4 +860,14 @@ Java_com_high_theone_audio_AudioEngine_native_1loadPluginPreset(
         JStringToString(env, filePath)
     );
     return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngine_native_1setAssetManager(
+    JNIEnv* env, jobject /* thiz */, jobject assetManager) {
+    if (audioEngineInstance && assetManager) {
+        AAssetManager* nativeAssetManager = AAssetManager_fromJava(env, assetManager);
+        audioEngineInstance->setAssetManager(nativeAssetManager);
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Asset manager set for AudioEngine");
+    }
 }

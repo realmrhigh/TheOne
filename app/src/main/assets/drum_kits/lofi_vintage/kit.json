@@ -1,0 +1,99 @@
+{
+  "name": "Lo-Fi Vintage",
+  "description": "Nostalgic lo-fi hip hop sounds with that dusty, warm character",
+  "author": "Akai MPC500 Collection",
+  "category": "lofi",
+  "color": "#8B4513",
+  "tempo": 85,
+  "tags": ["lofi", "hip-hop", "vintage", "dusty", "chill"],
+  "pads": {
+    "pad_0": {
+      "sample": "kick.wav",
+      "name": "Lo-Fi Kick",
+      "volume": 0.85,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.6,
+      "sustain": 0.2,
+      "release": 0.5,
+      "color": "#8B4513"
+    },
+    "pad_1": {
+      "sample": "snare.wav",
+      "name": "Dusty Snare",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.01,
+      "decay": 0.4,
+      "sustain": 0.1,
+      "release": 0.3,
+      "color": "#CD853F"
+    },
+    "pad_2": {
+      "sample": "hihat_closed.wav",
+      "name": "Closed Hat",
+      "volume": 0.6,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.1,
+      "sustain": 0.0,
+      "release": 0.1,
+      "color": "#FFD700"
+    },
+    "pad_3": {
+      "sample": "hihat_open.wav",
+      "name": "Open Hat",
+      "volume": 0.7,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.3,
+      "sustain": 0.1,
+      "release": 0.4,
+      "color": "#FFA500"
+    },
+    "pad_4": {
+      "sample": "clap.wav",
+      "name": "Vintage Clap",
+      "volume": 0.75,
+      "pitch": 0,
+      "attack": 0.01,
+      "decay": 0.3,
+      "sustain": 0.1,
+      "release": 0.2,
+      "color": "#DEB887"
+    },
+    "pad_5": {
+      "sample": "rimshot.wav",
+      "name": "Rim Shot",
+      "volume": 0.7,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.2,
+      "sustain": 0.0,
+      "release": 0.1,
+      "color": "#D2691E"
+    },
+    "pad_6": {
+      "sample": "perc1.wav",
+      "name": "Tabla",
+      "volume": 0.7,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.5,
+      "sustain": 0.2,
+      "release": 0.6,
+      "color": "#F4A460"
+    },
+    "pad_7": {
+      "sample": "crash.wav",
+      "name": "Vintage Crash",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 1.2,
+      "sustain": 0.3,
+      "release": 1.5,
+      "color": "#BC8F8F"
+    }
+  }
+}

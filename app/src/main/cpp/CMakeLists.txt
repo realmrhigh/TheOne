@@ -21,11 +21,13 @@ add_library(theone SHARED
 )
 
 find_library(log-lib log)
+find_library(android-lib android)
 
 # This works because add_subdirectory makes "Oboe::oboe" available.
 target_link_libraries(theone
         oboe
         ${log-lib}
+        ${android-lib}
 )
 
 # Add include directory for AVST headers

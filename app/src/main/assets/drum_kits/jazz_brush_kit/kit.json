@@ -1,0 +1,109 @@
+{
+  "name": "Jazz Brush Kit",
+  "description": "Smooth jazz drums with authentic brush textures and natural resonance",
+  "author": "Akai MPC500 Collection",
+  "category": "jazz",
+  "color": "#4169E1",
+  "tempo": 120,
+  "tags": ["jazz", "brush", "smooth", "acoustic", "natural"],
+  "pads": {
+    "pad_0": {
+      "sample": "kick.wav",
+      "name": "Jazz Kick",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.7,
+      "sustain": 0.3,
+      "release": 0.8,
+      "color": "#8B4513"
+    },
+    "pad_1": {
+      "sample": "snare_brush.wav",
+      "name": "Brush Swish",
+      "volume": 0.9,
+      "pitch": 0,
+      "attack": 0.01,
+      "decay": 0.8,
+      "sustain": 0.3,
+      "release": 0.6,
+      "color": "#DC143C"
+    },
+    "pad_2": {
+      "sample": "snare.wav",
+      "name": "Jazz Snare",
+      "volume": 0.85,
+      "pitch": 0,
+      "attack": 0.01,
+      "decay": 0.6,
+      "sustain": 0.2,
+      "release": 0.5,
+      "color": "#B22222"
+    },
+    "pad_3": {
+      "sample": "hihat_closed.wav",
+      "name": "Closed Hat",
+      "volume": 0.7,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.1,
+      "sustain": 0.0,
+      "release": 0.1,
+      "color": "#FFD700"
+    },
+    "pad_4": {
+      "sample": "hihat_open.wav",
+      "name": "Open Hat",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.4,
+      "sustain": 0.1,
+      "release": 0.6,
+      "color": "#FFA500"
+    },
+    "pad_5": {
+      "sample": "ride.wav",
+      "name": "Ride Cymbal",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 1.2,
+      "sustain": 0.4,
+      "release": 1.5,
+      "color": "#32CD32"
+    },    "pad_6": {
+      "sample": "crash.wav",
+      "name": "Crash",
+      "volume": 0.9,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 1.8,
+      "sustain": 0.5,
+      "release": 2.2,
+      "color": "#00CED1"
+    },
+    "pad_7": {
+      "sample": "tom_high.wav",
+      "name": "High Tom",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.6,
+      "sustain": 0.2,
+      "release": 0.8,
+      "color": "#FF69B4"
+    },
+    "pad_8": {
+      "sample": "tom_low.wav",
+      "name": "Floor Tom",
+      "volume": 0.85,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.8,
+      "sustain": 0.3,
+      "release": 1.0,
+      "color": "#FF1493"
+    }
+  }
+}

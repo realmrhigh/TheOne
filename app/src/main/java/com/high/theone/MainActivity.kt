@@ -56,18 +56,21 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    NavHost(navController = navController, startDestination = "main_screen") {                        composable("main_screen") {
+                    
+                    NavHost(navController = navController, startDestination = "drum_pad_screen") {
+                        composable("main_screen") {
                             MainScreen(navController = navController)
                         }
                         composable("step_sequencer_screen") {
                             StepSequencerScreen(navController = navController)
                         }
                         composable("debug_screen") {
-                            DebugScreen(audioEngineControl = audioEngine)
+                            DebugScreen(audioEngine = audioEngine)
                         }
                         composable("drum_pad_screen") {
                             DrumPadScreen(
-                                drumTrackViewModel = hiltViewModel<DrumTrackViewModel>()
+                                drumTrackViewModel = hiltViewModel<DrumTrackViewModel>(),
+                                navController = navController
                             )
                         }
                     }

@@ -1,7 +1,7 @@
 package com.high.theone.features.sampleeditor
 
 import androidx.lifecycle.ViewModel
-import com.high.theone.audio.AudioEngine
+import com.high.theone.audio.AudioEngineControl
 import com.high.theone.domain.ProjectManager
 import com.high.theone.model.SampleMetadata
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class SampleEditViewModel(
     private val initialSampleMetadata: SampleMetadata, // Order changed
-    private val audioEngine: AudioEngine, // Type changed
+    private val audioEngine: AudioEngineControl, // Type changed
     private val projectManager: ProjectManager
 ) : ViewModel() {
 

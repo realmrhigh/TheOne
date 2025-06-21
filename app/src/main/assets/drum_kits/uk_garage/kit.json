@@ -1,0 +1,55 @@
+{
+  "name": "UK Garage",
+  "description": "Fast-paced UK garage drums with characteristic shuffle and energy",
+  "author": "Akai MPC500 Collection",  
+  "category": "garage",
+  "color": "#483D8B",
+  "tempo": 130,
+  "tags": ["garage", "uk", "shuffle", "breakbeat", "underground"],
+  "pads": {
+    "pad_0": {
+      "sample": "kick.wav",
+      "name": "Big Kick",
+      "volume": 0.95,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.6,
+      "sustain": 0.2,
+      "release": 0.4,
+      "color": "#8B4513"
+    },
+    "pad_1": {
+      "sample": "snare.wav",
+      "name": "Garage Snare",
+      "volume": 0.9,
+      "pitch": 0,
+      "attack": 0.01,
+      "decay": 0.4,
+      "sustain": 0.1,
+      "release": 0.3,
+      "color": "#DC143C"
+    },
+    "pad_2": {
+      "sample": "hihat.wav",
+      "name": "Shuffle Hat",
+      "volume": 0.75,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.2,
+      "sustain": 0.0,
+      "release": 0.15,
+      "color": "#FFD700"
+    },
+    "pad_3": {
+      "sample": "crack.wav",
+      "name": "Crack Perc",
+      "volume": 0.8,
+      "pitch": 0,
+      "attack": 0.0,
+      "decay": 0.2,
+      "sustain": 0.0,
+      "release": 0.1,
+      "color": "#FF69B4"
+    }
+  }
+}

@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun DebugScreen(
-    audioEngineControl: AudioEngineControl
+    audioEngine: AudioEngineControl
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -47,7 +47,7 @@ fun DebugScreen(
                     val filePath = uri.toString()
                     
                     withContext(Dispatchers.IO) {
-                        val success = audioEngineControl.loadSampleToMemory(sampleId, filePath)
+                        val success = audioEngine.loadSampleToMemory(sampleId, filePath)
                         withContext(Dispatchers.Main) {
                             if (success) {
                                 loadedSamples = loadedSamples + sampleId
@@ -98,7 +98,7 @@ fun DebugScreen(
                         onClick = {
                             scope.launch {
                                 try {                                    withContext(Dispatchers.IO) {
-                                        audioEngineControl.initialize(44100, 256, true)
+                                        audioEngine.initialize(44100, 256, true)
                                     }
                                     isEngineInitialized = true
                                     testResults = "Engine initialized successfully"
@@ -118,7 +118,7 @@ fun DebugScreen(
                             scope.launch {
                                 try {
                                     withContext(Dispatchers.IO) {
-                                        audioEngineControl.shutdown()
+                                        audioEngine.shutdown()
                                     }
                                     isEngineInitialized = false
                                     testResults = "Engine shutdown successfully"
@@ -153,7 +153,7 @@ fun DebugScreen(
                                 testResults = "Creating and triggering test sample..."
                                 
                                 withContext(Dispatchers.IO) {
-                                    val success = audioEngineControl.createAndTriggerTestSample()
+                                    val success = audioEngine.createAndTriggerTestSample()
                                     withContext(Dispatchers.Main) {
                                         if (success) {
                                             testResults = "✓ Test sample created and triggered successfully!\n" +
@@ -184,7 +184,7 @@ fun DebugScreen(
                                 testResults = "Loading test sample to memory..."
                                 
                                 withContext(Dispatchers.IO) {
-                                    val success = audioEngineControl.loadTestSample()
+                                    val success = audioEngine.loadTestSample()
                                     withContext(Dispatchers.Main) {
                                         if (success) {
                                             testResults = "✓ Test sample loaded to memory successfully!"
@@ -217,7 +217,7 @@ fun DebugScreen(
                                     testResults = "Triggering pad sample 0..."
                                     
                                     withContext(Dispatchers.IO) {
-                                        audioEngineControl.triggerTestPadSample(0)
+                                        audioEngine.triggerTestPadSample(0)
                                         withContext(Dispatchers.Main) {
                                             testResults = "✓ Triggered pad sample 0"
                                         }
@@ -241,7 +241,7 @@ fun DebugScreen(
                                     testResults = "Triggering pad sample 1..."
                                     
                                     withContext(Dispatchers.IO) {
-                                        audioEngineControl.triggerTestPadSample(1)
+                                        audioEngine.triggerTestPadSample(1)
                                         withContext(Dispatchers.Main) {
                                             testResults = "✓ Triggered pad sample 1"
                                         }
@@ -276,7 +276,7 @@ fun DebugScreen(
                         scope.launch {
                             try {
                                 withContext(Dispatchers.IO) {
-                                    val latency = audioEngineControl.getOboeReportedLatencyMillis()
+                                    val latency = audioEngine.getOboeReportedLatencyMillis()
                                     withContext(Dispatchers.Main) {
                                         testResults = "Oboe reported latency: ${latency}ms"
                                     }
@@ -314,10 +314,7 @@ fun DebugScreen(
                         scope.launch {
                             try {
                                 testResults = "Loading SketchingSynth plugin..."
-                                
-                                withContext(Dispatchers.IO) {
-                                    val audioEngine = audioEngineControl as? com.high.theone.audio.AudioEngine
-                                    val success = audioEngine?.loadPlugin("sketchingsynth", "SketchingSynth") ?: false
+                                  withContext(Dispatchers.IO) {                                    val success = audioEngine.loadPlugin("sketchingsynth", "SketchingSynth")
                                     withContext(Dispatchers.Main) {
                                         if (success) {
                                             sketchingSynthLoaded = true
@@ -325,7 +322,7 @@ fun DebugScreen(
                                                     "The world's first AVST plugin is ready to rock!"
                                             // Refresh loaded plugins list
                                             scope.launch {
-                                                loadedPlugins = audioEngine?.getLoadedPlugins() ?: emptyList()
+                                                loadedPlugins = audioEngine.getLoadedPlugins()
                                             }
                                         } else {
                                             testResults = "✗ Failed to load SketchingSynth plugin"
@@ -360,15 +357,13 @@ fun DebugScreen(
                         
                         notes.forEachIndexed { index, midiNote ->
                             Button(
-                                onClick = {
-                                    scope.launch {
+                                onClick = {                                    scope.launch {
                                         try {
-                                            val audioEngine = audioEngineControl as? com.high.theone.audio.AudioEngine
-                                            audioEngine?.noteOnToPlugin("sketchingsynth", midiNote, 100)
+                                            audioEngine.noteOnToPlugin("sketchingsynth", midiNote, 100)
                                             
                                             // Note off after 500ms
                                             kotlinx.coroutines.delay(500)
-                                            audioEngine?.noteOffToPlugin("sketchingsynth", midiNote, 100)
+                                            audioEngine.noteOffToPlugin("sketchingsynth", midiNote, 100)
                                             
                                             testResults = "🎵 Played note ${noteNames[index]} (MIDI $midiNote)"
                                         } catch (e: Exception) {
@@ -396,13 +391,11 @@ fun DebugScreen(
                     ) {
                         Text("Volume: ", modifier = Modifier.width(60.dp))
                         Slider(
-                            value = volume,
-                            onValueChange = { newVolume ->
+                            value = volume,                            onValueChange = { newVolume ->
                                 volume = newVolume
                                 scope.launch {
                                     try {
-                                        val audioEngine = audioEngineControl as? com.high.theone.audio.AudioEngine
-                                        audioEngine?.setPluginParameter("sketchingsynth", "master_volume", newVolume.toDouble())
+                                        audioEngine.setPluginParameter("sketchingsynth", "master_volume", newVolume.toDouble())
                                     } catch (e: Exception) {
                                         Log.e("DebugScreen", "Parameter set failed", e)
                                     }
@@ -423,12 +416,10 @@ fun DebugScreen(
                             value = cutoff,
                             onValueChange = { newCutoff ->
                                 cutoff = newCutoff
-                                scope.launch {
-                                    try {
-                                        val audioEngine = audioEngineControl as? com.high.theone.audio.AudioEngine
+                                scope.launch {                                    try {
                                         // Convert 0.0-1.0 slider to 20Hz-8000Hz range (logarithmic)
                                         val cutoffHz = 20.0 + (8000.0 - 20.0) * newCutoff.toDouble()
-                                        audioEngine?.setPluginParameter("sketchingsynth", "filter_cutoff", cutoffHz)
+                                        audioEngine.setPluginParameter("sketchingsynth", "filter_cutoff", cutoffHz)
                                     } catch (e: Exception) {
                                         Log.e("DebugScreen", "Parameter set failed", e)
                                     }
@@ -445,9 +436,7 @@ fun DebugScreen(
                     Button(
                         onClick = {
                             scope.launch {
-                                try {
-                                    val audioEngine = audioEngineControl as? com.high.theone.audio.AudioEngine
-                                    val success = audioEngine?.unloadPlugin("sketchingsynth") ?: false
+                                try {                                    val success = audioEngine.unloadPlugin("sketchingsynth")
                                     if (success) {
                                         sketchingSynthLoaded = false
                                         loadedPlugins = emptyList()
@@ -588,7 +577,7 @@ fun DebugScreen(
                                                         testResults = "Playing sample: $sampleId"
                                                         
                                                         withContext(Dispatchers.IO) {
-                                                            audioEngineControl.triggerSample(sampleId, 1.0f, 0.0f)
+                                                            audioEngine.triggerSample(sampleId, 1.0f, 0.0f)
                                                             withContext(Dispatchers.Main) {
                                                                 testResults = "✓ Triggered sample: $sampleId"
                                                             }
@@ -609,7 +598,7 @@ fun DebugScreen(
                                                 scope.launch {
                                                     try {
                                                         withContext(Dispatchers.IO) {
-                                                            audioEngineControl.unloadSample(sampleId)
+                                                            audioEngine.unloadSample(sampleId)
                                                             withContext(Dispatchers.Main) {
                                                                 loadedSamples = loadedSamples.filter { it != sampleId }
                                                                 testResults = "✓ Unloaded sample: $sampleId"
@@ -638,7 +627,7 @@ fun DebugScreen(
                             scope.launch {
                                 try {
                                     withContext(Dispatchers.IO) {
-                                        audioEngineControl.stopAllSamples()
+                                        audioEngine.stopAllSamples()
                                         withContext(Dispatchers.Main) {
                                             testResults = "✓ Stopped all playing samples"
                                         }
@@ -654,6 +643,192 @@ fun DebugScreen(
                     ) {
                         Text("🛑 Stop All Playing Samples")
                     }
+                }
+            }
+        }
+        
+        // Asset Loading Tests
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text("Asset Loading Tests", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Button(
+                    onClick = {
+                        scope.launch {
+                            try {                                testResults = "Setting up asset manager..."
+                                
+                                withContext(Dispatchers.IO) {
+                                    // Set the asset manager first
+                                    val assetManagerSet = audioEngine.setAssetManager(context.assets)
+                                    if (!assetManagerSet) {
+                                        withContext(Dispatchers.Main) {
+                                            testResults = "✗ Failed to set asset manager"
+                                        }
+                                        return@withContext
+                                    }
+                                    
+                                    // Test loading an asset from the drum kit
+                                    val sampleId = "test_kick_${System.currentTimeMillis()}"
+                                    val assetPath = "asset://drum_kits/hip_hop_legends/kick_vinyl.wav"
+                                    
+                                    val success = audioEngine.loadSampleToMemory(sampleId, assetPath)
+                                    
+                                    withContext(Dispatchers.Main) {
+                                        if (success) {
+                                            loadedSamples = loadedSamples + sampleId
+                                            testResults = "✓ Successfully loaded asset: kick_vinyl.wav\nSample ID: $sampleId"
+                                        } else {
+                                            testResults = "✗ Failed to load asset: kick_vinyl.wav"
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                testResults = "✗ Asset load error: ${e.message}"
+                                Log.e("DebugScreen", "Asset load failed", e)
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("🎵 Load Test Asset (Hip Hop Kick)")
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Button(
+                    onClick = {
+                        scope.launch {                            testResults = "Loading multiple assets..."
+                            
+                            withContext(Dispatchers.IO) {
+                                // Ensure asset manager is set
+                                val assetManagerSet = audioEngine.setAssetManager(context.assets)
+                                if (!assetManagerSet) {
+                                    withContext(Dispatchers.Main) {
+                                        testResults = "✗ Failed to set asset manager"
+                                    }
+                                    return@withContext
+                                }
+                                
+                                val assetsToLoad = listOf(
+                                    "kick.wav",
+                                    "snare.wav", 
+                                    "hat.wav",
+                                    "clap.wav"
+                                )
+                                
+                                val results = mutableListOf<String>()
+                                assetsToLoad.forEach { asset ->
+                                    val sampleId = "${asset.replace(".wav", "")}_${System.currentTimeMillis()}"
+                                    val assetPath = "asset://$asset"
+                                    
+                                    val success = audioEngine.loadSampleToMemory(sampleId, assetPath)
+                                    if (success) {
+                                        loadedSamples = loadedSamples + sampleId
+                                        results.add("✓ $asset")
+                                    } else {
+                                        results.add("✗ $asset")
+                                    }
+                                }
+                                
+                                withContext(Dispatchers.Main) {
+                                    testResults = "Asset Loading Results:\n" + results.joinToString("\n")
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("🥁 Load Basic Drum Samples")
+                }
+            }
+        }
+        
+        // Sample Playback Tests
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text("Sample Playback Tests", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                if (loadedSamples.isNotEmpty()) {
+                    Text("Loaded Samples:", style = MaterialTheme.typography.bodyMedium)
+                    LazyColumn(
+                        modifier = Modifier.height(120.dp)
+                    ) {
+                        items(loadedSamples) { sampleId ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = sampleId,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Row {
+                                    IconButton(
+                                        onClick = {                                            scope.launch {
+                                                try {
+                                                    testResults = "Playing sample: $sampleId"
+                                                    audioEngine.triggerSample(sampleId, 1.0f, 0.0f)
+                                                    testResults = "✓ Played sample: $sampleId"
+                                                } catch (e: Exception) {
+                                                    testResults = "✗ Playback error: ${e.message}"
+                                                    Log.e("DebugScreen", "Sample playback failed", e)
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = "Play")
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    audioEngine.unloadSample(sampleId)
+                                                    loadedSamples = loadedSamples - sampleId
+                                                    testResults = "✓ Unloaded sample: $sampleId"
+                                                } catch (e: Exception) {
+                                                    testResults = "✗ Unload error: ${e.message}"
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Unload")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text("No samples loaded", style = MaterialTheme.typography.bodyMedium)
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Button(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                audioEngine.stopAllNotes(null, true)
+                                testResults = "✓ Stopped all playing samples"
+                            } catch (e: Exception) {
+                                testResults = "✗ Stop all error: ${e.message}"
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("🛑 Stop All Samples")
                 }
             }
         }

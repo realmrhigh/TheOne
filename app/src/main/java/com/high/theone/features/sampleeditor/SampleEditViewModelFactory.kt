@@ -2,13 +2,13 @@ package com.high.theone.features.sampleeditor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.high.theone.audio.AudioEngine
+import com.high.theone.audio.AudioEngineControl
 import com.high.theone.domain.ProjectManager
 import com.high.theone.model.SampleMetadata
 
 class SampleEditViewModelFactory(
     private val initialSampleMetadata: SampleMetadata, // Name and order changed
-    private val audioEngine: AudioEngine, // Type and order changed
+    private val audioEngine: AudioEngineControl, // Type and order changed
     private val projectManager: ProjectManager // Order changed
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {

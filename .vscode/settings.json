@@ -3,6 +3,7 @@
         "chrono": "cpp",
         "xlocale": "cpp",
         "ostream": "cpp",
-        "memory": "cpp"
+        "memory": "cpp",
+        "xstring": "cpp"
     }
 }
