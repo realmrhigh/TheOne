@@ -142,8 +142,13 @@ public:
     }
     bool loadSampleFromAsset(const std::string& sampleId, const std::string& assetPath);
     
+    float getSampleRate() const { return globalSampleRate; }
+    
 private:
     AAssetManager* assetManager_ = nullptr;
+    
+    // Global sample rate - single source of truth from Oboe
+    float globalSampleRate = 48000.0f;
 
     // Oboe Stream
     oboe::ManagedStream outStream_;

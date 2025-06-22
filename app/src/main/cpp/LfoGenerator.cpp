@@ -2,12 +2,17 @@
 #include <cstdlib> // For rand()
 #include <algorithm> // For std::min, std::max
 #include <ctime>   // For time() in srand initialization
+#include <cmath>   // For sin, cos, M_PI
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace theone {
 namespace audio {
 
 LfoGenerator::LfoGenerator()
-    : sampleRate(44100.0f), // Default, should be configured
+    : sampleRate(48000.0f), // Match Oboe's sample rate
       currentTempoBpm(120.0f),
       phase(0.0),
       phaseIncrement(0.0),
@@ -17,19 +22,19 @@ LfoGenerator::LfoGenerator()
     // settings will be default constructed
     // Seed random number generator once
     // Consider a more robust random solution if high quality is needed
-    srand(static_cast<unsigned int>(time(nullptr)));
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
 }
 
 void LfoGenerator::configure(const LfoSettingsCpp& newSettings, float sr, float tempoBpm) {
     settings = newSettings;
-    sampleRate = sr > 0 ? sr : 44100.0f;
+    sampleRate = sr > 0 ? sr : 48000.0f;
     currentTempoBpm = tempoBpm > 0 ? tempoBpm : 120.0f;
     phase = 0.0; // Reset phase on new configuration
     calculatePhaseIncrement();
-
+    
     if (settings.waveform == LfoWaveformCpp::RANDOM_STEP || settings.waveform == LfoWaveformCpp::RANDOM_SMOOTH) {
-        lastRandomValue = (static_cast<float>(rand()) / RAND_MAX) * 2.0f - 1.0f;
-        nextRandomValue = (static_cast<float>(rand()) / RAND_MAX) * 2.0f - 1.0f;
+        lastRandomValue = (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
+        nextRandomValue = (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
         samplesUntilNextRandomStep = 0; // Trigger immediate new value on first process
     }
 }
@@ -37,7 +42,7 @@ void LfoGenerator::configure(const LfoSettingsCpp& newSettings, float sr, float 
 void LfoGenerator::calculatePhaseIncrement() {
     if (settings.syncToTempo) {
         if (currentTempoBpm > 0 && sampleRate > 0 && settings.tempoDivision != TimeDivisionCpp::NONE) {
-            double beatsPerMinute = currentTempoBpm;
+            double beatsPerMinute = static_cast<double>(currentTempoBpm);
             double beatsPerSecond = beatsPerMinute / 60.0;
 
             double noteValue = 1.0; // Relative to a whole note (4 beats in 4/4)
@@ -68,9 +73,11 @@ void LfoGenerator::calculatePhaseIncrement() {
                 case TimeDivisionCpp::TRIPLET_SIXTEENTH: noteValue = (0.25 * 2.0 / 3.0); break;
                 default: noteValue = 1.0; break; // Default to quarter if unknown
             }
+            
             double lfoCycleDurationSeconds = noteValue / beatsPerSecond; // Duration of one LFO cycle in seconds
+            
             if (lfoCycleDurationSeconds > 0.00001) { // Avoid division by zero or extremely small values
-                phaseIncrement = 1.0 / (lfoCycleDurationSeconds * sampleRate);
+                phaseIncrement = 1.0 / (lfoCycleDurationSeconds * static_cast<double>(sampleRate));
             } else {
                 phaseIncrement = 0.0;
             }
@@ -79,7 +86,7 @@ void LfoGenerator::calculatePhaseIncrement() {
         }
     } else { // Rate in Hz
         if (sampleRate > 0) {
-            phaseIncrement = static_cast<double>(settings.rateHz) / sampleRate;
+            phaseIncrement = static_cast<double>(settings.rateHz) / static_cast<double>(sampleRate);
         } else {
             phaseIncrement = 0.0;
         }
@@ -88,10 +95,11 @@ void LfoGenerator::calculatePhaseIncrement() {
 
 void LfoGenerator::resetPhase() {
     phase = 0.0;
+    
     if (settings.waveform == LfoWaveformCpp::RANDOM_STEP || settings.waveform == LfoWaveformCpp::RANDOM_SMOOTH) {
         // Re-randomize on phase reset for these types
-        lastRandomValue = (static_cast<float>(rand()) / RAND_MAX) * 2.0f - 1.0f;
-        nextRandomValue = (static_cast<float>(rand()) / RAND_MAX) * 2.0f - 1.0f;
+        lastRandomValue = (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
+        nextRandomValue = (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
         samplesUntilNextRandomStep = 0;
     }
 }
@@ -117,11 +125,10 @@ float LfoGenerator::process() {
 
     phase += phaseIncrement;
     if (phase >= 1.0) {
-        phase -= 1.0;
-        // For RANDOM_STEP, update the value when the phase wraps (completes a cycle)
+        phase -= 1.0;        // For RANDOM_STEP, update the value when the phase wraps (completes a cycle)
         if (settings.waveform == LfoWaveformCpp::RANDOM_STEP || settings.waveform == LfoWaveformCpp::RANDOM_SMOOTH) {
              lastRandomValue = nextRandomValue;
-             nextRandomValue = (static_cast<float>(rand()) / RAND_MAX) * 2.0f - 1.0f;
+             nextRandomValue = (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
         }
     }
     return value;
@@ -129,34 +136,21 @@ float LfoGenerator::process() {
 
 // Waveform Implementations
 float LfoGenerator::generateSine() {
-    return sinf(static_cast<float>(phase * 2.0 * M_PI));
+    return std::sin(static_cast<float>(phase * 2.0 * M_PI));
 }
 
 float LfoGenerator::generateTriangle() {
     float p = static_cast<float>(phase);
-    if (p < 0.25f) { // Ramping up from 0 to 1 (output 0 to 1, scaled to -1 to 1: (p*4)*2-1 -> p*8-1 is wrong)
-                     // Correct: 0 to 1 needs to map to 0 to 1 here, then scale.
-                     // Or, directly: phase 0->0.25 maps to output 0->1
-        return p * 4.0f; // Output: 0 to 1
-    } else if (p < 0.75f) { // Ramping down from 1 to -1
-                            // phase 0.25->0.75 (range 0.5). Output 1 -> -1 (change of -2)
-                            // value = 1 - ( (p-0.25) / 0.5 ) * 2 = 1 - (p-0.25)*4
-        return 1.0f - (p - 0.25f) * 4.0f; // Output: 1 to -1
-    } else { // Ramping up from -1 to 0
-             // phase 0.75->1.0 (range 0.25). Output -1 -> 0 (change of 1)
-             // value = -1 + ( (p-0.75) / 0.25 ) * 1 = -1 + (p-0.75)*4
-        return -1.0f + (p - 0.75f) * 4.0f; // Output: -1 to 0
+    if (p < 0.25f) {
+        // Ramping up from 0 to 1 (phase 0->0.25 maps to output 0->1)
+        return p * 4.0f;
+    } else if (p < 0.75f) {
+        // Ramping down from 1 to -1 (phase 0.25->0.75 maps to output 1->-1)
+        return 1.0f - (p - 0.25f) * 4.0f;
+    } else {
+        // Ramping up from -1 to 0 (phase 0.75->1.0 maps to output -1->0)
+        return -1.0f + (p - 0.75f) * 4.0f;
     }
-    // The above triangle is 0 -> 1 -> -1 -> 0. Standard LFOs are often -1 to 1.
-    // A common triangle LFO is |2 * (phase - floor(phase + 0.5))| * 2 - 1
-    // Or simpler: return 2.0f * (fabsf(2.0f * (phase - 0.5f)) - 0.5f);
-    // The prompt's version: (0->1), (1->-1), (-1->0). This results in a 0 to 1 triangle, then scaled.
-    // Let's use the common -1 to 1 bipolar triangle:
-    // return 2.0f * (fabsf(fmodf(phase + 0.75f, 1.0f) * 2.0f - 1.0f) ) - 1.0f; // complex
-    // Simpler: 4.0f * fabsf(phase - 0.5f) - 1.0f; // This is V shape, up-down
-    // For 0->1->0->-1->0:
-    // The original code was: p*4 for 0..0.25 (0..1), 1-(p-0.25)*4 for 0.25..0.75 (1..-1), -1+(p-0.75)*4 for 0.75..1 (-1..0)
-    // This is correct for a bipolar triangle wave.
 }
 
 
