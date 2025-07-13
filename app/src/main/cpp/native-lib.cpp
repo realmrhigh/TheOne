@@ -960,8 +960,8 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_high_theone_audio_AudioEngineImpl_native_1loadSampleFromAsset(
     JNIEnv* env, jobject /* thiz */, jstring sampleId, jstring assetPath) {
     if (!audioEngineInstance) return JNI_FALSE;
-    // For now, use the same method as loadSampleToMemory
-    return audioEngineInstance->loadSampleToMemory(JStringToString(env, sampleId), JStringToString(env, assetPath), 0, 0) ? JNI_TRUE : JNI_FALSE;
+    // Use the proper loadSampleFromAsset method
+    return audioEngineInstance->loadSampleFromAsset(JStringToString(env, sampleId), JStringToString(env, assetPath)) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -1053,4 +1053,82 @@ Java_com_high_theone_audio_AudioEngineImpl_native_1getDrumEngineLoadedSamples(
     if (!audioEngineInstance) return 0;
     // For now, return a dummy value
     return 0;
+}
+
+// 🎛️ ===== AVST PLUGIN SYSTEM JNI FUNCTIONS FOR AudioEngineImpl ===== 🎛️
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1loadPlugin(
+    JNIEnv* env, jobject /* thiz */, jstring pluginId, jstring pluginName) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    bool result = audioEngineInstance->loadPlugin(
+        JStringToString(env, pluginId),
+        JStringToString(env, pluginName)
+    );
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1unloadPlugin(
+    JNIEnv* env, jobject /* thiz */, jstring pluginId) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    bool result = audioEngineInstance->unloadPlugin(JStringToString(env, pluginId));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1getLoadedPlugins(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) {
+        return env->NewObjectArray(0, env->FindClass("java/lang/String"), nullptr);
+    }
+
+    auto pluginIds = audioEngineInstance->getLoadedPlugins();
+    jobjectArray result = env->NewObjectArray(
+        pluginIds.size(),
+        env->FindClass("java/lang/String"),
+        nullptr
+    );
+
+    for (size_t i = 0; i < pluginIds.size(); ++i) {
+        jstring str = env->NewStringUTF(pluginIds[i].c_str());
+        env->SetObjectArrayElement(result, i, str);
+        env->DeleteLocalRef(str);
+    }
+
+    return result;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setPluginParameter(
+    JNIEnv* env, jobject /* thiz */, jstring pluginId, jstring paramId, jdouble value) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    bool result = audioEngineInstance->setPluginParameter(
+        JStringToString(env, pluginId),
+        JStringToString(env, paramId),
+        static_cast<double>(value)
+    );
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1noteOnToPlugin(
+    JNIEnv* env, jobject /* thiz */, jstring pluginId, jint note, jint velocity) {
+    if (!audioEngineInstance) return;
+    audioEngineInstance->noteOnToPlugin(
+        JStringToString(env, pluginId),
+        static_cast<uint8_t>(note),
+        static_cast<uint8_t>(velocity)
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1noteOffToPlugin(
+    JNIEnv* env, jobject /* thiz */, jstring pluginId, jint note, jint velocity) {
+    if (!audioEngineInstance) return;
+    audioEngineInstance->noteOffToPlugin(
+        JStringToString(env, pluginId),
+        static_cast<uint8_t>(note),
+        static_cast<uint8_t>(velocity)
+    );
 }

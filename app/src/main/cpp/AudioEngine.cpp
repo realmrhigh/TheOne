@@ -1,5 +1,6 @@
 #include "AudioEngine.h"
 #include <android/log.h>
+#include <android/asset_manager.h> // For AAssetManager
 #include <algorithm> // For std::max, std::min
 #include <cmath>     // For M_PI, cosf, sinf, powf
 #include <string.h>  // For memset in onAudioReady
@@ -468,6 +469,12 @@ bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::str
         }
     }
 
+    // Check if this is an asset:// path and redirect to asset loading
+    if (filePath.find("asset://") == 0) {
+        std::string assetPath = filePath.substr(8); // Remove "asset://" prefix
+        return loadSampleFromAsset(sampleId, assetPath);
+    }
+
     // Load the WAV file using dr_wav
     drwav wav;
     if (!drwav_init_file(&wav, filePath.c_str(), nullptr)) {
@@ -568,6 +575,108 @@ void AudioEngine::unloadSample(const std::string& sampleId) {
         sampleMap_.erase(it);
         __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sample unloaded: %s", sampleId.c_str());
     }
+}
+
+bool AudioEngine::loadSampleFromAsset(const std::string& sampleId, const std::string& assetPath) {
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Loading sample from asset: %s from %s",
+                        sampleId.c_str(), assetPath.c_str());
+
+    // Check if asset manager is available
+    if (!assetManager_) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Asset manager not set for loading asset: %s", assetPath.c_str());
+        return false;
+    }
+
+    // Check if sample is already loaded
+    {
+        std::lock_guard<std::mutex> lock(sampleMutex_);
+        if (sampleMap_.find(sampleId) != sampleMap_.end()) {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Sample %s already loaded, skipping", sampleId.c_str());
+            return true;
+        }
+    }
+
+    // Open the asset
+    AAsset* asset = AAssetManager_open(assetManager_, assetPath.c_str(), AASSET_MODE_UNKNOWN);
+    if (!asset) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to open asset: %s", assetPath.c_str());
+        return false;
+    }
+
+    // Get asset size and read data
+    off_t assetSize = AAsset_getLength(asset);
+    if (assetSize <= 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Invalid asset size for: %s", assetPath.c_str());
+        AAsset_close(asset);
+        return false;
+    }
+
+    // Read asset data into buffer
+    std::vector<uint8_t> assetData(assetSize);
+    int bytesRead = AAsset_read(asset, assetData.data(), assetSize);
+    AAsset_close(asset);
+
+    if (bytesRead != assetSize) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to read complete asset data: %s (read %d of %ld bytes)",
+                            assetPath.c_str(), bytesRead, assetSize);
+        return false;
+    }
+
+    // Initialize dr_wav with memory buffer
+    drwav wav;
+    if (!drwav_init_memory(&wav, assetData.data(), assetSize, nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize WAV from asset: %s", assetPath.c_str());
+        return false;
+    }
+
+    // Calculate frames to load (same logic as file loading)
+    uint64_t totalFrames = wav.totalPCMFrameCount;
+    uint64_t framesToLoad = totalFrames;
+
+    if (framesToLoad == 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "No frames to load for asset sample %s", sampleId.c_str());
+        drwav_uninit(&wav);
+        return false;
+    }
+
+    // Allocate buffer for audio data
+    size_t totalSamples = static_cast<size_t>(framesToLoad * wav.channels);
+    std::vector<float> audioData(totalSamples);
+
+    // Read the audio data as float samples
+    uint64_t samplesRead = drwav_read_pcm_frames_f32(&wav, framesToLoad, audioData.data());
+
+    if (samplesRead != framesToLoad) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Expected to read %" PRIu64 " frames, but read %" PRIu64 " frames",
+                            framesToLoad, samplesRead);
+        // Adjust the vector size to actual samples read
+        audioData.resize(samplesRead * wav.channels);
+        framesToLoad = samplesRead;
+    }
+
+    // Close the WAV
+    drwav_uninit(&wav);
+
+    // Create SampleDataCpp object
+    auto sampleData = std::make_shared<SampleDataCpp>(
+        sampleId,
+        std::move(audioData),
+        static_cast<size_t>(framesToLoad * wav.channels), // Total samples
+        wav.sampleRate,
+        static_cast<uint16_t>(wav.channels)
+    );
+
+    // Store in sample map
+    {
+        std::lock_guard<std::mutex> lock(sampleMutex_);
+        sampleMap_[sampleId] = sampleData;
+    }
+
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+                        "Successfully loaded asset sample %s: %" PRIu64 " frames, %u channels, %u Hz, %zu total samples",
+                        sampleId.c_str(), (uint64_t)framesToLoad, wav.channels, wav.sampleRate, totalSamples);
+
+    return true;
 }
 
 bool AudioEngine::playPadSample(

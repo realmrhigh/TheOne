@@ -47,6 +47,14 @@ class AudioEngineImpl @Inject constructor(
     private external fun native_setDrumMasterVolume(volume: Float)
     private external fun native_getDrumActiveVoices(): Int
     private external fun native_clearDrumVoices()
+
+    // Plugin system native methods
+    private external fun native_loadPlugin(pluginId: String, pluginName: String): Boolean
+    private external fun native_unloadPlugin(pluginId: String): Boolean
+    private external fun native_getLoadedPlugins(): Array<String>
+    private external fun native_setPluginParameter(pluginId: String, paramId: String, value: Double): Boolean
+    private external fun native_noteOnToPlugin(pluginId: String, note: Int, velocity: Int)
+    private external fun native_noteOffToPlugin(pluginId: String, note: Int, velocity: Int)
     private external fun native_debugPrintDrumEngineState()
     private external fun native_getDrumEngineLoadedSamples(): Int
 
@@ -410,30 +418,79 @@ class AudioEngineImpl @Inject constructor(
     }
 
     override suspend fun loadPlugin(pluginId: String, pluginName: String): Boolean {
-        Log.d(TAG, "loadPlugin not yet implemented")
-        return false
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Loading plugin: $pluginId ($pluginName)")
+                val result = native_loadPlugin(pluginId, pluginName)
+                Log.d(TAG, "Load plugin result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception loading plugin", e)
+                false
+            }
+        }
     }
 
     override suspend fun unloadPlugin(pluginId: String): Boolean {
-        Log.d(TAG, "unloadPlugin not yet implemented")
-        return false
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Unloading plugin: $pluginId")
+                val result = native_unloadPlugin(pluginId)
+                Log.d(TAG, "Unload plugin result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception unloading plugin", e)
+                false
+            }
+        }
     }
 
     override suspend fun getLoadedPlugins(): List<String> {
-        Log.d(TAG, "getLoadedPlugins not yet implemented")
-        return emptyList()
+        return withContext(Dispatchers.IO) {
+            try {
+                val result = native_getLoadedPlugins().toList()
+                Log.d(TAG, "Loaded plugins: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception getting loaded plugins", e)
+                emptyList()
+            }
+        }
     }
 
     override suspend fun setPluginParameter(pluginId: String, paramId: String, value: Double): Boolean {
-        Log.d(TAG, "setPluginParameter not yet implemented")
-        return false
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting plugin parameter: $pluginId.$paramId = $value")
+                val result = native_setPluginParameter(pluginId, paramId, value)
+                Log.d(TAG, "Set parameter result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception setting plugin parameter", e)
+                false
+            }
+        }
     }
 
     override suspend fun noteOnToPlugin(pluginId: String, note: Int, velocity: Int) {
-        Log.d(TAG, "noteOnToPlugin not yet implemented")
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Note on to plugin: $pluginId, note=$note, velocity=$velocity")
+                native_noteOnToPlugin(pluginId, note, velocity)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception sending note on to plugin", e)
+            }
+        }
     }
 
     override suspend fun noteOffToPlugin(pluginId: String, note: Int, velocity: Int) {
-        Log.d(TAG, "noteOffToPlugin not yet implemented")
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Note off to plugin: $pluginId, note=$note, velocity=$velocity")
+                native_noteOffToPlugin(pluginId, note, velocity)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception sending note off to plugin", e)
+            }
+        }
     }
 }

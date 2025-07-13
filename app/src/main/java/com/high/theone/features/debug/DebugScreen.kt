@@ -69,6 +69,7 @@ fun DebugScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -78,7 +79,7 @@ fun DebugScreen(
             style = MaterialTheme.typography.headlineMedium
         )
         
-        Divider()
+        HorizontalDivider()
         
         // Engine Status
         Card(
@@ -544,7 +545,9 @@ fun DebugScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(loadedSamples) { sampleId ->

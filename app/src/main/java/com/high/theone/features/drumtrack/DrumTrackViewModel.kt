@@ -44,16 +44,16 @@ class DrumTrackViewModel @Inject constructor(
     init {
         // Initialize pads with default drum samples from trap_808_king kit
         val defaultSamples = listOf(
-            "drum_kits/trap_808_king/kick_808.wav",
-            "drum_kits/trap_808_king/snare_electronic.wav", 
-            "drum_kits/trap_808_king/hihat_trap.wav",
-            "drum_kits/trap_808_king/clap_trap.wav",
-            "drum_kits/trap_808_king/bass_808.wav",
-            "drum_kits/trap_808_king/tom_electronic.wav",
-            "drum_kits/trap_808_king/kick_simmons.wav",
-            "drum_kits/trap_808_king/effect_reverse.wav",
-            "kick.wav", "snare.wav", "hat.wav", "clap.wav", // Fallback samples
-            "test.wav", "click_primary.wav", "click_secondary.wav", "test.wav"
+            "asset://drum_kits/trap_808_king/kick_808.wav",
+            "asset://drum_kits/trap_808_king/snare_electronic.wav",
+            "asset://drum_kits/trap_808_king/hihat_trap.wav",
+            "asset://drum_kits/trap_808_king/clap_trap.wav",
+            "asset://drum_kits/trap_808_king/bass_808.wav",
+            "asset://drum_kits/trap_808_king/tom_electronic.wav",
+            "asset://drum_kits/trap_808_king/kick_simmons.wav",
+            "asset://drum_kits/trap_808_king/effect_reverse.wav",
+            "asset://kick.wav", "asset://snare.wav", "asset://hat.wav", "asset://clap.wav", // Fallback samples
+            "asset://test.wav", "asset://click_primary.wav", "asset://click_secondary.wav", "asset://test.wav"
         )
         
         val initialPads = (0 until NUM_PADS).associate { index ->
