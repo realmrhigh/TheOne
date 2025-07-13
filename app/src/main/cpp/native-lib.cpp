@@ -5,6 +5,7 @@
 #include <android/asset_manager_jni.h>
 #include <oboe/Oboe.h>
 #include <map> // For std::map
+#include <cinttypes> // For PRIu64 format specifier
 #include "audio_sample.h" // Include the new header
 #include <unistd.h> // For lseek, read, close
 #include <fcntl.h>  // For open (though we get fd from Kotlin)
@@ -484,7 +485,7 @@ public:
             const float* inputBuffer = static_cast<const float*>(audioData);
             drwav_uint64 framesWritten = drwav_write_pcm_frames(&mWavWriter, numFrames, inputBuffer);
             if (framesWritten != static_cast<drwav_uint64>(numFrames)) {
-                __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "InputCallback: Failed to write all PCM frames. Wrote %llu/%d", (unsigned long long)framesWritten, numFrames);
+                __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "InputCallback: Failed to write all PCM frames. Wrote %" PRIu64 "/%d", (uint64_t)framesWritten, numFrames);
             }
             float currentMaxAbs = 0.0f;
             int numSamplesInBlock = numFrames * inputStream->getChannelCount();
@@ -870,4 +871,186 @@ Java_com_high_theone_audio_AudioEngine_native_1setAssetManager(
         audioEngineInstance->setAssetManager(nativeAssetManager);
         __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Asset manager set for AudioEngine");
     }
+}
+
+// --- JNI METHODS FOR AudioEngineImpl ---
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1initialize(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) audioEngineInstance = std::make_unique<theone::audio::AudioEngine>();
+    return audioEngineInstance && audioEngineInstance->initialize() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1shutdown(
+    JNIEnv* env, jobject /* thiz */) {
+    if (audioEngineInstance) audioEngineInstance->shutdown();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setAssetManager(
+    JNIEnv* env, jobject /* thiz */, jobject assetManager) {
+    if (audioEngineInstance && assetManager) {
+        AAssetManager* nativeAssetManager = AAssetManager_fromJava(env, assetManager);
+        audioEngineInstance->setAssetManager(nativeAssetManager);
+        return JNI_TRUE;
+    }
+    return JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1createAndTriggerTestSample(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    bool result = audioEngineInstance->createAndTriggerTestSample("test_sample", 1.0f, 0.0f);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1loadTestSample(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    audioEngineInstance->loadTestSample("test_sample");
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1triggerTestPadSample(
+    JNIEnv* env, jobject /* thiz */, jint padIndex) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    // For now, just trigger the test sample
+    bool result = audioEngineInstance->createAndTriggerTestSample("test_pad_" + std::to_string(padIndex), 1.0f, 0.0f);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1getOboeReportedLatencyMillis(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return -1.0f;
+    return audioEngineInstance->getOboeReportedLatencyMillis();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1loadSampleToMemory(
+    JNIEnv* env, jobject /* thiz */, jstring sampleId, jstring filePath) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    return audioEngineInstance->loadSampleToMemory(JStringToString(env, sampleId), JStringToString(env, filePath), 0, 0) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1unloadSample(
+    JNIEnv* env, jobject /* thiz */, jstring sampleId) {
+    if (audioEngineInstance) audioEngineInstance->unloadSample(JStringToString(env, sampleId));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1triggerSample(
+    JNIEnv* env, jobject /* thiz */, jstring sampleKey, jfloat volume, jfloat pan) {
+    if (!audioEngineInstance) return;
+    audioEngineInstance->triggerSample(JStringToString(env, sampleKey), volume, pan);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1stopAllSamples(
+    JNIEnv* env, jobject /* thiz */) {
+    if (audioEngineInstance) audioEngineInstance->stopAllSamples();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1loadSampleFromAsset(
+    JNIEnv* env, jobject /* thiz */, jstring sampleId, jstring assetPath) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    // For now, use the same method as loadSampleToMemory
+    return audioEngineInstance->loadSampleToMemory(JStringToString(env, sampleId), JStringToString(env, assetPath), 0, 0) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1initializeDrumEngine(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    // For now, just return true as the main engine handles drum functionality
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1triggerDrumPad(
+    JNIEnv* env, jobject /* thiz */, jint padIndex, jfloat velocity) {
+    if (!audioEngineInstance) return;
+    // For now, trigger a test sample for the drum pad
+    audioEngineInstance->createAndTriggerTestSample("drum_pad_" + std::to_string(padIndex), velocity, 0.0f);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1releaseDrumPad(
+    JNIEnv* env, jobject /* thiz */, jint padIndex) {
+    if (!audioEngineInstance) return;
+    // For now, just log the release
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Drum pad %d released", padIndex);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1loadDrumSample(
+    JNIEnv* env, jobject /* thiz */, jint padIndex, jstring samplePath) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    std::string sampleId = "drum_pad_" + std::to_string(padIndex);
+    return audioEngineInstance->loadSampleToMemory(sampleId, JStringToString(env, samplePath), 0, 0) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setDrumPadVolume(
+    JNIEnv* env, jobject /* thiz */, jint padIndex, jfloat volume) {
+    if (!audioEngineInstance) return;
+    // For now, just log the volume change
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Drum pad %d volume set to %f", padIndex, volume);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setDrumPadPan(
+    JNIEnv* env, jobject /* thiz */, jint padIndex, jfloat pan) {
+    if (!audioEngineInstance) return;
+    // For now, just log the pan change
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Drum pad %d pan set to %f", padIndex, pan);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setDrumPadMode(
+    JNIEnv* env, jobject /* thiz */, jint padIndex, jint playbackMode) {
+    if (!audioEngineInstance) return;
+    // For now, just log the mode change
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Drum pad %d mode set to %d", padIndex, playbackMode);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setDrumMasterVolume(
+    JNIEnv* env, jobject /* thiz */, jfloat volume) {
+    if (audioEngineInstance) audioEngineInstance->setMasterVolume(volume);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1getDrumActiveVoices(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return 0;
+    // For now, return a dummy value
+    return 0;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1clearDrumVoices(
+    JNIEnv* env, jobject /* thiz */) {
+    if (audioEngineInstance) audioEngineInstance->stopAllSamples();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1debugPrintDrumEngineState(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return;
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Drum engine state: AudioEngine initialized");
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1getDrumEngineLoadedSamples(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return 0;
+    // For now, return a dummy value
+    return 0;
 }

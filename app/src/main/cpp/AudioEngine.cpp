@@ -5,6 +5,7 @@
 #include <string.h>  // For memset in onAudioReady
 #include <fcntl.h>   // For open
 #include <unistd.h>  // For close
+#include <cinttypes> // For PRIu64 format specifier
 
 // Ensure M_PI and M_PI_2 are defined
 #ifndef M_PI
@@ -455,7 +456,7 @@ void AudioEngine::setMetronomeState(bool isEnabled, float bpm, int timeSigNum, i
 }
 
 bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::string& filePath, long offset, long length) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Loading sample: %s from %s (offset: %ld, length: %ld)", 
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Loading sample: %s from %s (offset: %ld, length: %ld)",
                         sampleId.c_str(), filePath.c_str(), offset, length);
 
     // Check if sample is already loaded
@@ -493,7 +494,7 @@ bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::str
     uint64_t framesToLoad = totalFrames;
 
     if (startFrame >= totalFrames) {
-        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Offset %ld exceeds total frames %llu", offset, totalFrames);
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Offset %ld exceeds total frames %" PRIu64, offset, totalFrames);
         drwav_uninit(&wav);
         return false;
     }
@@ -514,7 +515,7 @@ bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::str
     // Seek to the start frame if offset is specified
     if (startFrame > 0) {
         if (!drwav_seek_to_pcm_frame(&wav, startFrame)) {
-            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to seek to frame %llu in %s", startFrame, filePath.c_str());
+            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to seek to frame %" PRIu64 " in %s", startFrame, filePath.c_str());
             drwav_uninit(&wav);
             return false;
         }
@@ -528,7 +529,7 @@ bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::str
     uint64_t samplesRead = drwav_read_pcm_frames_f32(&wav, framesToLoad, audioData.data());
     
     if (samplesRead != framesToLoad) {
-        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Expected to read %llu frames, but read %llu frames", 
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Expected to read %" PRIu64 " frames, but read %" PRIu64 " frames",
                             framesToLoad, samplesRead);
         // Adjust the vector size to actual samples read
         audioData.resize(samplesRead * wav.channels);
@@ -553,9 +554,9 @@ bool AudioEngine::loadSampleToMemory(const std::string& sampleId, const std::str
         sampleMap_[sampleId] = sampleData;
     }
 
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, 
-                        "Successfully loaded sample %s: %llu frames, %u channels, %u Hz, %zu total samples", 
-                        sampleId.c_str(), framesToLoad, wav.channels, wav.sampleRate, totalSamples);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+                        "Successfully loaded sample %s: %" PRIu64 " frames, %u channels, %u Hz, %zu total samples",
+                        sampleId.c_str(), (uint64_t)framesToLoad, wav.channels, wav.sampleRate, totalSamples);
 
     return true;
 }
