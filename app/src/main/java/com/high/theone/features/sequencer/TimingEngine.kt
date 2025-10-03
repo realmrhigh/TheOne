@@ -68,9 +68,20 @@ interface TimingEngine {
     fun scheduleStepCallback(callback: (step: Int, microTime: Long) -> Unit)
     
     /**
+     * Register callback for pattern completion events
+     * Called when pattern reaches the end and loops back to beginning
+     */
+    fun schedulePatternCompleteCallback(callback: () -> Unit)
+    
+    /**
      * Remove step callback
      */
     fun removeStepCallback()
+    
+    /**
+     * Remove pattern completion callback
+     */
+    fun removePatternCompleteCallback()
     
     /**
      * Get timing statistics for performance monitoring

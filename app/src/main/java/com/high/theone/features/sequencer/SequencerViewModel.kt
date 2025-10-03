@@ -22,7 +22,11 @@ class SequencerViewModel @Inject constructor(
     private val patternManager: PatternManager,
     private val recordingEngine: RecordingEngine,
     private val overdubManager: OverdubManager,
-    private val historyManager: PatternHistoryManager
+    private val historyManager: PatternHistoryManager,
+    private val songModeManager: SongModeManager,
+    private val songNavigationManager: SongNavigationManager,
+    private val songPlaybackEngine: SongPlaybackEngine,
+    private val songExportManager: SongExportManager
 ) : ViewModel() {
     
     private val _sequencerState = MutableStateFlow(SequencerState())
@@ -46,11 +50,25 @@ class SequencerViewModel @Inject constructor(
     // History state from history manager
     val historyState: StateFlow<PatternHistoryState> = historyManager.historyState
     
+    // Song mode state from song mode manager
+    val songState: StateFlow<SongPlaybackState> = songModeManager.songState
+    
+    // Song navigation state from navigation manager
+    val navigationState: StateFlow<SongNavigationState> = songNavigationManager.navigationState
+    
+    // Song playback engine state
+    val playbackEngineState: StateFlow<SongPlaybackEngineState> = songPlaybackEngine.playbackState
+    
+    // Song export state
+    val exportState: StateFlow<SongExportState> = songExportManager.exportState
+    
     init {
         setupTimingCallbacks()
         loadPatterns()
         loadPadStates()
         setupRecordingCallbacks()
+        setupSongModeCallbacks()
+        setupPlaybackEngineCallbacks()
     }
     
     private fun setupTimingCallbacks() {
@@ -58,11 +76,71 @@ class SequencerViewModel @Inject constructor(
         timingEngine.scheduleStepCallback { step, microTime ->
             handleStepTrigger(step, microTime)
         }
+        
+        // Setup pattern completion callback for song mode
+        timingEngine.schedulePatternCompleteCallback {
+            onPatternComplete()
+        }
     }
     
     private fun setupRecordingCallbacks() {
         // Setup audio engine callback for pad hits during recording
         // This would be implemented when audio engine supports recording callbacks
+    }
+    
+    private fun setupSongModeCallbacks() {
+        // Setup song mode manager with pattern transition callback
+        songModeManager.initializeSong(SongMode()) { patternId ->
+            selectPattern(patternId)
+        }
+    }
+    
+    private fun setupPlaybackEngineCallbacks() {
+        // Setup song playback engine with callbacks
+        songPlaybackEngine.initialize(
+            songMode = SongMode(),
+            onPatternTransition = { transition ->
+                handlePatternTransition(transition)
+            },
+            onPatternComplete = {
+                songPlaybackEngine.advanceToNextPattern()
+            }
+        )
+    }
+    
+    private fun handlePatternTransition(transition: PatternTransition) {
+        // Handle smooth pattern transitions
+        selectPattern(transition.toPatternId)
+        
+        // Update navigation state
+        songNavigationManager.updatePosition(
+            transition.sequencePosition,
+            transition.patternRepeat,
+            0
+        )
+        
+        // Apply transition-specific logic
+        when (transition.transitionType) {
+            TransitionType.START -> {
+                // Starting song playback
+                playPattern()
+            }
+            TransitionType.STOP -> {
+                // Stopping song playback
+                stopPattern()
+            }
+            TransitionType.NEXT_PATTERN, TransitionType.LOOP -> {
+                // Seamless transition to next pattern
+                val pattern = getCurrentPattern()
+                if (pattern != null) {
+                    timingEngine.setTempo(pattern.tempo)
+                    timingEngine.setSwing(pattern.swing)
+                }
+            }
+            else -> {
+                // Other transitions handled by default
+            }
+        }
     }
     
     private fun handleStepTrigger(step: Int, microTime: Long) {
@@ -639,6 +717,355 @@ class SequencerViewModel @Inject constructor(
                 // Handle error
             }
         }
+    }
+    
+    // Song Mode Methods
+    
+    /**
+     * Create a new song with pattern sequence
+     */
+    fun createSong(sequence: List<SongStep>) {
+        viewModelScope.launch {
+            val songMode = SongMode(
+                sequence = sequence,
+                isActive = true,
+                loopEnabled = true
+            )
+            
+            // Update sequencer state with song mode
+            _sequencerState.update { 
+                it.copy(songMode = songMode)
+            }
+            
+            // Initialize song mode manager
+            songModeManager.initializeSong(songMode) { patternId ->
+                selectPattern(patternId)
+            }
+            
+            // Initialize navigation
+            songNavigationManager.initializeNavigation(songMode)
+        }
+    }
+    
+    /**
+     * Start song playback with enhanced engine
+     */
+    fun startSong(startPosition: Int = 0, startRepeat: Int = 0) {
+        viewModelScope.launch {
+            songPlaybackEngine.startPlayback(startPosition, startRepeat)
+            songModeManager.startSong()
+        }
+    }
+    
+    /**
+     * Stop song playback with enhanced engine
+     */
+    fun stopSong() {
+        viewModelScope.launch {
+            songPlaybackEngine.stopPlayback()
+            songModeManager.stopSong()
+            stopPattern()
+        }
+    }
+    
+    /**
+     * Pause song playback with enhanced engine
+     */
+    fun pauseSong() {
+        viewModelScope.launch {
+            songPlaybackEngine.pausePlayback()
+            songModeManager.pauseSong()
+            pausePattern()
+        }
+    }
+    
+    /**
+     * Resume song playback with enhanced engine
+     */
+    fun resumeSong() {
+        viewModelScope.launch {
+            songPlaybackEngine.resumePlayback()
+            songModeManager.resumeSong()
+        }
+    }
+    
+    /**
+     * Navigate to specific position in song
+     */
+    fun navigateToSongPosition(sequencePosition: Int, patternRepeat: Int = 0) {
+        songModeManager.navigateToPosition(sequencePosition, patternRepeat)
+        
+        // Update navigation manager
+        songNavigationManager.updatePosition(sequencePosition, patternRepeat, 0)
+    }
+    
+    /**
+     * Navigate to timeline position (0.0 to 1.0)
+     */
+    fun navigateToTimelinePosition(position: Float) {
+        val songPosition = songNavigationManager.navigateToTimelinePosition(position)
+        if (songPosition != null) {
+            songModeManager.navigateToPosition(
+                songPosition.sequencePosition,
+                songPosition.patternRepeat
+            )
+        }
+    }
+    
+    /**
+     * Move to next pattern in song
+     */
+    fun nextSongPattern() {
+        songModeManager.nextPattern()
+    }
+    
+    /**
+     * Move to previous pattern in song
+     */
+    fun previousSongPattern() {
+        songModeManager.previousPattern()
+    }
+    
+    /**
+     * Toggle song loop mode
+     */
+    fun toggleSongLoop() {
+        songModeManager.toggleLoop()
+        
+        // Update sequencer state
+        val updatedSongMode = songModeManager.songState.value.songMode
+        if (updatedSongMode != null) {
+            _sequencerState.update { 
+                it.copy(songMode = updatedSongMode)
+            }
+        }
+    }
+    
+    /**
+     * Update song sequence
+     */
+    fun updateSongSequence(sequence: List<SongStep>) {
+        songModeManager.updateSongSequence(sequence)
+        
+        // Update sequencer state
+        val updatedSongMode = songModeManager.songState.value.songMode
+        if (updatedSongMode != null) {
+            _sequencerState.update { 
+                it.copy(songMode = updatedSongMode)
+            }
+            
+            // Update navigation
+            songNavigationManager.initializeNavigation(updatedSongMode)
+        }
+    }
+    
+    /**
+     * Activate song mode
+     */
+    fun activateSongMode() {
+        songModeManager.activateSongMode()
+        
+        val updatedSongMode = songModeManager.songState.value.songMode
+        if (updatedSongMode != null) {
+            _sequencerState.update { 
+                it.copy(songMode = updatedSongMode)
+            }
+        }
+    }
+    
+    /**
+     * Deactivate song mode (return to pattern mode)
+     */
+    fun deactivateSongMode() {
+        songModeManager.deactivateSongMode()
+        
+        _sequencerState.update { 
+            it.copy(songMode = null)
+        }
+    }
+    
+    /**
+     * Get current song progress
+     */
+    fun getSongProgress(): Float {
+        return songNavigationManager.getPlaybackProgress()
+    }
+    
+    /**
+     * Get timeline markers for visualization
+     */
+    fun getTimelineMarkers(): List<TimelineMarker> {
+        return songNavigationManager.getTimelineMarkers()
+    }
+    
+    /**
+     * Handle pattern completion for song mode
+     */
+    private fun onPatternComplete() {
+        val songState = songModeManager.songState.value
+        if (songState.isActive && songState.isPlaying) {
+            songModeManager.onPatternComplete()
+        }
+    }
+    
+    // Export and Sharing Methods
+    
+    /**
+     * Export current song arrangement
+     */
+    fun exportSongArrangement(projectName: String = "Untitled Song") {
+        viewModelScope.launch {
+            val songMode = _sequencerState.value.songMode ?: return@launch
+            val patterns = _patterns.value
+            
+            val result = songExportManager.exportSongArrangement(
+                songMode = songMode,
+                patterns = patterns,
+                projectName = projectName
+            )
+            
+            result.onSuccess { exportResult ->
+                // Export successful - UI can show success message
+            }.onFailure { error ->
+                // Export failed - UI can show error message
+            }
+        }
+    }
+    
+    /**
+     * Export current pattern
+     */
+    fun exportCurrentPattern(includeMetadata: Boolean = true) {
+        viewModelScope.launch {
+            val currentPattern = getCurrentPattern() ?: return@launch
+            
+            val result = songExportManager.exportPattern(
+                pattern = currentPattern,
+                includeMetadata = includeMetadata
+            )
+            
+            result.onSuccess { exportResult ->
+                // Export successful
+            }.onFailure { error ->
+                // Export failed
+            }
+        }
+    }
+    
+    /**
+     * Export song timeline as text
+     */
+    fun exportSongTimeline(includePatternDetails: Boolean = true) {
+        viewModelScope.launch {
+            val songMode = _sequencerState.value.songMode ?: return@launch
+            val patterns = _patterns.value
+            
+            val result = songExportManager.exportSongTimeline(
+                songMode = songMode,
+                patterns = patterns,
+                includePatternDetails = includePatternDetails
+            )
+            
+            result.onSuccess { exportResult ->
+                // Export successful
+            }.onFailure { error ->
+                // Export failed
+            }
+        }
+    }
+    
+    /**
+     * Share exported file
+     */
+    fun shareExportedFile(exportResult: ExportResult): Intent? {
+        return songExportManager.shareExportedFile(exportResult)
+    }
+    
+    /**
+     * Import song arrangement from file
+     */
+    fun importSongArrangement(uri: android.net.Uri) {
+        viewModelScope.launch {
+            val result = songExportManager.importSongArrangement(uri)
+            
+            result.onSuccess { importResult ->
+                // Apply imported song
+                _sequencerState.update { 
+                    it.copy(songMode = importResult.songMode)
+                }
+                
+                // Update patterns
+                val updatedPatterns = _patterns.value.toMutableList()
+                importResult.patterns.forEach { importedPattern ->
+                    // Add or update pattern
+                    val existingIndex = updatedPatterns.indexOfFirst { it.id == importedPattern.id }
+                    if (existingIndex >= 0) {
+                        updatedPatterns[existingIndex] = importedPattern
+                    } else {
+                        updatedPatterns.add(importedPattern)
+                    }
+                }
+                _patterns.value = updatedPatterns
+                
+                // Initialize song mode with imported data
+                songPlaybackEngine.updateSongSequence(importResult.songMode.sequence)
+                songNavigationManager.initializeNavigation(importResult.songMode)
+                
+            }.onFailure { error ->
+                // Import failed
+            }
+        }
+    }
+    
+    /**
+     * Get list of exported files
+     */
+    fun getExportedFiles(): List<ExportedFileInfo> {
+        return songExportManager.getExportedFiles()
+    }
+    
+    /**
+     * Delete exported file
+     */
+    fun deleteExportedFile(file: java.io.File): Boolean {
+        return songExportManager.deleteExportedFile(file)
+    }
+    
+    /**
+     * Clear export state
+     */
+    fun clearExportState() {
+        songExportManager.clearState()
+    }
+    
+    /**
+     * Get current song progress for UI
+     */
+    fun getCurrentSongProgress(): Float {
+        return songPlaybackEngine.getSongProgress()
+    }
+    
+    /**
+     * Get estimated remaining time in current song
+     */
+    fun getRemainingTime(): Long {
+        val currentPattern = getCurrentPattern()
+        val tempo = currentPattern?.tempo ?: 120f
+        return songPlaybackEngine.getRemainingTime(tempo)
+    }
+    
+    /**
+     * Get current pattern info in song context
+     */
+    fun getCurrentPatternInfo(): CurrentPatternInfo? {
+        return songPlaybackEngine.getCurrentPatternInfo()
+    }
+    
+    /**
+     * Check if at end of song
+     */
+    fun isAtEndOfSong(): Boolean {
+        return songPlaybackEngine.isAtEndOfSong()
     }
     
     override fun onCleared() {

@@ -58,6 +58,7 @@ class PrecisionTimingEngine @Inject constructor(
     
     // Callback management
     private var stepCallback: ((Int, Long) -> Unit)? = null
+    private var patternCompleteCallback: (() -> Unit)? = null
     private val callbackId = "main_sequencer_callback"
     
     // Performance monitoring
@@ -207,9 +208,17 @@ class PrecisionTimingEngine @Inject constructor(
         )
     }
     
+    override fun schedulePatternCompleteCallback(callback: () -> Unit) {
+        patternCompleteCallback = callback
+    }
+    
     override fun removeStepCallback() {
         stepCallback = null
         callbackManager.unregisterCallback(callbackId)
+    }
+    
+    override fun removePatternCompleteCallback() {
+        patternCompleteCallback = null
     }
     
     override fun getTimingStats(): TimingStats {
@@ -281,6 +290,7 @@ class PrecisionTimingEngine @Inject constructor(
     }
     
     private fun advanceToNextStep() {
+        val currentStep = currentStepIndex.get()
         val nextStep = (currentStepIndex.incrementAndGet()) % patternLength
         
         // Update UI state
@@ -292,6 +302,9 @@ class PrecisionTimingEngine @Inject constructor(
         if (nextStep == 0) {
             val currentTime = SystemClock.elapsedRealtimeNanos() / 1000L
             patternStartTime.set(currentTime)
+            
+            // Notify pattern completion
+            patternCompleteCallback?.invoke()
         }
     }
     
