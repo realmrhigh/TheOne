@@ -22,7 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.high.theone.model.PadState
+
 
 /**
  * Pad selection interface for choosing visible tracks in the sequencer.
@@ -32,7 +32,7 @@ import com.high.theone.model.PadState
  */
 @Composable
 fun PadSelector(
-    pads: List<PadState>,
+    pads: List<SequencerPadInfo>,
     selectedPads: Set<Int>,
     mutedPads: Set<Int> = emptySet(),
     soloedPads: Set<Int> = emptySet(),
@@ -150,7 +150,7 @@ private fun PadSelectorHeader(
  */
 @Composable
 private fun PadSelectorItem(
-    pad: PadState,
+    pad: SequencerPadInfo,
     isSelected: Boolean,
     isMuted: Boolean,
     isSoloed: Boolean,
@@ -217,7 +217,7 @@ private fun PadSelectorItem(
                 )
                 
                 Text(
-                    text = pad.sampleName ?: "Empty",
+                    text = pad.displayName,
                     style = MaterialTheme.typography.labelSmall,
                     fontSize = 8.sp,
                     maxLines = 1,
@@ -291,7 +291,7 @@ private fun PadSelectorItem(
  */
 @Composable
 fun PadAssignmentIndicator(
-    pad: PadState,
+    pad: SequencerPadInfo,
     showDetails: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -318,6 +318,12 @@ fun PadAssignmentIndicator(
             Text(
                 text = when {
                     pad.isLoading -> "Loading..."
+                    pad.hasAssignedSample -> pad.displayName
+                    else -> "Empty"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
                     pad.hasAssignedSample -> pad.sampleName ?: "Assigned"
                     else -> "Empty"
                 },

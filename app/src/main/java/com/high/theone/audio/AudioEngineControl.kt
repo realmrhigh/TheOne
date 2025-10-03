@@ -84,4 +84,50 @@ interface AudioEngineControl {
     suspend fun setPluginParameter(pluginId: String, paramId: String, value: Double): Boolean
     suspend fun noteOnToPlugin(pluginId: String, note: Int, velocity: Int)
     suspend fun noteOffToPlugin(pluginId: String, note: Int, velocity: Int)
+    
+    // Sequencer Integration Methods
+    
+    /**
+     * Schedule a sample trigger at a precise timestamp for sequencer playback
+     * @param padIndex The pad index to trigger (0-15)
+     * @param velocity Velocity (0.0-1.0)
+     * @param timestamp Precise timestamp in microseconds when to trigger
+     * @return True if successfully scheduled
+     */
+    suspend fun scheduleStepTrigger(padIndex: Int, velocity: Float, timestamp: Long): Boolean
+    
+    /**
+     * Set the sequencer tempo for timing compensation
+     * @param bpm Beats per minute (60-200)
+     */
+    suspend fun setSequencerTempo(bpm: Float)
+    
+    /**
+     * Get the current audio latency for timing compensation
+     * @return Audio latency in microseconds
+     */
+    suspend fun getAudioLatencyMicros(): Long
+    
+    /**
+     * Enable/disable high-precision timing mode for sequencer
+     * @param enabled True to enable high-precision mode
+     */
+    suspend fun setHighPrecisionMode(enabled: Boolean)
+    
+    /**
+     * Pre-load samples for sequencer playback to minimize latency
+     * @param padIndices List of pad indices to pre-load
+     */
+    suspend fun preloadSequencerSamples(padIndices: List<Int>): Boolean
+    
+    /**
+     * Clear all scheduled sequencer events
+     */
+    suspend fun clearScheduledEvents()
+    
+    /**
+     * Get timing statistics for performance monitoring
+     * @return Map of timing statistics
+     */
+    suspend fun getTimingStatistics(): Map<String, Any>
 }

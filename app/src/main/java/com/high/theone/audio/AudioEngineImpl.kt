@@ -71,6 +71,15 @@ class AudioEngineImpl @Inject constructor(
     private external fun native_setTrackPan(trackId: String, pan: Float)
     private external fun native_addTrackEffect(trackId: String, effectInstanceId: String, effectType: String): Boolean
     private external fun native_removeTrackEffect(trackId: String, effectInstanceId: String): Boolean
+    
+    // Sequencer integration native methods
+    private external fun native_scheduleStepTrigger(padIndex: Int, velocity: Float, timestamp: Long): Boolean
+    private external fun native_setSequencerTempo(bpm: Float)
+    private external fun native_getAudioLatencyMicros(): Long
+    private external fun native_setHighPrecisionMode(enabled: Boolean)
+    private external fun native_preloadSequencerSamples(padIndices: IntArray): Boolean
+    private external fun native_clearScheduledEvents()
+    private external fun native_getTimingStatistics(): Map<String, Any>
 
     private var isInitialized = false
 
@@ -658,6 +667,95 @@ class AudioEngineImpl @Inject constructor(
                 native_noteOffToPlugin(pluginId, note, velocity)
             } catch (e: Exception) {
                 Log.e(TAG, "Exception sending note off to plugin", e)
+            }
+        }
+    }
+    
+    // Sequencer Integration Implementation
+    
+    override suspend fun scheduleStepTrigger(padIndex: Int, velocity: Float, timestamp: Long): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Scheduling step trigger: pad=$padIndex, velocity=$velocity, timestamp=$timestamp")
+                val result = native_scheduleStepTrigger(padIndex, velocity, timestamp)
+                Log.d(TAG, "Schedule step trigger result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception scheduling step trigger", e)
+                false
+            }
+        }
+    }
+    
+    override suspend fun setSequencerTempo(bpm: Float) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting sequencer tempo: $bpm BPM")
+                native_setSequencerTempo(bpm)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception setting sequencer tempo", e)
+            }
+        }
+    }
+    
+    override suspend fun getAudioLatencyMicros(): Long {
+        return withContext(Dispatchers.IO) {
+            try {
+                val latency = native_getAudioLatencyMicros()
+                Log.d(TAG, "Audio latency: $latency microseconds")
+                latency
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception getting audio latency", e)
+                0L
+            }
+        }
+    }
+    
+    override suspend fun setHighPrecisionMode(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting high precision mode: $enabled")
+                native_setHighPrecisionMode(enabled)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception setting high precision mode", e)
+            }
+        }
+    }
+    
+    override suspend fun preloadSequencerSamples(padIndices: List<Int>): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Preloading sequencer samples for pads: $padIndices")
+                val result = native_preloadSequencerSamples(padIndices.toIntArray())
+                Log.d(TAG, "Preload samples result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception preloading sequencer samples", e)
+                false
+            }
+        }
+    }
+    
+    override suspend fun clearScheduledEvents() {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Clearing scheduled events")
+                native_clearScheduledEvents()
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception clearing scheduled events", e)
+            }
+        }
+    }
+    
+    override suspend fun getTimingStatistics(): Map<String, Any> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val stats = native_getTimingStatistics()
+                Log.d(TAG, "Timing statistics: $stats")
+                stats
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception getting timing statistics", e)
+                emptyMap()
             }
         }
     }

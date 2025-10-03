@@ -109,6 +109,7 @@ public:
 
     // 🎛️ Audio Processing Functions
     void processSamplePlayback(float* outputBuffer, int32_t numFrames, int32_t channelCount);
+    void processScheduledTriggers(int32_t numFrames);
     void generateTestTone(float* outputBuffer, int32_t numFrames, int32_t channelCount);
     void processMetronome(float* outputBuffer, int32_t numFrames, int32_t channelCount);
     void applyMasterProcessing(float* outputBuffer, int32_t numFrames, int32_t channelCount, float masterVolume);
@@ -121,6 +122,7 @@ public:
 
     // 🔥 EPIC SAMPLE TRIGGERING
     void triggerSample(const std::string& sampleKey, float volume = 1.0f, float pan = 0.0f);
+    void triggerDrumPad(int padIndex, float velocity);
     void stopAllSamples();
     void loadTestSample(const std::string& sampleKey); // For quick testing    // 🎯 CONVENIENCE FUNCTIONS FOR TESTING
     bool createAndTriggerTestSample(const std::string& sampleKey, float volume = 1.0f, float pan = 0.0f);
@@ -150,6 +152,53 @@ public:
     bool loadSampleFromAsset(const std::string& sampleId, const std::string& assetPath);
     
     float getSampleRate() const { return globalSampleRate; }
+    
+    // 🎵 SEQUENCER INTEGRATION METHODS
+    
+    /**
+     * Schedule a sample trigger at a precise timestamp for sequencer playback
+     * @param padIndex The pad index to trigger (0-15)
+     * @param velocity Velocity (0.0-1.0)
+     * @param timestamp Precise timestamp in microseconds when to trigger
+     * @return True if successfully scheduled
+     */
+    bool scheduleStepTrigger(int padIndex, float velocity, int64_t timestamp);
+    
+    /**
+     * Set the sequencer tempo for timing compensation
+     * @param bpm Beats per minute (60-200)
+     */
+    void setSequencerTempo(float bpm);
+    
+    /**
+     * Get the current audio latency for timing compensation
+     * @return Audio latency in microseconds
+     */
+    int64_t getAudioLatencyMicros() const;
+    
+    /**
+     * Enable/disable high-precision timing mode for sequencer
+     * @param enabled True to enable high-precision mode
+     */
+    void setHighPrecisionMode(bool enabled);
+    
+    /**
+     * Pre-load samples for sequencer playback to minimize latency
+     * @param padIndices Array of pad indices to pre-load
+     * @param count Number of pad indices
+     */
+    bool preloadSequencerSamples(const int* padIndices, int count);
+    
+    /**
+     * Clear all scheduled sequencer events
+     */
+    void clearScheduledEvents();
+    
+    /**
+     * Get timing statistics for performance monitoring
+     * @return Map-like structure of timing statistics
+     */
+    std::map<std::string, double> getTimingStatistics() const;
     
 private:
     AAssetManager* assetManager_ = nullptr;
@@ -203,6 +252,35 @@ private:
     double currentTickDurationMs_ = 0.0; // Read by audio thread, written by other threads under sequencerMutex_
     double timeAccumulatedForTick_ = 0.0; // Accessed only by audio thread or under sequencerMutex_
     std::atomic<uint32_t> audioStreamSampleRate_ {0}; // To be updated when Oboe stream starts, accessed by audio thread
+    
+    // 🎵 SEQUENCER TIMING AND SCHEDULING
+    struct ScheduledTrigger {
+        int padIndex;
+        float velocity;
+        int64_t timestamp;
+        bool processed;
+        
+        ScheduledTrigger(int pad, float vel, int64_t time) 
+            : padIndex(pad), velocity(vel), timestamp(time), processed(false) {}
+    };
+    
+    std::vector<ScheduledTrigger> scheduledTriggers_;
+    mutable std::mutex scheduledTriggersMutex_;
+    
+    std::atomic<float> sequencerTempo_ {120.0f};
+    std::atomic<bool> highPrecisionMode_ {false};
+    std::atomic<int64_t> audioLatencyMicros_ {10000}; // Default 10ms
+    
+    // Performance monitoring
+    mutable std::mutex performanceMetricsMutex_;
+    struct PerformanceMetrics {
+        int64_t totalTriggers = 0;
+        int64_t missedTriggers = 0;
+        int64_t totalLatency = 0;
+        int64_t maxLatency = 0;
+        int64_t minLatency = INT64_MAX;
+        int bufferUnderruns = 0;
+    } performanceMetrics_;
 
 private:
     void RecalculateTickDurationInternal(); // No lock

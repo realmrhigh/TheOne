@@ -1132,3 +1132,103 @@ Java_com_high_theone_audio_AudioEngineImpl_native_1noteOffToPlugin(
         static_cast<uint8_t>(velocity)
     );
 }
+
+// 🎵 SEQUENCER INTEGRATION JNI METHODS
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1scheduleStepTrigger(
+    JNIEnv* env, jobject /* thiz */, jint padIndex, jfloat velocity, jlong timestamp) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    return audioEngineInstance->scheduleStepTrigger(
+        static_cast<int>(padIndex),
+        velocity,
+        static_cast<int64_t>(timestamp)
+    ) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setSequencerTempo(
+    JNIEnv* env, jobject /* thiz */, jfloat bpm) {
+    if (audioEngineInstance) {
+        audioEngineInstance->setSequencerTempo(bpm);
+    }
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1getAudioLatencyMicros(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return 0L;
+    return static_cast<jlong>(audioEngineInstance->getAudioLatencyMicros());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setHighPrecisionMode(
+    JNIEnv* env, jobject /* thiz */, jboolean enabled) {
+    if (audioEngineInstance) {
+        audioEngineInstance->setHighPrecisionMode(enabled == JNI_TRUE);
+    }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1preloadSequencerSamples(
+    JNIEnv* env, jobject /* thiz */, jintArray padIndices) {
+    if (!audioEngineInstance || !padIndices) return JNI_FALSE;
+    
+    jsize length = env->GetArrayLength(padIndices);
+    jint* indices = env->GetIntArrayElements(padIndices, nullptr);
+    
+    if (!indices) return JNI_FALSE;
+    
+    bool result = audioEngineInstance->preloadSequencerSamples(indices, static_cast<int>(length));
+    
+    env->ReleaseIntArrayElements(padIndices, indices, JNI_ABORT);
+    
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1clearScheduledEvents(
+    JNIEnv* env, jobject /* thiz */) {
+    if (audioEngineInstance) {
+        audioEngineInstance->clearScheduledEvents();
+    }
+}
+
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1getTimingStatistics(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return nullptr;
+    
+    auto stats = audioEngineInstance->getTimingStatistics();
+    
+    // Create a HashMap to return the statistics
+    jclass hashMapClass = env->FindClass("java/util/HashMap");
+    if (!hashMapClass) return nullptr;
+    
+    jmethodID hashMapConstructor = env->GetMethodID(hashMapClass, "<init>", "()V");
+    jmethodID putMethod = env->GetMethodID(hashMapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    
+    if (!hashMapConstructor || !putMethod) return nullptr;
+    
+    jobject hashMap = env->NewObject(hashMapClass, hashMapConstructor);
+    if (!hashMap) return nullptr;
+    
+    // Add statistics to the map
+    for (const auto& pair : stats) {
+        jstring key = env->NewStringUTF(pair.first.c_str());
+        
+        // Convert double to Double object
+        jclass doubleClass = env->FindClass("java/lang/Double");
+        jmethodID doubleConstructor = env->GetMethodID(doubleClass, "<init>", "(D)V");
+        jobject value = env->NewObject(doubleClass, doubleConstructor, pair.second);
+        
+        if (key && value) {
+            env->CallObjectMethod(hashMap, putMethod, key, value);
+        }
+        
+        if (key) env->DeleteLocalRef(key);
+        if (value) env->DeleteLocalRef(value);
+    }
+    
+    return hashMap;
+}

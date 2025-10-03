@@ -10,6 +10,7 @@
 #include <errno.h>   // For strerror
 #include <thread>    // For recording thread
 #include <sys/statvfs.h> // For storage space checking
+#include <chrono>    // For high-precision timing
 
 // Ensure M_PI and M_PI_2 are defined
 #ifndef M_PI
@@ -205,6 +206,9 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     
     // 🔥 SAMPLE PLAYBACK ENGINE 
     processSamplePlayback(outputBuffer, numFrames, channelCount);
+    
+    // 🎵 SEQUENCER TRIGGER PROCESSING
+    processScheduledTriggers(numFrames);
     
     // 🎛️ TEST TONE GENERATOR (for initial testing)
     if (testToneEnabled_.load()) {
@@ -403,6 +407,34 @@ void AudioEngine::triggerSample(const std::string& sampleKey, float volume, floa
     
     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🎵 Sample triggered: %s (vol: %.2f, pan: %.2f)", 
                        sampleKey.c_str(), volume, pan);
+}
+
+void AudioEngine::triggerDrumPad(int padIndex, float velocity) {
+    if (padIndex < 0 || padIndex >= 16) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Invalid drum pad index: %d", padIndex);
+        return;
+    }
+    
+    // Create pad key
+    std::string padKey = "pad_" + std::to_string(padIndex);
+    
+    // Get pad settings
+    std::lock_guard<std::mutex> padLock(padSettingsMutex_);
+    auto it = padSettingsMap_.find(padKey);
+    if (it == padSettingsMap_.end() || it->second.sampleId.empty()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "No sample assigned to drum pad %d", padIndex);
+        return;
+    }
+    
+    const PadSettingsCpp& padSettings = it->second;
+    
+    // Trigger the sample with pad settings
+    float finalVolume = velocity * padSettings.volume;
+    triggerSample(padSettings.sampleId, finalVolume, padSettings.pan);
+    
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, 
+                       "🥁 Triggered drum pad %d: sample=%s, velocity=%f, volume=%f", 
+                       padIndex, padSettings.sampleId.c_str(), velocity, finalVolume);
 }
 
 void AudioEngine::stopAllSamples() {
@@ -1462,6 +1494,189 @@ void AudioEngine::ensurePluginBuffersSize(int32_t numFrames, int32_t channelCoun
             pluginOutputBuffers_[ch].resize(numFrames);
         }
     }
+}
+
+// 🎵 SEQUENCER TRIGGER PROCESSING
+void AudioEngine::processScheduledTriggers(int32_t numFrames) {
+    if (scheduledTriggers_.empty()) {
+        return;
+    }
+    
+    // Get current time in microseconds
+    int64_t currentTime = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()
+    ).count();
+    
+    std::lock_guard<std::mutex> lock(scheduledTriggersMutex_);
+    
+    // Process triggers that are due
+    for (auto it = scheduledTriggers_.begin(); it != scheduledTriggers_.end();) {
+        if (!it->processed && it->timestamp <= currentTime) {
+            // Trigger the pad
+            triggerDrumPad(it->padIndex, it->velocity);
+            
+            // Mark as processed
+            it->processed = true;
+            
+            // Update performance metrics
+            {
+                std::lock_guard<std::mutex> metricsLock(performanceMetricsMutex_);
+                performanceMetrics_.totalTriggers++;
+                
+                int64_t latency = currentTime - it->timestamp;
+                performanceMetrics_.totalLatency += latency;
+                performanceMetrics_.maxLatency = std::max(performanceMetrics_.maxLatency, latency);
+                performanceMetrics_.minLatency = std::min(performanceMetrics_.minLatency, latency);
+            }
+            
+            __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, 
+                               "Triggered scheduled pad %d at timestamp %" PRId64 " (latency: %" PRId64 " μs)", 
+                               it->padIndex, it->timestamp, currentTime - it->timestamp);
+            
+            // Remove processed trigger
+            it = scheduledTriggers_.erase(it);
+        } else if (it->timestamp < currentTime - 100000) { // 100ms old
+            // Remove very old unprocessed triggers (missed)
+            {
+                std::lock_guard<std::mutex> metricsLock(performanceMetricsMutex_);
+                performanceMetrics_.missedTriggers++;
+            }
+            
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME, 
+                               "Missed trigger for pad %d (timestamp %" PRId64 " vs current %" PRId64 ")", 
+                               it->padIndex, it->timestamp, currentTime);
+            
+            it = scheduledTriggers_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+// 🎵 SEQUENCER INTEGRATION IMPLEMENTATION
+
+bool AudioEngine::scheduleStepTrigger(int padIndex, float velocity, int64_t timestamp) {
+    if (padIndex < 0 || padIndex >= 16) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Invalid pad index: %d", padIndex);
+        return false;
+    }
+    
+    if (velocity < 0.0f || velocity > 1.0f) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Invalid velocity: %f", velocity);
+        return false;
+    }
+    
+    std::lock_guard<std::mutex> lock(scheduledTriggersMutex_);
+    
+    // Add the trigger to the scheduled list
+    scheduledTriggers_.emplace_back(padIndex, velocity, timestamp);
+    
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, 
+                       "Scheduled trigger: pad=%d, velocity=%f, timestamp=%" PRId64, 
+                       padIndex, velocity, timestamp);
+    
+    return true;
+}
+
+void AudioEngine::setSequencerTempo(float bpm) {
+    if (bpm < 60.0f || bpm > 200.0f) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Tempo out of range: %f BPM", bpm);
+        bpm = std::max(60.0f, std::min(200.0f, bpm));
+    }
+    
+    sequencerTempo_.store(bpm);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Sequencer tempo set to %f BPM", bpm);
+}
+
+int64_t AudioEngine::getAudioLatencyMicros() const {
+    if (outStream_) {
+        // Get latency from Oboe and convert to microseconds
+        auto latencyResult = outStream_->calculateLatencyMillis();
+        if (latencyResult.error == oboe::Result::OK) {
+            int64_t latencyMicros = static_cast<int64_t>(latencyResult.value * 1000.0);
+            return latencyMicros;
+        }
+    }
+    
+    // Return cached value if Oboe query fails
+    return audioLatencyMicros_.load();
+}
+
+void AudioEngine::setHighPrecisionMode(bool enabled) {
+    highPrecisionMode_.store(enabled);
+    
+    if (enabled) {
+        // Enable optimizations for high precision timing
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "High precision mode enabled");
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "High precision mode disabled");
+    }
+}
+
+bool AudioEngine::preloadSequencerSamples(const int* padIndices, int count) {
+    if (!padIndices || count <= 0) {
+        return false;
+    }
+    
+    int successCount = 0;
+    
+    for (int i = 0; i < count; ++i) {
+        int padIndex = padIndices[i];
+        if (padIndex >= 0 && padIndex < 16) {
+            // Check if pad has a sample assigned
+            std::string padKey = "pad_" + std::to_string(padIndex);
+            
+            std::lock_guard<std::mutex> lock(padSettingsMutex_);
+            auto it = padSettingsMap_.find(padKey);
+            if (it != padSettingsMap_.end() && !it->second.sampleId.empty()) {
+                // Sample is already loaded if it's in the pad settings
+                successCount++;
+                __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, 
+                                   "Pad %d sample preloaded: %s", padIndex, it->second.sampleId.c_str());
+            }
+        }
+    }
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, 
+                       "Preloaded %d/%d sequencer samples", successCount, count);
+    
+    return successCount == count;
+}
+
+void AudioEngine::clearScheduledEvents() {
+    std::lock_guard<std::mutex> lock(scheduledTriggersMutex_);
+    scheduledTriggers_.clear();
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Cleared all scheduled events");
+}
+
+std::map<std::string, double> AudioEngine::getTimingStatistics() const {
+    std::map<std::string, double> stats;
+    
+    std::lock_guard<std::mutex> lock(performanceMetricsMutex_);
+    
+    stats["totalTriggers"] = static_cast<double>(performanceMetrics_.totalTriggers);
+    stats["missedTriggers"] = static_cast<double>(performanceMetrics_.missedTriggers);
+    stats["scheduledTriggers"] = static_cast<double>(scheduledTriggers_.size());
+    
+    if (performanceMetrics_.totalTriggers > 0) {
+        stats["averageLatency"] = static_cast<double>(performanceMetrics_.totalLatency) / 
+                                 static_cast<double>(performanceMetrics_.totalTriggers);
+    } else {
+        stats["averageLatency"] = 0.0;
+    }
+    
+    stats["maxLatency"] = static_cast<double>(performanceMetrics_.maxLatency);
+    stats["minLatency"] = performanceMetrics_.minLatency == INT64_MAX ? 0.0 : 
+                         static_cast<double>(performanceMetrics_.minLatency);
+    stats["bufferUnderruns"] = static_cast<double>(performanceMetrics_.bufferUnderruns);
+    stats["jitter"] = stats["maxLatency"] - stats["minLatency"];
+    
+    // Add system info
+    stats["cpuUsage"] = 0.0; // TODO: Implement CPU monitoring
+    stats["memoryUsage"] = 0.0; // TODO: Implement memory monitoring
+    stats["isRealTimeMode"] = highPrecisionMode_.load() ? 1.0 : 0.0;
+    
+    return stats;
 }
 
 } // namespace audio

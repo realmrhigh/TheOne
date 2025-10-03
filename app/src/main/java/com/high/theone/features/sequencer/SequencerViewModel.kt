@@ -26,8 +26,18 @@ class SequencerViewModel @Inject constructor(
     private val songModeManager: SongModeManager,
     private val songNavigationManager: SongNavigationManager,
     private val songPlaybackEngine: SongPlaybackEngine,
-    private val songExportManager: SongExportManager
+    private val songExportManager: SongExportManager,
+    private val padSystemIntegration: PadSystemIntegration,
+    private val performanceOptimizer: SequencerPerformanceOptimizer,
+    private val sequencerSampleCache: SequencerSampleCache,
+    private val sequencerVoiceManager: SequencerVoiceManager,
+    private val errorHandler: SequencerErrorHandler,
+    private val logger: SequencerLogger
 ) : ViewModel() {
+    
+    companion object {
+        private const val TAG = "SequencerViewModel"
+    }
     
     private val _sequencerState = MutableStateFlow(SequencerState())
     val sequencerState: StateFlow<SequencerState> = _sequencerState.asStateFlow()
@@ -35,8 +45,18 @@ class SequencerViewModel @Inject constructor(
     private val _patterns = MutableStateFlow<List<Pattern>>(emptyList())
     val patterns: StateFlow<List<Pattern>> = _patterns.asStateFlow()
     
-    private val _pads = MutableStateFlow<List<PadState>>(List(16) { PadState(it) })
-    val pads: StateFlow<List<PadState>> = _pads.asStateFlow()
+    // Pad state from pad system integration
+    val pads: StateFlow<List<SequencerPadInfo>> = padSystemIntegration.sequencerPadState
+    val padSyncState: StateFlow<PadSyncState> = padSystemIntegration.padSyncState
+    val currentPlaybackMode: StateFlow<PlaybackMode> = padSystemIntegration.currentMode
+    
+    // Performance optimization state
+    val performanceMetrics: StateFlow<SequencerPerformanceMetrics> = performanceOptimizer.performanceMetrics
+    val optimizationState: StateFlow<OptimizationState> = performanceOptimizer.optimizationState
+    val voiceManagementState: StateFlow<VoiceManagementState> = sequencerVoiceManager.voiceState
+    
+    // Error handling state
+    val errorState: StateFlow<SequencerErrorState> = errorHandler.errorState
     
     private val _muteSoloState = MutableStateFlow(TrackMuteSoloState())
     val muteSoloState: StateFlow<TrackMuteSoloState> = _muteSoloState.asStateFlow()
@@ -63,12 +83,14 @@ class SequencerViewModel @Inject constructor(
     val exportState: StateFlow<SongExportState> = songExportManager.exportState
     
     init {
+        initializeErrorHandling()
         setupTimingCallbacks()
         loadPatterns()
-        loadPadStates()
+        setupPadSystemIntegration()
         setupRecordingCallbacks()
         setupSongModeCallbacks()
         setupPlaybackEngineCallbacks()
+        initializePerformanceOptimization()
     }
     
     private fun setupTimingCallbacks() {
@@ -150,15 +172,128 @@ class SequencerViewModel @Inject constructor(
         // Update current step in UI
         _sequencerState.update { it.copy(currentStep = step) }
         
-        // Trigger samples for active steps
-        currentPattern.steps.forEach { (padIndex, steps) ->
-            val activeStep = steps.find { it.position == step && it.isActive }
-            if (activeStep != null && !isMuted(padIndex)) {
-                audioEngine.triggerPad(
-                    padIndex = padIndex,
-                    velocity = activeStep.velocity / 127f,
-                    timestamp = microTime + activeStep.microTiming.toLong()
-                )
+        // Trigger samples for active steps using sequencer audio engine scheduling
+        viewModelScope.launch {
+            currentPattern.steps.forEach { (padIndex, steps) ->
+                val activeStep = steps.find { it.position == step && it.isActive }
+                if (activeStep != null && !isMuted(padIndex)) {
+                    // Check if pad is available and properly configured
+                    val padInfo = padSystemIntegration.getPadInfo(padIndex)
+                    if (padInfo?.isSequencerReady == true && padInfo.sampleId != null) {
+                        try {
+                            // Ensure sample is ready for immediate playback
+                            val sampleReady = sequencerSampleCache.ensureSampleReady(padInfo.sampleId)
+                            
+                            if (sampleReady) {
+                                // Allocate voice with performance optimization
+                                val voiceId = sequencerVoiceManager.allocateSequencerVoice(
+                                    padIndex = padIndex,
+                                    sampleId = padInfo.sampleId,
+                                    velocity = activeStep.velocity / 127f,
+                                    playbackMode = padInfo.playbackMode,
+                                    stepIndex = step,
+                                    priority = VoicePriority.NORMAL
+                                )
+                                
+                                if (voiceId != null) {
+                                    // Track voice allocation for optimization
+                                    performanceOptimizer.trackVoiceAllocation(voiceId, padIndex, padInfo.sampleId)
+                                    
+                                    // Log voice allocation
+                                    logger.logVoiceAllocation("allocate", voiceId, padIndex, true, mapOf(
+                                        "step" to step,
+                                        "velocity" to activeStep.velocity
+                                    ))
+                                    
+                                    try {
+                                        // Use the new sequencer integration methods
+                                        audioEngine.scheduleStepTrigger(
+                                            padIndex = padIndex,
+                                            velocity = activeStep.velocity / 127f,
+                                            timestamp = microTime + activeStep.microTiming.toLong()
+                                        )
+                                        
+                                        // Log successful audio engine operation
+                                        logger.logAudioEngine("scheduleStepTrigger", true, mapOf(
+                                            "padIndex" to padIndex,
+                                            "step" to step
+                                        ))
+                                        
+                                    } catch (audioException: Exception) {
+                                        // Handle audio engine failure
+                                        val recoveryResult = errorHandler.handleAudioEngineFailure(
+                                            "scheduleStepTrigger",
+                                            audioException,
+                                            mapOf(
+                                                "padIndex" to padIndex,
+                                                "step" to step,
+                                                "voiceId" to voiceId
+                                            )
+                                        )
+                                        
+                                        logger.logAudioEngine("scheduleStepTrigger", false, mapOf(
+                                            "padIndex" to padIndex,
+                                            "step" to step,
+                                            "recoveryResult" to recoveryResult.name
+                                        ), audioException)
+                                        
+                                        // Release voice if audio trigger failed
+                                        sequencerVoiceManager.releaseSequencerVoice(voiceId)
+                                        performanceOptimizer.releaseTrackedVoice(voiceId)
+                                    }
+                                    
+                                    // Schedule voice release for one-shot samples
+                                    if (padInfo.playbackMode == com.high.theone.model.PlaybackMode.ONE_SHOT) {
+                                        viewModelScope.launch {
+                                            delay(100L) // Minimum delay for UI responsiveness
+                                            sequencerVoiceManager.releaseSequencerVoice(voiceId)
+                                            performanceOptimizer.releaseTrackedVoice(voiceId)
+                                            
+                                            logger.logVoiceAllocation("release", voiceId, padIndex, true)
+                                        }
+                                    }
+                                } else {
+                                    // Handle voice allocation failure
+                                    errorHandler.handleVoiceAllocationError(
+                                        padIndex,
+                                        padInfo.sampleId,
+                                        context = mapOf("step" to step)
+                                    )
+                                    
+                                    logger.logVoiceAllocation("allocate", null, padIndex, false, mapOf(
+                                        "step" to step,
+                                        "reason" to "allocation_failed"
+                                    ))
+                                }
+                            } else {
+                                // Handle sample loading failure
+                                errorHandler.handleSampleLoadingError(
+                                    padInfo.sampleId,
+                                    RuntimeException("Sample not ready for playback"),
+                                    mapOf(
+                                        "padIndex" to padIndex,
+                                        "step" to step
+                                    )
+                                )
+                                
+                                logger.logSampleCache("ensureReady", padInfo.sampleId, false, mapOf(
+                                    "padIndex" to padIndex,
+                                    "step" to step
+                                ))
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in optimized step trigger", e)
+                            // Fallback to direct trigger if optimization fails
+                            try {
+                                audioEngine.triggerDrumPad(padIndex, activeStep.velocity / 127f)
+                            } catch (fallbackException: Exception) {
+                                Log.e(TAG, "Fallback trigger also failed", fallbackException)
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "Pad $padIndex not ready for sequencer trigger")
+                    }
+                }
             }
         }
     }
@@ -167,6 +302,258 @@ class SequencerViewModel @Inject constructor(
         val muteState = _muteSoloState.value
         return muteState.mutedTracks.contains(padIndex) || 
                (muteState.soloedTracks.isNotEmpty() && !muteState.soloedTracks.contains(padIndex))
+    }
+    
+    /**
+     * Check if a pad can be used in sequencer patterns
+     * Requirements: 8.2 (pad state integration)
+     */
+    fun canUsePadInSequencer(padIndex: Int): Boolean {
+        return padSystemIntegration.canUsePadInSequencer(padIndex)
+    }
+    
+    /**
+     * Get pad information for sequencer UI
+     * Requirements: 8.2 (pad state integration)
+     */
+    fun getPadInfo(padIndex: Int): SequencerPadInfo? {
+        return padSystemIntegration.getPadInfo(padIndex)
+    }
+    
+    /**
+     * Get all assigned pads for pattern creation
+     * Requirements: 8.5 (pad assignment integration)
+     */
+    fun getAssignedPads(): List<SequencerPadInfo> {
+        return padSystemIntegration.getAssignedPads()
+    }
+    
+    /**
+     * Switch between live pad mode and sequencer mode
+     * Requirements: 8.6 (seamless switching between modes)
+     */
+    fun switchPlaybackMode(mode: PlaybackMode) {
+        viewModelScope.launch {
+            // Stop current playback when switching modes
+            if (_sequencerState.value.isPlaying) {
+                stopPattern()
+            }
+            
+            padSystemIntegration.switchToMode(mode)
+        }
+    }
+    
+    /**
+     * Trigger a pad in live mode (when not in sequencer playback)
+     * Requirements: 8.6 (seamless switching)
+     */
+    fun triggerPadLive(padIndex: Int, velocity: Float) {
+        if (currentPlaybackMode.value == PlaybackMode.LIVE || !_sequencerState.value.isPlaying) {
+            padSystemIntegration.triggerPadLive(padIndex, velocity)
+        }
+    }
+    
+    /**
+     * Force resynchronization of pad states
+     * Requirements: 8.3 (pad configuration synchronization)
+     */
+    fun resyncPads() {
+        padSystemIntegration.forcePadResync()
+    }
+    
+    /**
+     * Get pad usage statistics for optimization
+     * Requirements: 8.3 (performance optimization)
+     */
+    fun getPadUsageStats(): PadUsageStats {
+        return padSystemIntegration.getPadUsageStats()
+    }
+    
+    /**
+     * Get current pad synchronization status
+     * Requirements: 8.2 (pad state integration)
+     */
+    fun getPadSyncStatus(): PadSyncStatus {
+        return padSystemIntegration.getSyncStatus()
+    }
+    
+    // Performance Optimization Methods
+    
+    /**
+     * Optimize performance for current playback context
+     * Requirements: 10.2, 10.4, 10.5, 10.6
+     */
+    fun optimizeForPlayback() {
+        viewModelScope.launch {
+            try {
+                val currentPattern = getCurrentPattern()
+                if (currentPattern != null) {
+                    // Cache current pattern for quick access
+                    performanceOptimizer.cachePattern(currentPattern)
+                    
+                    // Prepare sample cache for pattern
+                    val padSampleMap = createPadSampleMap()
+                    sequencerSampleCache.preloadPatternSamples(currentPattern, padSampleMap)
+                    
+                    // Optimize voice allocation
+                    sequencerVoiceManager.prepareForPatternPlayback(padSampleMap)
+                    
+                    // Get upcoming patterns for song mode
+                    val upcomingPatterns = getUpcomingPatterns()
+                    if (upcomingPatterns.isNotEmpty()) {
+                        sequencerSampleCache.optimizeForPlayback(currentPattern, upcomingPatterns, padSampleMap)
+                    }
+                    
+                    Log.d(TAG, "Optimized performance for playback")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error optimizing for playback", e)
+            }
+        }
+    }
+    
+    /**
+     * Get performance optimization recommendations
+     * Requirements: 10.4, 10.5, 10.6
+     */
+    fun getPerformanceRecommendations(): List<OptimizationRecommendation> {
+        return performanceOptimizer.getOptimizationRecommendations()
+    }
+    
+    /**
+     * Apply automatic performance optimizations
+     * Requirements: 10.4, 10.5, 10.6
+     */
+    fun applyPerformanceOptimizations() {
+        performanceOptimizer.applyAutomaticOptimizations()
+    }
+    
+    /**
+     * Get current performance statistics
+     * Requirements: 10.1, 10.2
+     */
+    fun getPerformanceStatistics(): PerformanceStatistics {
+        val cacheStats = sequencerSampleCache.getCacheStatistics()
+        val voiceStats = sequencerVoiceManager.getVoiceStatistics()
+        val metrics = performanceMetrics.value
+        val optimizationState = optimizationState.value
+        
+        return PerformanceStatistics(
+            cacheStatistics = cacheStats,
+            voiceStatistics = voiceStats,
+            performanceMetrics = metrics,
+            optimizationState = optimizationState,
+            recommendations = getPerformanceRecommendations()
+        )
+    }
+    
+    /**
+     * Create pad-to-sample mapping for optimization
+     * Requirements: 10.2, 10.6
+     */
+    private fun createPadSampleMap(): Map<Int, String> {
+        return pads.value.associate { pad ->
+            pad.index to (pad.sampleId ?: "")
+        }.filterValues { it.isNotEmpty() }
+    }
+    
+    /**
+     * Get upcoming patterns for song mode optimization
+     * Requirements: 10.2
+     */
+    private fun getUpcomingPatterns(): List<Pattern> {
+        val songMode = _sequencerState.value.songMode
+        if (songMode?.isActive == true) {
+            val currentPosition = songNavigationManager.navigationState.value.currentSequencePosition
+            val upcomingSteps = songMode.sequence.drop(currentPosition + 1).take(3)
+            
+            return upcomingSteps.mapNotNull { songStep ->
+                _patterns.value.find { it.id == songStep.patternId }
+            }
+        }
+        return emptyList()
+    }
+    
+    // Error Handling Methods
+    
+    /**
+     * Get current error state for UI display
+     * Requirements: 8.7
+     */
+    fun getCurrentErrorState(): SequencerErrorState {
+        return errorHandler.errorState.value
+    }
+    
+    /**
+     * Clear user error messages
+     * Requirements: 8.7
+     */
+    fun clearUserMessage() {
+        errorHandler.clearUserMessage()
+    }
+    
+    /**
+     * Clear critical error state
+     * Requirements: 8.7
+     */
+    fun clearCriticalError() {
+        errorHandler.clearCriticalError()
+    }
+    
+    /**
+     * Get error statistics for debugging
+     * Requirements: 8.7
+     */
+    fun getErrorStatistics(): ErrorStatistics {
+        return errorHandler.getErrorStatistics()
+    }
+    
+    /**
+     * Get recent log entries for debugging
+     * Requirements: 8.7
+     */
+    fun getRecentLogs(count: Int = 50): List<LogEntry> {
+        return logger.getRecentLogs(count)
+    }
+    
+    /**
+     * Clear error history
+     * Requirements: 8.7
+     */
+    fun clearErrorHistory() {
+        errorHandler.clearErrorHistory()
+        logger.clearLogs()
+    }
+    
+    /**
+     * Handle manual error recovery
+     * Requirements: 8.7
+     */
+    fun attemptErrorRecovery() {
+        viewModelScope.launch {
+            try {
+                logger.logInfo("SequencerViewModel", "Manual error recovery initiated")
+                
+                // Attempt to recover audio engine
+                val audioRecovery = errorHandler.handleAudioEngineFailure("manual_recovery")
+                
+                if (audioRecovery == RecoveryResult.SUCCESS) {
+                    // Reinitialize systems after recovery
+                    initializePerformanceOptimization()
+                    padSystemIntegration.forcePadResync()
+                    
+                    logger.logInfo("SequencerViewModel", "Manual error recovery successful")
+                } else {
+                    logger.logWarning("SequencerViewModel", "Manual error recovery failed", mapOf(
+                        "result" to audioRecovery.name
+                    ))
+                }
+                
+            } catch (e: Exception) {
+                logger.logError("SequencerViewModel", "Error during manual recovery", exception = e)
+                errorHandler.handleGeneralError("manual_recovery", e, ErrorSeverity.HIGH)
+            }
+        }
     }
     
     private fun loadPatterns() {
@@ -193,9 +580,85 @@ class SequencerViewModel @Inject constructor(
         }
     }
     
-    private fun loadPadStates() {
-        // Load pad states from audio engine or repository
-        // For now, use default pad states
+    /**
+     * Setup pad system integration and monitoring
+     * Requirements: 8.2 (pad state integration), 8.6 (seamless switching)
+     */
+    private fun setupPadSystemIntegration() {
+        viewModelScope.launch {
+            // Monitor pad synchronization state
+            padSystemIntegration.padSyncState.collect { syncState ->
+                if (syncState.lastError != null) {
+                    Log.w(TAG, "Pad sync error: ${syncState.lastError}")
+                }
+                
+                // Auto-detect pad assignments when they change
+                if (syncState.assignedPads > 0) {
+                    padSystemIntegration.detectPadAssignments()
+                }
+            }
+        }
+        
+        // Initialize in sequencer mode
+        viewModelScope.launch {
+            padSystemIntegration.switchToMode(PlaybackMode.SEQUENCER)
+        }
+    }
+    
+    /**
+     * Initialize error handling and logging systems
+     * Requirements: 8.7, 10.4
+     */
+    private fun initializeErrorHandling() {
+        // Initialize logger
+        logger.initialize(LogConfig(
+            logLevel = LogLevel.INFO,
+            enableFileLogging = false, // Can be enabled for debugging
+            enablePerformanceLogging = true
+        ))
+        
+        // Monitor error state
+        viewModelScope.launch {
+            errorHandler.errorState.collect { errorState ->
+                if (errorState.criticalError != null) {
+                    logger.logError("SequencerViewModel", "Critical error detected", mapOf(
+                        "error" to errorState.criticalError
+                    ))
+                }
+                
+                if (errorState.userMessage != null) {
+                    logger.logInfo("SequencerViewModel", "User message", mapOf(
+                        "message" to errorState.userMessage
+                    ))
+                }
+            }
+        }
+        
+        logger.logInfo("SequencerViewModel", "Error handling system initialized")
+    }
+    
+    /**
+     * Initialize performance optimization systems
+     * Requirements: 10.2, 10.4, 10.5, 10.6
+     */
+    private fun initializePerformanceOptimization() {
+        // Initialize sample cache
+        sequencerSampleCache.initialize()
+        
+        // Initialize voice manager
+        sequencerVoiceManager.initialize()
+        
+        // Monitor performance metrics and apply optimizations
+        viewModelScope.launch {
+            performanceOptimizer.optimizationState.collect { state ->
+                // Apply automatic optimizations when thresholds are exceeded
+                if (state.memoryUsagePercent > 85f || state.cpuUsagePercent > 80f) {
+                    performanceOptimizer.applyAutomaticOptimizations()
+                }
+            }
+        }
+        
+        logger.logInfo("SequencerViewModel", "Performance optimization systems initialized")
     }
     
     fun handleTransportAction(action: TransportAction) {
@@ -211,9 +674,19 @@ class SequencerViewModel @Inject constructor(
     
     private fun playPattern() {
         val currentPattern = getCurrentPattern() ?: return
-        // Start timing engine with pattern settings
-        _sequencerState.update { 
-            it.copy(isPlaying = true, isPaused = false) 
+        
+        viewModelScope.launch {
+            // Optimize performance before starting playback
+            optimizeForPlayback()
+            
+            // Start timing engine with pattern settings
+            timingEngine.start(currentPattern.tempo, currentPattern.swing)
+            
+            _sequencerState.update { 
+                it.copy(isPlaying = true, isPaused = false) 
+            }
+            
+            Log.d(TAG, "Started pattern playback with optimization")
         }
     }
     
@@ -224,12 +697,22 @@ class SequencerViewModel @Inject constructor(
     }
     
     private fun stopPattern() {
-        _sequencerState.update { 
-            it.copy(
-                isPlaying = false, 
-                isPaused = false, 
-                currentStep = 0
-            ) 
+        viewModelScope.launch {
+            // Stop timing engine
+            timingEngine.stop()
+            
+            // Release all active voices for performance
+            sequencerVoiceManager.releaseAllVoices()
+            
+            _sequencerState.update { 
+                it.copy(
+                    isPlaying = false, 
+                    isPaused = false, 
+                    currentStep = 0
+                ) 
+            }
+            
+            Log.d(TAG, "Stopped pattern playback and released voices")
         }
     }
     
@@ -1073,3 +1556,14 @@ class SequencerViewModel @Inject constructor(
         // Cleanup timing engine and other resources
     }
 }
+
+/**
+ * Comprehensive performance statistics for monitoring
+ */
+data class PerformanceStatistics(
+    val cacheStatistics: SequencerCacheStatistics,
+    val voiceStatistics: VoiceStatistics,
+    val performanceMetrics: SequencerPerformanceMetrics,
+    val optimizationState: OptimizationState,
+    val recommendations: List<OptimizationRecommendation>
+)

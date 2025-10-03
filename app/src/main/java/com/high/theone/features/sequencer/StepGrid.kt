@@ -23,7 +23,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.high.theone.model.Pattern
-import com.high.theone.model.PadState
 import com.high.theone.model.Step
 
 /**
@@ -35,7 +34,7 @@ import com.high.theone.model.Step
 @Composable
 fun StepGrid(
     pattern: Pattern?,
-    pads: List<PadState>,
+    pads: List<SequencerPadInfo>,
     currentStep: Int,
     selectedPads: Set<Int> = emptySet(),
     onStepToggle: (padIndex: Int, stepIndex: Int) -> Unit,
@@ -160,7 +159,7 @@ private fun StepGridHeader(
  */
 @Composable
 private fun StepRow(
-    pad: PadState,
+    pad: SequencerPadInfo,
     steps: List<Step>,
     patternLength: Int,
     currentStep: Int,
@@ -204,7 +203,7 @@ private fun StepRow(
  */
 @Composable
 private fun PadInfo(
-    pad: PadState,
+    pad: SequencerPadInfo,
     isSelected: Boolean,
     onSelect: () -> Unit,
     modifier: Modifier = Modifier

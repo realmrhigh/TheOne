@@ -121,6 +121,8 @@ class PrecisionTimingEngine @Inject constructor(
         _currentStep.value = 0
         _stepProgress.value = 0f
         
+
+        
         // Start timing loops
         startTimingLoop()
         startProgressUpdates()
@@ -129,6 +131,8 @@ class PrecisionTimingEngine @Inject constructor(
     override fun stop() {
         isRunning.set(false)
         scheduler?.shutdown()
+        
+
         
         // Reset state
         currentStepIndex.set(0)
@@ -175,6 +179,8 @@ class PrecisionTimingEngine @Inject constructor(
         if (newTempo == currentTempo) return
         
         currentTempo = newTempo
+        
+
         
         // Recalculate step duration
         val stepDurationMs = timingCalculator.calculateStepDuration(currentTempo)
@@ -282,6 +288,10 @@ class PrecisionTimingEngine @Inject constructor(
         try {
             // Use callback manager for enhanced error handling and latency compensation
             callbackManager.executeStepCallbacks(step, callbackTime)
+            
+            // Also trigger the main step callback for pattern playback
+            stepCallback?.invoke(step, callbackTime)
+            
             lastCallbackTime.set(callbackTime)
         } catch (e: Exception) {
             // Log error but don't stop timing

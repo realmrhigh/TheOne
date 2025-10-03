@@ -35,6 +35,8 @@ object SequencerModule {
     @Provides
     @Singleton
     fun provideAudioLatencyDetector(): AudioLatencyDetector = AudioLatencyDetector()
+    
+
 }
 
 @Module
@@ -46,4 +48,6 @@ abstract class SequencerBindingModule {
     abstract fun bindTimingEngine(
         precisionTimingEngine: PrecisionTimingEngine
     ): TimingEngine
+    
+
 }
