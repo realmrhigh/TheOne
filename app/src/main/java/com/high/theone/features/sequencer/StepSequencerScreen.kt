@@ -3,6 +3,8 @@ package com.high.theone.features.sequencer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +34,8 @@ fun StepSequencerScreen(
     val currentPattern = patterns.find { it.id == sequencerState.currentPattern }
     val scrollState = rememberScrollState()
     
+    var showPatternCreationDialog by remember { mutableStateOf(false) }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -41,7 +45,10 @@ fun StepSequencerScreen(
                     ) 
                 },
                 actions = {
-                    // Pattern management actions can be added here
+                    // Transport state indicator
+                    TransportStateIndicator(
+                        sequencerState = sequencerState
+                    )
                 }
             )
         }
@@ -54,11 +61,32 @@ fun StepSequencerScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Transport controls and pattern info
-            TransportSection(
+            // Transport controls
+            TransportControls(
                 sequencerState = sequencerState,
-                currentPattern = currentPattern,
                 onTransportAction = viewModel::handleTransportAction,
+                modifier = Modifier.fillMaxWidth()
+            )
+            
+            // Tempo and swing controls
+            CompactTempoSwingControls(
+                tempo = currentPattern?.tempo ?: 120f,
+                swing = currentPattern?.swing ?: 0f,
+                onTempoChange = { viewModel.handleTransportAction(TransportAction.SetTempo(it)) },
+                onSwingChange = { viewModel.handleTransportAction(TransportAction.SetSwing(it)) },
+                isPlaying = sequencerState.isPlaying,
+                modifier = Modifier.fillMaxWidth()
+            )
+            
+            // Pattern management
+            PatternSelector(
+                patterns = patterns,
+                currentPatternId = sequencerState.currentPattern,
+                onPatternSelect = viewModel::selectPattern,
+                onPatternCreate = { showPatternCreationDialog = true },
+                onPatternDuplicate = viewModel::duplicatePattern,
+                onPatternDelete = viewModel::deletePattern,
+                onPatternRename = viewModel::renamePattern,
                 modifier = Modifier.fillMaxWidth()
             )
             
@@ -106,85 +134,20 @@ fun StepSequencerScreen(
             }
         }
     }
-}
-
-/**
- * Transport controls section with playback and pattern controls
- */
-@Composable
-private fun TransportSection(
-    sequencerState: SequencerState,
-    currentPattern: Pattern?,
-    onTransportAction: (TransportAction) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Transport buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = { 
-                        onTransportAction(
-                            if (sequencerState.isPlaying) TransportAction.Pause else TransportAction.Play
-                        ) 
-                    }
-                ) {
-                    Text(if (sequencerState.isPlaying) "Pause" else "Play")
-                }
-                
-                Button(
-                    onClick = { onTransportAction(TransportAction.Stop) }
-                ) {
-                    Text("Stop")
-                }
-                
-                Button(
-                    onClick = { onTransportAction(TransportAction.ToggleRecord) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (sequencerState.isRecording) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        }
-                    )
-                ) {
-                    Text(if (sequencerState.isRecording) "Recording" else "Record")
-                }
-            }
-            
-            // Tempo and swing controls
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Tempo indicator
-                TempoIndicator(
-                    currentTempo = currentPattern?.tempo ?: 120f,
-                    isPlaying = sequencerState.isActivelyPlaying
-                )
-                
-                // Pattern length indicator
-                PatternLengthIndicator(
-                    currentLength = currentPattern?.length ?: 16,
-                    maxLength = 32
-                )
-            }
-        }
+    
+    // Pattern creation dialog
+    if (showPatternCreationDialog) {
+        PatternCreationDialog(
+            onConfirm = { name, length ->
+                viewModel.createPattern(name, length)
+                showPatternCreationDialog = false
+            },
+            onDismiss = { showPatternCreationDialog = false }
+        )
     }
 }
+
+
 
 /**
  * Pattern information and statistics section
@@ -244,14 +207,4 @@ private fun PatternInfoSection(
     }
 }
 
-/**
- * Transport actions for sequencer control
- */
-sealed class TransportAction {
-    object Play : TransportAction()
-    object Pause : TransportAction()
-    object Stop : TransportAction()
-    object ToggleRecord : TransportAction()
-    data class SetTempo(val tempo: Float) : TransportAction()
-    data class SetSwing(val swing: Float) : TransportAction()
-}
+

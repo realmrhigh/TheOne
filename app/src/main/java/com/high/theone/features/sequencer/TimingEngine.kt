@@ -102,6 +102,7 @@ sealed class TransportAction {
     object Stop : TransportAction()
     object Pause : TransportAction()
     object Resume : TransportAction()
+    object ToggleRecord : TransportAction()
     data class SetTempo(val bpm: Float) : TransportAction()
     data class SetSwing(val amount: Float) : TransportAction()
     data class SetPatternLength(val length: Int) : TransportAction()
