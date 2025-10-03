@@ -1,6 +1,7 @@
 package com.high.theone.project
 
 import com.high.theone.domain.ProjectManager
+import com.high.theone.domain.Error
 import com.high.theone.model.SampleMetadata
 import com.high.theone.model.Sample
 import java.io.File
@@ -10,7 +11,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import android.net.Uri
 import com.high.theone.model.Project
-import kotlin.Result
 
 class ProjectManagerImpl @Inject constructor() : ProjectManager {
     // TODO: Replace with actual project state management
@@ -22,22 +22,22 @@ class ProjectManagerImpl @Inject constructor() : ProjectManager {
 
     override suspend fun createNewProject(name: String, templateName: String?): com.high.theone.domain.Result<Project, Error> {
         // TODO: Implement project creation
-        return com.high.theone.domain.Result.Failure(NotImplementedError("createNewProject not implemented"))
+        return com.high.theone.domain.Result.Failure(Error("createNewProject not implemented"))
     }
 
     override suspend fun loadProject(projectUri: Uri): com.high.theone.domain.Result<Project, Error> {
         // TODO: Implement project loading
-        return com.high.theone.domain.Result.Failure(NotImplementedError("loadProject not implemented"))
+        return com.high.theone.domain.Result.Failure(Error("loadProject not implemented"))
     }
 
     override suspend fun saveProject(project: Project): com.high.theone.domain.Result<Unit, Error> {
         // TODO: Implement project saving
-        return com.high.theone.domain.Result.Failure(NotImplementedError("saveProject not implemented"))
+        return com.high.theone.domain.Result.Failure(Error("saveProject not implemented"))
     }
 
     override suspend fun addSampleToPool(name: String, sourceFileUri: Uri, copyToProjectDir: Boolean): com.high.theone.domain.Result<SampleMetadata, Error> {
         // TODO: Implement sample import
-        return com.high.theone.domain.Result.Failure(NotImplementedError("addSampleToPool not implemented"))
+        return com.high.theone.domain.Result.Failure(Error("addSampleToPool not implemented"))
     }
 
     override fun getSamplesFromPool(): List<SampleMetadata> {

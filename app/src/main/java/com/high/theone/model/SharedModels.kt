@@ -12,8 +12,8 @@ enum class PlaybackMode {
 
 enum class AudioInputSource {
     MICROPHONE,
-    INTERNAL_LOOPBACK,
-    EXTERNAL_USB
+    LINE_IN,
+    USB_AUDIO
 }
 
 // Minimal stub for LayerTriggerRule (expand as needed)

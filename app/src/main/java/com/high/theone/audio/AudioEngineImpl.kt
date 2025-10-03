@@ -57,6 +57,20 @@ class AudioEngineImpl @Inject constructor(
     private external fun native_noteOffToPlugin(pluginId: String, note: Int, velocity: Int)
     private external fun native_debugPrintDrumEngineState()
     private external fun native_getDrumEngineLoadedSamples(): Int
+    
+    // Recording native methods
+    private external fun native_startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean
+    private external fun native_stopAudioRecording(): Array<Any>? // Returns [filePath, duration, sampleRate, channels]
+    
+    // Additional native methods for complete integration
+    private external fun native_setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, soundPrimaryUri: String, soundSecondaryUri: String?)
+    private external fun native_playPadSample(noteInstanceId: String, trackId: String, padId: String): Boolean
+    private external fun native_stopNote(noteInstanceId: String, releaseTimeMs: Float)
+    private external fun native_stopAllNotes(trackId: String?, immediate: Boolean)
+    private external fun native_setTrackVolume(trackId: String, volume: Float)
+    private external fun native_setTrackPan(trackId: String, pan: Float)
+    private external fun native_addTrackEffect(trackId: String, effectInstanceId: String, effectType: String): Boolean
+    private external fun native_removeTrackEffect(trackId: String, effectInstanceId: String): Boolean
 
     private var isInitialized = false
 
@@ -415,6 +429,160 @@ class AudioEngineImpl @Inject constructor(
 
     override suspend fun getReportedLatencyMillis(): Float {
         return getOboeReportedLatencyMillis()
+    }
+
+    // Metronome implementation
+    override suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, soundPrimaryUri: String, soundSecondaryUri: String?) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting metronome state: enabled=$isEnabled, bpm=$bpm")
+                native_setMetronomeState(isEnabled, bpm, timeSignatureNum, timeSignatureDen, soundPrimaryUri, soundSecondaryUri)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception setting metronome state", e)
+            }
+        }
+    }
+
+    // Playback Control implementation
+    override suspend fun playPadSample(noteInstanceId: String, trackId: String, padId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Playing pad sample: noteId=$noteInstanceId, trackId=$trackId, padId=$padId")
+                val result = native_playPadSample(noteInstanceId, trackId, padId)
+                Log.d(TAG, "Play pad sample result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception playing pad sample", e)
+                false
+            }
+        }
+    }
+
+    override suspend fun stopNote(noteInstanceId: String, releaseTimeMs: Float?) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Stopping note: $noteInstanceId, releaseTime=${releaseTimeMs ?: 0f}")
+                native_stopNote(noteInstanceId, releaseTimeMs ?: 0f)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception stopping note", e)
+            }
+        }
+    }
+
+    override suspend fun stopAllNotes(trackId: String?, immediate: Boolean) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Stopping all notes: trackId=$trackId, immediate=$immediate")
+                native_stopAllNotes(trackId, immediate)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception stopping all notes", e)
+            }
+        }
+    }
+
+    // Real-time Controls implementation
+    override suspend fun setTrackVolume(trackId: String, volume: Float) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting track volume: $trackId = $volume")
+                native_setTrackVolume(trackId, volume)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception setting track volume", e)
+            }
+        }
+    }
+
+    override suspend fun setTrackPan(trackId: String, pan: Float) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting track pan: $trackId = $pan")
+                native_setTrackPan(trackId, pan)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception setting track pan", e)
+            }
+        }
+    }
+
+    // Effects implementation
+    override suspend fun addTrackEffect(trackId: String, effectInstance: EffectInstance): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Adding track effect: $trackId, effect=${effectInstance.id}")
+                val result = native_addTrackEffect(trackId, effectInstance.id, effectInstance.type)
+                Log.d(TAG, "Add track effect result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception adding track effect", e)
+                false
+            }
+        }
+    }
+
+    override suspend fun removeTrackEffect(trackId: String, effectInstanceId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Removing track effect: $trackId, effectId=$effectInstanceId")
+                val result = native_removeTrackEffect(trackId, effectInstanceId)
+                Log.d(TAG, "Remove track effect result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception removing track effect", e)
+                false
+            }
+        }
+    }
+
+    // Recording implementation
+    override suspend fun startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Starting audio recording to: $filePathUri")
+                val result = native_startAudioRecording(filePathUri, inputDeviceId)
+                Log.d(TAG, "Start recording result: $result")
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception starting audio recording", e)
+                false
+            }
+        }
+    }
+
+    override suspend fun stopAudioRecording(): SampleMetadata? {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Stopping audio recording...")
+                val result = native_stopAudioRecording()
+                
+                if (result != null && result.size >= 4) {
+                    val filePath = result[0] as? String ?: return@withContext null
+                    val durationMs = (result[1] as? Number)?.toLong() ?: 0L
+                    val sampleRate = (result[2] as? Number)?.toInt() ?: 44100
+                    val channels = (result[3] as? Number)?.toInt() ?: 1
+                    
+                    val metadata = SampleMetadata(
+                        id = java.util.UUID.randomUUID(),
+                        name = "Recording_${System.currentTimeMillis()}",
+                        filePath = filePath,
+                        durationMs = durationMs,
+                        sampleRate = sampleRate,
+                        channels = channels,
+                        format = "wav",
+                        fileSizeBytes = 0L, // Will be calculated by repository
+                        createdAt = System.currentTimeMillis(),
+                        tags = listOf("recording")
+                    )
+                    
+                    Log.d(TAG, "Recording stopped successfully: ${metadata.name}")
+                    metadata
+                } else {
+                    Log.w(TAG, "Invalid recording result from native layer")
+                    null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception stopping audio recording", e)
+                null
+            }
+        }
     }
 
     override suspend fun loadPlugin(pluginId: String, pluginName: String): Boolean {

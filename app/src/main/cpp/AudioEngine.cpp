@@ -7,6 +7,9 @@
 #include <fcntl.h>   // For open
 #include <unistd.h>  // For close
 #include <cinttypes> // For PRIu64 format specifier
+#include <errno.h>   // For strerror
+#include <thread>    // For recording thread
+#include <sys/statvfs.h> // For storage space checking
 
 // Ensure M_PI and M_PI_2 are defined
 #ifndef M_PI
@@ -23,6 +26,40 @@
 
 namespace theone {
 namespace audio {
+
+// dr_wav file descriptor write callback
+static size_t drwav_write_proc_fd(void* pUserData, const void* pData, size_t bytesToWrite) {
+    int* pFD = static_cast<int*>(pUserData);
+    if (!pFD || *pFD == -1) {
+        return 0;
+    }
+    
+    ssize_t bytesWritten = write(*pFD, pData, bytesToWrite);
+    if (bytesWritten < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "WAV write error: %s", strerror(errno));
+        return 0;
+    }
+    
+    return static_cast<size_t>(bytesWritten);
+}
+
+// dr_wav file descriptor seek callback
+static drwav_bool32 drwav_seek_proc_fd(void* pUserData, int offset, drwav_seek_origin origin) {
+    int* pFD = static_cast<int*>(pUserData);
+    if (!pFD || *pFD == -1) {
+        return DRWAV_FALSE;
+    }
+    
+    int whence;
+    switch (origin) {
+        case drwav_seek_origin_start:   whence = SEEK_SET; break;
+        case drwav_seek_origin_current: whence = SEEK_CUR; break;
+        default: return DRWAV_FALSE;
+    }
+    
+    off_t result = lseek(*pFD, offset, whence);
+    return (result != -1) ? DRWAV_TRUE : DRWAV_FALSE;
+}
 
 AudioEngine::AudioEngine() : oboeInitialized_(false), audioStreamSampleRate_(0), currentTickDurationMs_(0.0), timeAccumulatedForTick_(0.0) {
     // Constructor: Initialize members, e.g., random engine
@@ -76,24 +113,35 @@ bool AudioEngine::initialize() {
 
 void AudioEngine::shutdown() {
     if (isRecording_.load()) {
-        // Stop recording first if active (simplified)
-        // Actual stopAudioRecording might need JNIEnv, so this is conceptual
         __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::shutdown - Stopping active recording.");
-        // Call a non-JNI version of stop or set flag for onAudioReady to handle.
+        
+        // Signal recording thread to stop
+        shouldStopRecording_.store(true);
         isRecording_.store(false);
+        
+        // Wait for recording thread to finish
+        if (recordingThread_.joinable()) {
+            recordingThread_.join();
+        }
+        
+        // Stop input stream
         if (mInputStream_) {
-             mInputStream_->requestStop();
-             mInputStream_->close();
+            mInputStream_->requestStop();
+            mInputStream_->close();
         }
-        if (wavWriterInitialized_) {
-            drwav_uninit(&wavWriter_);
-            wavWriterInitialized_ = false;
-        }
-        if (recordingFileDescriptor_ != -1) {
-            // This FD was likely a dup, original managed by Kotlin.
-            // If AudioEngine dupped it, it should close it.
-            // For simplicity here, assume it's managed elsewhere or closed if dupped.
-            recordingFileDescriptor_ = -1;
+        
+        // Cleanup WAV writer
+        {
+            std::lock_guard<std::mutex> lock(recordingStateMutex_);
+            if (wavWriterInitialized_) {
+                drwav_uninit(&wavWriter_);
+                wavWriterInitialized_ = false;
+            }
+            
+            if (recordingFileDescriptor_ != -1) {
+                close(recordingFileDescriptor_);
+                recordingFileDescriptor_ = -1;
+            }
         }
     }
 
@@ -692,9 +740,137 @@ bool AudioEngine::playPadSample(
 }
 
 bool AudioEngine::startAudioRecording(JNIEnv* env, jobject context, const std::string& filePathUri, int sampleRate, int channels) {
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "startAudioRecording called");
-    // TODO: Implement audio recording
-    return false;
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "startAudioRecording called with path: %s, sampleRate: %d, channels: %d", 
+                        filePathUri.c_str(), sampleRate, channels);
+    
+    std::lock_guard<std::mutex> lock(recordingStateMutex_);
+    
+    // Check if already recording
+    if (isRecording_.load()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Recording already in progress");
+        return false;
+    }
+    
+    // Validate parameters
+    if (channels < 1 || channels > 2) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Invalid channel count: %d (must be 1 or 2)", channels);
+        return false;
+    }
+    
+    if (sampleRate < 8000 || sampleRate > 192000) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Invalid sample rate: %d", sampleRate);
+        return false;
+    }
+    
+    // Store recording parameters
+    currentRecordingFilePath_ = filePathUri;
+    
+    // Initialize input stream with Oboe
+    oboe::AudioStreamBuilder inputBuilder;
+    inputBuilder.setDirection(oboe::Direction::Input)
+                ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+                ->setSharingMode(oboe::SharingMode::Exclusive)
+                ->setFormat(oboe::AudioFormat::Float)
+                ->setChannelCount(channels)
+                ->setSampleRate(sampleRate)
+                ->setCallback(nullptr); // We'll use blocking read for recording
+    
+    oboe::Result result = inputBuilder.openManagedStream(mInputStream_);
+    if (result != oboe::Result::OK) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to open input stream: %s", oboe::convertToText(result));
+        return false;
+    }
+    
+    // Get actual stream parameters
+    int32_t actualSampleRate = mInputStream_->getSampleRate();
+    int32_t actualChannels = mInputStream_->getChannelCount();
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Input stream opened - Requested: %dHz %dch, Actual: %dHz %dch", 
+                        sampleRate, channels, actualSampleRate, actualChannels);
+    
+    // Check available storage space (estimate 10MB minimum for recording)
+    struct statvfs stat;
+    if (statvfs(filePathUri.c_str(), &stat) == 0) {
+        unsigned long long availableBytes = stat.f_bavail * stat.f_frsize;
+        const unsigned long long minRequiredBytes = 10 * 1024 * 1024; // 10MB
+        
+        if (availableBytes < minRequiredBytes) {
+            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Insufficient storage space: %llu bytes available, %llu required", 
+                                availableBytes, minRequiredBytes);
+            mInputStream_->close();
+            return false;
+        }
+        
+        __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Storage check passed: %llu bytes available", availableBytes);
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "Could not check storage space: %s", strerror(errno));
+    }
+    
+    // Open file for writing (convert URI to file descriptor if needed)
+    // For now, assume filePathUri is a direct file path
+    recordingFileDescriptor_ = open(filePathUri.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (recordingFileDescriptor_ == -1) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to open recording file: %s, error: %s", 
+                            filePathUri.c_str(), strerror(errno));
+        mInputStream_->close();
+        return false;
+    }
+    
+    // Verify file descriptor is valid and writable
+    if (fcntl(recordingFileDescriptor_, F_GETFL) == -1) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Invalid file descriptor: %s", strerror(errno));
+        close(recordingFileDescriptor_);
+        recordingFileDescriptor_ = -1;
+        mInputStream_->close();
+        return false;
+    }
+    
+    // Initialize WAV writer with metadata
+    drwav_data_format format;
+    format.container = drwav_container_riff;
+    format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
+    format.channels = actualChannels;
+    format.sampleRate = actualSampleRate;
+    format.bitsPerSample = 32; // 32-bit float
+    
+    if (!drwav_init_write_sequential(&wavWriter_, &format, 0, // totalSampleCount unknown
+                                     drwav_write_proc_fd, &recordingFileDescriptor_, nullptr)) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize WAV writer");
+        close(recordingFileDescriptor_);
+        recordingFileDescriptor_ = -1;
+        mInputStream_->close();
+        return false;
+    }
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "WAV writer initialized: %dHz, %d channels, 32-bit float", 
+                        actualSampleRate, actualChannels);
+    
+    wavWriterInitialized_ = true;
+    
+    // Start the input stream
+    result = mInputStream_->requestStart();
+    if (result != oboe::Result::OK) {
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to start input stream: %s", oboe::convertToText(result));
+        drwav_uninit(&wavWriter_);
+        wavWriterInitialized_ = false;
+        close(recordingFileDescriptor_);
+        recordingFileDescriptor_ = -1;
+        mInputStream_->close();
+        return false;
+    }
+    
+    // Reset level monitoring and set recording flag
+    peakRecordingLevel_.store(0.0f);
+    rmsRecordingLevel_.store(0.0f);
+    currentGain_.store(1.0f);
+    shouldStopRecording_.store(false);
+    isRecording_.store(true);
+    
+    // Start recording thread
+    recordingThread_ = std::thread(&AudioEngine::recordingThreadFunction, this);
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Audio recording started successfully");
+    return true;
 }
 
 float AudioEngine::getOboeReportedLatencyMillis() const {
@@ -723,9 +899,106 @@ bool AudioEngine::isOboeInitialized() const {
 
 jobjectArray AudioEngine::stopAudioRecording(JNIEnv* env) {
     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "stopAudioRecording called");
+    
+    if (!isRecording_.load()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "No recording in progress");
+        return nullptr;
+    }
+    
+    // Signal recording thread to stop
+    shouldStopRecording_.store(true);
     isRecording_.store(false);
-    // TODO: Return proper metadata array
-    return nullptr;
+    
+    // Wait for recording thread to finish
+    if (recordingThread_.joinable()) {
+        recordingThread_.join();
+    }
+    
+    // Stop input stream and cleanup
+    if (mInputStream_) {
+        mInputStream_->requestStop();
+        mInputStream_->close();
+    }
+    
+    // Finalize WAV file and get metadata
+    drwav_uint64 totalFramesWritten = 0;
+    float durationSeconds = 0.0f;
+    int32_t sampleRate = 44100;
+    int32_t channels = 1;
+    
+    {
+        std::lock_guard<std::mutex> lock(recordingStateMutex_);
+        if (wavWriterInitialized_) {
+            totalFramesWritten = wavWriter_.totalPCMFrameCount;
+            sampleRate = wavWriter_.sampleRate;
+            channels = wavWriter_.channels;
+            durationSeconds = static_cast<float>(totalFramesWritten) / static_cast<float>(sampleRate);
+            
+            drwav_uninit(&wavWriter_);
+            wavWriterInitialized_ = false;
+        }
+        
+        if (recordingFileDescriptor_ != -1) {
+            close(recordingFileDescriptor_);
+            recordingFileDescriptor_ = -1;
+        }
+    }
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Recording stopped. Duration: %.2fs, Frames: %llu, Sample Rate: %d, Channels: %d", 
+                        durationSeconds, (unsigned long long)totalFramesWritten, sampleRate, channels);
+    
+    // Create metadata array to return to Kotlin
+    // Format: [filePath, duration, sampleRate, channels, frameCount]
+    jclass stringClass = env->FindClass("java/lang/String");
+    jobjectArray metadataArray = env->NewObjectArray(5, stringClass, nullptr);
+    
+    if (metadataArray) {
+        // File path
+        jstring jFilePath = env->NewStringUTF(currentRecordingFilePath_.c_str());
+        env->SetObjectArrayElement(metadataArray, 0, jFilePath);
+        env->DeleteLocalRef(jFilePath);
+        
+        // Duration
+        jstring jDuration = env->NewStringUTF(std::to_string(durationSeconds).c_str());
+        env->SetObjectArrayElement(metadataArray, 1, jDuration);
+        env->DeleteLocalRef(jDuration);
+        
+        // Sample rate
+        jstring jSampleRate = env->NewStringUTF(std::to_string(sampleRate).c_str());
+        env->SetObjectArrayElement(metadataArray, 2, jSampleRate);
+        env->DeleteLocalRef(jSampleRate);
+        
+        // Channels
+        jstring jChannels = env->NewStringUTF(std::to_string(channels).c_str());
+        env->SetObjectArrayElement(metadataArray, 3, jChannels);
+        env->DeleteLocalRef(jChannels);
+        
+        // Frame count
+        jstring jFrameCount = env->NewStringUTF(std::to_string(totalFramesWritten).c_str());
+        env->SetObjectArrayElement(metadataArray, 4, jFrameCount);
+        env->DeleteLocalRef(jFrameCount);
+    }
+    
+    // Validate the recorded file
+    if (totalFramesWritten > 0) {
+        // Quick validation by trying to open the file with dr_wav
+        drwav testWav;
+        if (drwav_init_file(&testWav, currentRecordingFilePath_.c_str(), nullptr)) {
+            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Recording validation successful: %llu frames, %dHz, %d channels", 
+                                (unsigned long long)testWav.totalPCMFrameCount, testWav.sampleRate, testWav.channels);
+            drwav_uninit(&testWav);
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Recording validation failed - file may be corrupted");
+        }
+    }
+    
+    // Reset recording state
+    currentRecordingFilePath_.clear();
+    peakRecordingLevel_.store(0.0f);
+    rmsRecordingLevel_.store(0.0f);
+    currentGain_.store(1.0f);
+    
+    return metadataArray;
 }
 
 bool AudioEngine::isRecordingActive() {
@@ -734,6 +1007,165 @@ bool AudioEngine::isRecordingActive() {
 
 float AudioEngine::getRecordingLevelPeak() {
     return peakRecordingLevel_.load();
+}
+
+float AudioEngine::getRecordingLevelRMS() {
+    return rmsRecordingLevel_.load();
+}
+
+void AudioEngine::setAutoGainControlEnabled(bool enabled) {
+    autoGainControlEnabled_.store(enabled);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Auto Gain Control %s", enabled ? "enabled" : "disabled");
+}
+
+bool AudioEngine::isAutoGainControlEnabled() {
+    return autoGainControlEnabled_.load();
+}
+
+void AudioEngine::setTargetRecordingLevel(float level) {
+    float clampedLevel = std::max(0.1f, std::min(0.9f, level));
+    targetRecordingLevel_.store(clampedLevel);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Target recording level set to %.2f", clampedLevel);
+}
+
+float AudioEngine::getTargetRecordingLevel() {
+    return targetRecordingLevel_.load();
+}
+
+float AudioEngine::getCurrentRecordingGain() {
+    return currentGain_.load();
+}
+
+void AudioEngine::recordingThreadFunction() {
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Recording thread started");
+    
+    const int32_t bufferSizeFrames = 256; // Small buffer for low latency
+    const int32_t channelCount = mInputStream_->getChannelCount();
+    const int32_t bufferSizeSamples = bufferSizeFrames * channelCount;
+    
+    std::vector<float> audioBuffer(bufferSizeSamples);
+    
+    while (isRecording_.load() && !shouldStopRecording_.load()) {
+        // Read audio data from input stream
+        oboe::ResultWithValue<int32_t> result = mInputStream_->read(audioBuffer.data(), bufferSizeFrames, 0);
+        
+        if (result != oboe::Result::OK) {
+            if (result.error() == oboe::Result::ErrorTimeout) {
+                // Timeout is normal, continue
+                continue;
+            } else {
+                __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Recording read error: %s", oboe::convertToText(result.error()));
+                break;
+            }
+        }
+        
+        int32_t framesRead = result.value();
+        if (framesRead <= 0) {
+            continue;
+        }
+        
+        // Calculate peak and RMS levels for monitoring
+        float currentPeak = 0.0f;
+        float sumSquares = 0.0f;
+        int32_t totalSamples = framesRead * channelCount;
+        
+        for (int32_t i = 0; i < totalSamples; ++i) {
+            float sample = audioBuffer[i];
+            float absSample = std::abs(sample);
+            
+            if (absSample > currentPeak) {
+                currentPeak = absSample;
+            }
+            
+            sumSquares += sample * sample;
+        }
+        
+        float currentRMS = std::sqrt(sumSquares / totalSamples);
+        
+        // Apply automatic gain control if enabled
+        if (autoGainControlEnabled_.load() && currentRMS > 0.001f) {
+            float targetLevel = targetRecordingLevel_.load();
+            float currentGain = currentGain_.load();
+            
+            // Calculate desired gain adjustment
+            float desiredGain = targetLevel / currentRMS;
+            
+            // Smooth gain changes to avoid artifacts (attack/release)
+            float gainSmoothingFactor = (desiredGain > currentGain) ? 0.01f : 0.05f; // Slower attack, faster release
+            float newGain = currentGain + (desiredGain - currentGain) * gainSmoothingFactor;
+            
+            // Limit gain range to prevent extreme adjustments
+            newGain = std::max(0.1f, std::min(10.0f, newGain));
+            currentGain_.store(newGain);
+            
+            // Apply gain to audio buffer
+            for (int32_t i = 0; i < totalSamples; ++i) {
+                audioBuffer[i] *= newGain;
+            }
+            
+            // Recalculate levels after gain adjustment
+            currentPeak = 0.0f;
+            sumSquares = 0.0f;
+            for (int32_t i = 0; i < totalSamples; ++i) {
+                float sample = audioBuffer[i];
+                float absSample = std::abs(sample);
+                
+                if (absSample > currentPeak) {
+                    currentPeak = absSample;
+                }
+                
+                sumSquares += sample * sample;
+            }
+            currentRMS = std::sqrt(sumSquares / totalSamples);
+        }
+        
+        // Update levels with smoothing for UI display
+        float previousPeak = peakRecordingLevel_.load();
+        float previousRMS = rmsRecordingLevel_.load();
+        
+        // Different smoothing factors for peak (faster) and RMS (slower)
+        float peakSmoothingFactor = 0.3f;  // Faster response for peaks
+        float rmsSmoothingFactor = 0.1f;   // Slower response for RMS
+        
+        float smoothedPeak = previousPeak * (1.0f - peakSmoothingFactor) + currentPeak * peakSmoothingFactor;
+        float smoothedRMS = previousRMS * (1.0f - rmsSmoothingFactor) + currentRMS * rmsSmoothingFactor;
+        
+        peakRecordingLevel_.store(smoothedPeak);
+        rmsRecordingLevel_.store(smoothedRMS);
+        
+        // Periodic logging for debugging (every ~1 second)
+        static int logCounter = 0;
+        if (++logCounter >= (mInputStream_->getSampleRate() / bufferSizeFrames)) {
+            logCounter = 0;
+            __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, "Recording levels - Peak: %.3f, RMS: %.3f, Gain: %.2f", 
+                                smoothedPeak, smoothedRMS, currentGain_.load());
+        }
+        
+        // Write to WAV file with error handling
+        {
+            std::lock_guard<std::mutex> lock(recordingStateMutex_);
+            if (wavWriterInitialized_) {
+                drwav_uint64 samplesWritten = drwav_write_pcm_frames(&wavWriter_, framesRead, audioBuffer.data());
+                if (samplesWritten != static_cast<drwav_uint64>(framesRead)) {
+                    __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "WAV write error: expected %d frames, wrote %llu", 
+                                        framesRead, (unsigned long long)samplesWritten);
+                    
+                    // Check if disk is full
+                    struct statvfs stat;
+                    if (statvfs(currentRecordingFilePath_.c_str(), &stat) == 0) {
+                        unsigned long long availableBytes = stat.f_bavail * stat.f_frsize;
+                        if (availableBytes < 1024 * 1024) { // Less than 1MB
+                            __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Storage space critically low: %llu bytes", availableBytes);
+                            shouldStopRecording_.store(true);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Recording thread finished");
 }
 
 bool AudioEngine::isSampleLoaded(const std::string& sampleId) {

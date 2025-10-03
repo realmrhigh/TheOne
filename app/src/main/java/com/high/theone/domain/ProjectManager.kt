@@ -10,11 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 import android.net.Uri
 
-sealed class Result<out T, out E> {
-    data class Success<out T>(val value: T) : Result<T, Nothing>()
-    data class Failure<out E>(val error: E) : Result<Nothing, E>()
-}
-
 interface ProjectManager {
     fun getCurrentProject(): StateFlow<Project?>
     suspend fun createNewProject(name: String, templateName: String?): Result<Project, Error>

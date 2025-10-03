@@ -13,6 +13,7 @@
 #include "audio_sample.h" // For LoadedSample, PlayingSound etc. if managed by AudioEngine
 #include <oboe/Oboe.h>   // For Oboe types if AudioEngine manages stream
 #include <jni.h> // Use the real JNI definition
+#include <thread> // For recording thread
 struct _jobject;
 typedef _jobject* jobject;
 
@@ -65,6 +66,12 @@ public:
     jobjectArray stopAudioRecording(JNIEnv* env); // Assuming returns metadata like in native-lib
     bool isRecordingActive();
     float getRecordingLevelPeak();
+    float getRecordingLevelRMS();
+    void setAutoGainControlEnabled(bool enabled);
+    bool isAutoGainControlEnabled();
+    void setTargetRecordingLevel(float level);
+    float getTargetRecordingLevel();
+    float getCurrentRecordingGain();
 
 
     // Envelope and LFO settings
@@ -175,11 +182,17 @@ private:
     // Recording state
     std::atomic<bool> isRecording_ {false};
     std::atomic<float> peakRecordingLevel_ {0.0f};
+    std::atomic<float> rmsRecordingLevel_ {0.0f};
+    std::atomic<bool> autoGainControlEnabled_ {false};
+    std::atomic<float> targetRecordingLevel_ {0.7f};
+    std::atomic<float> currentGain_ {1.0f};
     int recordingFileDescriptor_ = -1;
     drwav wavWriter_;
     bool wavWriterInitialized_ = false;
     std::string currentRecordingFilePath_ = "";
     std::mutex recordingStateMutex_;
+    std::thread recordingThread_;
+    std::atomic<bool> shouldStopRecording_ {false};
 
 
     std::atomic<bool> oboeInitialized_ {false};
@@ -193,7 +206,10 @@ private:
 
 private:
     void RecalculateTickDurationInternal(); // No lock
-    void RecalculateTickDuration();         // Locks, then calls internal    // Random engine for layer triggering
+    void RecalculateTickDuration();         // Locks, then calls internal
+    void recordingThreadFunction();         // Recording thread function
+    
+    // Random engine for layer triggering
     std::mt19937 randomEngine_ {std::random_device{}()};    // 🎛️ AVST Plugin Management
     std::map<std::string, std::unique_ptr<avst::IAvstPlugin>> loadedPlugins_;
     mutable std::mutex pluginsMutex_;
