@@ -31,7 +31,10 @@ import com.high.theone.audio.AudioEngineControl
 import com.high.theone.features.debug.DebugScreen
 import com.high.theone.features.drumtrack.DrumTrackViewModel
 import com.high.theone.features.drumtrack.ui.DrumPadScreen
-import com.high.theone.features.sequencer.StepSequencerScreen
+import com.high.theone.features.sequencer.SequencerScreen
+import com.high.theone.features.sequencer.SequencerSettingsScreen
+import com.high.theone.features.sequencer.SequencerHelpScreen
+import com.high.theone.features.sequencer.SequencerTutorialScreen
 import com.high.theone.ui.theme.TheOneTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -65,7 +68,16 @@ class MainActivity : ComponentActivity() {
                             MainScreen(navController = navController)
                         }
                         composable("step_sequencer_screen") {
-                            StepSequencerScreen(navController = navController)
+                            SequencerScreen(navController = navController)
+                        }
+                        composable("sequencer_settings") {
+                            SequencerSettingsScreen(navController = navController)
+                        }
+                        composable("sequencer_help") {
+                            SequencerHelpScreen(navController = navController)
+                        }
+                        composable("sequencer_tutorial") {
+                            SequencerTutorialScreen(navController = navController)
                         }
                         composable("debug_screen") {
                             DebugScreen(audioEngine = audioEngine)

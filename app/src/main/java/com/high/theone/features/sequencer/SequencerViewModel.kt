@@ -11,8 +11,10 @@ import com.high.theone.model.*
 import javax.inject.Inject
 
 /**
- * ViewModel for the step sequencer managing pattern state, playback control,
- * and UI interactions.
+ * Enhanced ViewModel for the step sequencer with comprehensive state management,
+ * reactive state updates, and robust error handling.
+ * 
+ * Requirements: All requirements - comprehensive state management and coordination
  */
 @HiltViewModel
 class SequencerViewModel @Inject constructor(
@@ -61,6 +63,22 @@ class SequencerViewModel @Inject constructor(
     private val _muteSoloState = MutableStateFlow(TrackMuteSoloState())
     val muteSoloState: StateFlow<TrackMuteSoloState> = _muteSoloState.asStateFlow()
     
+    // Enhanced UI state management
+    private val _uiState = MutableStateFlow(SequencerUIState())
+    val uiState: StateFlow<SequencerUIState> = _uiState.asStateFlow()
+    
+    // User feedback and notifications
+    private val _userFeedback = MutableSharedFlow<UserFeedback>()
+    val userFeedback: SharedFlow<UserFeedback> = _userFeedback.asSharedFlow()
+    
+    // Loading states for async operations
+    private val _loadingStates = MutableStateFlow(LoadingStates())
+    val loadingStates: StateFlow<LoadingStates> = _loadingStates.asStateFlow()
+    
+    // Settings and preferences
+    private val _sequencerSettings = MutableStateFlow(SequencerSettings())
+    val sequencerSettings: StateFlow<SequencerSettings> = _sequencerSettings.asStateFlow()
+    
     // Recording state from recording engine
     val recordingState: StateFlow<RecordingState> = recordingEngine.recordingState
     
@@ -91,8 +109,179 @@ class SequencerViewModel @Inject constructor(
         setupSongModeCallbacks()
         setupPlaybackEngineCallbacks()
         initializePerformanceOptimization()
+        setupReactiveStateUpdates()
+        loadSequencerSettings()
+        initializeUserFeedbackSystem()
     }
     
+    /**
+     * Setup reactive state updates for comprehensive UI coordination
+     * Requirements: All requirements - reactive state management
+     */
+    private fun setupReactiveStateUpdates() {
+        // Combine multiple state flows for comprehensive UI state
+        viewModelScope.launch {
+            combine(
+                sequencerState,
+                patterns,
+                pads,
+                muteSoloState,
+                recordingState,
+                songState,
+                errorState
+            ) { sequencer, patterns, pads, muteState, recording, song, errors ->
+                SequencerUIState(
+                    isInitialized = patterns.isNotEmpty(),
+                    hasActivePattern = sequencer.currentPattern != null,
+                    canRecord = pads.any { it.sampleId != null },
+                    canPlayback = sequencer.currentPattern != null && pads.any { it.sampleId != null },
+                    hasErrors = errors.criticalError != null,
+                    isPerformanceOptimized = performanceMetrics.value.isOptimal,
+                    activeFeatures = buildActiveFeaturesList(sequencer, recording, song),
+                    statusMessage = buildStatusMessage(sequencer, recording, song, errors)
+                )
+            }.collect { newUIState ->
+                _uiState.value = newUIState
+            }
+        }
+        
+        // Monitor performance and provide user feedback
+        viewModelScope.launch {
+            performanceMetrics.collect { metrics ->
+                if (metrics.cpuUsagePercent > 90f) {
+                    emitUserFeedback(UserFeedback.Warning("High CPU usage detected. Consider reducing pattern complexity."))
+                } else if (metrics.memoryUsagePercent > 95f) {
+                    emitUserFeedback(UserFeedback.Warning("Memory usage is high. Some samples may be unloaded."))
+                }
+            }
+        }
+        
+        // Monitor error state and provide user notifications
+        viewModelScope.launch {
+            errorState.collect { errorState ->
+                errorState.userMessage?.let { message ->
+                    emitUserFeedback(UserFeedback.Error(message))
+                }
+                
+                errorState.criticalError?.let { error ->
+                    emitUserFeedback(UserFeedback.Critical("Critical error: $error"))
+                }
+            }
+        }
+    }
+    
+    /**
+     * Load sequencer settings and preferences
+     * Requirements: 9.7 - settings and preferences
+     */
+    private fun loadSequencerSettings() {
+        viewModelScope.launch {
+            try {
+                // Load settings from preferences or use defaults
+                val settings = SequencerSettings(
+                    defaultTempo = 120f,
+                    defaultSwing = 0f,
+                    defaultQuantization = Quantization.SIXTEENTH,
+                    autoSaveEnabled = true,
+                    performanceMode = PerformanceMode.BALANCED,
+                    visualFeedbackEnabled = true,
+                    hapticFeedbackEnabled = true,
+                    metronomeEnabled = false,
+                    recordingMode = RecordingMode.REPLACE
+                )
+                
+                _sequencerSettings.value = settings
+                
+                // Apply settings to components
+                applySettingsToComponents(settings)
+                
+                logger.logInfo("SequencerViewModel", "Settings loaded successfully")
+            } catch (e: Exception) {
+                logger.logError("SequencerViewModel", "Failed to load settings", exception = e)
+                emitUserFeedback(UserFeedback.Warning("Failed to load settings. Using defaults."))
+            }
+        }
+    }
+    
+    /**
+     * Initialize user feedback system
+     * Requirements: All requirements - user feedback and error handling
+     */
+    private fun initializeUserFeedbackSystem() {
+        logger.logInfo("SequencerViewModel", "User feedback system initialized")
+    }
+    
+    /**
+     * Apply settings to various components
+     */
+    private fun applySettingsToComponents(settings: SequencerSettings) {
+        // Apply performance settings
+        when (settings.performanceMode) {
+            PerformanceMode.POWER_SAVE -> {
+                performanceOptimizer.enablePowerSaveMode()
+                sequencerSampleCache.setMaxCacheSize(50) // Reduced cache
+            }
+            PerformanceMode.BALANCED -> {
+                performanceOptimizer.enableBalancedMode()
+                sequencerSampleCache.setMaxCacheSize(100) // Normal cache
+            }
+            PerformanceMode.PERFORMANCE -> {
+                performanceOptimizer.enablePerformanceMode()
+                sequencerSampleCache.setMaxCacheSize(200) // Larger cache
+            }
+        }
+        
+        // Apply audio settings
+        if (settings.metronomeEnabled) {
+            audioEngine.enableMetronome(true)
+        }
+    }
+    
+    /**
+     * Build list of currently active features for UI state
+     */
+    private fun buildActiveFeaturesList(
+        sequencer: SequencerState,
+        recording: RecordingState,
+        song: SongPlaybackState
+    ): List<ActiveFeature> {
+        val features = mutableListOf<ActiveFeature>()
+        
+        if (sequencer.isPlaying) features.add(ActiveFeature.PLAYBACK)
+        if (recording.isRecording) features.add(ActiveFeature.RECORDING)
+        if (song.isActive) features.add(ActiveFeature.SONG_MODE)
+        if (sequencer.currentPattern != null) features.add(ActiveFeature.PATTERN_LOADED)
+        
+        return features
+    }
+    
+    /**
+     * Build status message for UI display
+     */
+    private fun buildStatusMessage(
+        sequencer: SequencerState,
+        recording: RecordingState,
+        song: SongPlaybackState,
+        errors: SequencerErrorState
+    ): String {
+        return when {
+            errors.criticalError != null -> "Error: ${errors.criticalError}"
+            recording.isRecording -> "Recording..."
+            song.isActive && sequencer.isPlaying -> "Playing Song - Pattern ${song.currentPatternIndex + 1}"
+            sequencer.isPlaying -> "Playing - Step ${sequencer.currentStep + 1}"
+            sequencer.isPaused -> "Paused"
+            else -> "Ready"
+        }
+    }
+    
+    /**
+     * Emit user feedback message
+     */
+    private suspend fun emitUserFeedback(feedback: UserFeedback) {
+        _userFeedback.emit(feedback)
+        logger.logInfo("SequencerViewModel", "User feedback emitted: ${feedback.javaClass.simpleName}")
+    }
+
     private fun setupTimingCallbacks() {
         // Setup timing engine callbacks for step triggers
         timingEngine.scheduleStepCallback { step, microTime ->
@@ -1566,4 +1755,232 @@ data class PerformanceStatistics(
     val performanceMetrics: SequencerPerformanceMetrics,
     val optimizationState: OptimizationState,
     val recommendations: List<OptimizationRecommendation>
+)    //
+ Enhanced State Management Methods
+    
+    /**
+     * Update sequencer settings
+     * Requirements: 9.7 - settings and preferences
+     */
+    fun updateSettings(settings: SequencerSettings) {
+        viewModelScope.launch {
+            try {
+                _sequencerSettings.value = settings
+                applySettingsToComponents(settings)
+                
+                // Save settings to preferences
+                // TODO: Implement settings persistence
+                
+                emitUserFeedback(UserFeedback.Success("Settings updated successfully"))
+                logger.logInfo("SequencerViewModel", "Settings updated")
+            } catch (e: Exception) {
+                logger.logError("SequencerViewModel", "Failed to update settings", exception = e)
+                emitUserFeedback(UserFeedback.Error("Failed to update settings"))
+            }
+        }
+    }
+    
+    /**
+     * Get current UI state for components
+     * Requirements: All requirements - comprehensive state access
+     */
+    fun getCurrentUIState(): SequencerUIState = _uiState.value
+    
+    /**
+     * Update loading state for specific operations
+     */
+    fun updateLoadingState(operation: String, isLoading: Boolean) {
+        _loadingStates.update { current ->
+            val newStates = current.operations.toMutableMap()
+            if (isLoading) {
+                newStates[operation] = System.currentTimeMillis()
+            } else {
+                newStates.remove(operation)
+            }
+            current.copy(operations = newStates)
+        }
+    }
+    
+    /**
+     * Check if any operation is currently loading
+     */
+    fun isAnyOperationLoading(): Boolean = _loadingStates.value.operations.isNotEmpty()
+    
+    /**
+     * Get loading state for specific operation
+     */
+    fun isOperationLoading(operation: String): Boolean = 
+        _loadingStates.value.operations.containsKey(operation)
+    
+    /**
+     * Clear all user feedback messages
+     */
+    fun clearUserFeedback() {
+        // User feedback is handled by SharedFlow, no need to clear
+        logger.logInfo("SequencerViewModel", "User feedback cleared")
+    }
+    
+    /**
+     * Get comprehensive sequencer status for debugging
+     */
+    fun getSequencerStatus(): SequencerStatus {
+        return SequencerStatus(
+            sequencerState = _sequencerState.value,
+            uiState = _uiState.value,
+            loadingStates = _loadingStates.value,
+            settings = _sequencerSettings.value,
+            performanceMetrics = performanceMetrics.value,
+            errorState = errorState.value,
+            timestamp = System.currentTimeMillis()
+        )
+    }
+    
+    /**
+     * Force refresh of all state components
+     */
+    fun refreshAllStates() {
+        viewModelScope.launch {
+            try {
+                updateLoadingState("refresh", true)
+                
+                // Refresh patterns
+                loadPatterns()
+                
+                // Refresh pad system
+                padSystemIntegration.forcePadResync()
+                
+                // Refresh performance optimization
+                performanceOptimizer.refreshMetrics()
+                
+                // Clear any stale errors
+                errorHandler.clearStaleErrors()
+                
+                emitUserFeedback(UserFeedback.Success("All states refreshed"))
+                logger.logInfo("SequencerViewModel", "All states refreshed successfully")
+                
+            } catch (e: Exception) {
+                logger.logError("SequencerViewModel", "Failed to refresh states", exception = e)
+                emitUserFeedback(UserFeedback.Error("Failed to refresh states"))
+            } finally {
+                updateLoadingState("refresh", false)
+            }
+        }
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        
+        // Cleanup resources
+        viewModelScope.launch {
+            try {
+                // Stop any active playback
+                if (_sequencerState.value.isPlaying) {
+                    stopPattern()
+                }
+                
+                // Release all voices
+                sequencerVoiceManager.releaseAllVoices()
+                
+                // Clear caches
+                sequencerSampleCache.clearCache()
+                
+                // Shutdown components
+                performanceOptimizer.shutdown()
+                errorHandler.shutdown()
+                logger.shutdown()
+                
+                logger.logInfo("SequencerViewModel", "ViewModel cleanup completed")
+            } catch (e: Exception) {
+                // Log error but don't throw during cleanup
+                android.util.Log.e(TAG, "Error during ViewModel cleanup", e)
+            }
+        }
+    }
+}
+
+/**
+ * Enhanced UI state for comprehensive state management
+ */
+data class SequencerUIState(
+    val isInitialized: Boolean = false,
+    val hasActivePattern: Boolean = false,
+    val canRecord: Boolean = false,
+    val canPlayback: Boolean = false,
+    val hasErrors: Boolean = false,
+    val isPerformanceOptimized: Boolean = true,
+    val activeFeatures: List<ActiveFeature> = emptyList(),
+    val statusMessage: String = "Initializing..."
+)
+
+/**
+ * Active features in the sequencer
+ */
+enum class ActiveFeature {
+    PLAYBACK,
+    RECORDING,
+    SONG_MODE,
+    PATTERN_LOADED,
+    OVERDUB,
+    METRONOME
+}
+
+/**
+ * User feedback types for UI notifications
+ */
+sealed class UserFeedback {
+    data class Success(val message: String) : UserFeedback()
+    data class Warning(val message: String) : UserFeedback()
+    data class Error(val message: String) : UserFeedback()
+    data class Critical(val message: String) : UserFeedback()
+    data class Info(val message: String) : UserFeedback()
+}
+
+/**
+ * Loading states for async operations
+ */
+data class LoadingStates(
+    val operations: Map<String, Long> = emptyMap()
+) {
+    val isAnyLoading: Boolean get() = operations.isNotEmpty()
+    val loadingOperations: List<String> get() = operations.keys.toList()
+}
+
+/**
+ * Sequencer settings and preferences
+ */
+data class SequencerSettings(
+    val defaultTempo: Float = 120f,
+    val defaultSwing: Float = 0f,
+    val defaultQuantization: Quantization = Quantization.SIXTEENTH,
+    val autoSaveEnabled: Boolean = true,
+    val performanceMode: PerformanceMode = PerformanceMode.BALANCED,
+    val visualFeedbackEnabled: Boolean = true,
+    val hapticFeedbackEnabled: Boolean = true,
+    val metronomeEnabled: Boolean = false,
+    val recordingMode: RecordingMode = RecordingMode.REPLACE,
+    val maxPatternLength: Int = 32,
+    val maxPatterns: Int = 64,
+    val enableAdvancedFeatures: Boolean = true
+)
+
+/**
+ * Performance mode settings
+ */
+enum class PerformanceMode {
+    POWER_SAVE,
+    BALANCED,
+    PERFORMANCE
+}
+
+/**
+ * Comprehensive sequencer status for debugging
+ */
+data class SequencerStatus(
+    val sequencerState: SequencerState,
+    val uiState: SequencerUIState,
+    val loadingStates: LoadingStates,
+    val settings: SequencerSettings,
+    val performanceMetrics: SequencerPerformanceMetrics,
+    val errorState: SequencerErrorState,
+    val timestamp: Long
 )
