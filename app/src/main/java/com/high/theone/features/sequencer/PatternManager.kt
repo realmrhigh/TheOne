@@ -3,7 +3,10 @@ package com.high.theone.features.sequencer
 import com.high.theone.model.Pattern
 import com.high.theone.model.Step
 import com.high.theone.model.Quantization
+import com.high.theone.model.StepCondition
+import com.high.theone.model.StepHumanization
 import java.util.UUID
+import kotlin.random.Random
 
 /**
  * Manages pattern operations including creation, manipulation, and validation
@@ -320,6 +323,221 @@ class PatternManager {
         }
         
         return pattern.copy(steps = newStepsMap).withModification()
+    }
+    
+    /**
+     * Sets probability for a specific step
+     */
+    fun setStepProbability(
+        pattern: Pattern,
+        padIndex: Int,
+        stepIndex: Int,
+        probability: Float
+    ): Pattern {
+        require(padIndex >= 0) { "Pad index must be non-negative" }
+        require(stepIndex in 0 until pattern.length) { "Step index must be within pattern length" }
+        require(probability in 0f..1f) { "Probability must be between 0.0 and 1.0" }
+        
+        val currentSteps = pattern.steps[padIndex] ?: return pattern
+        val existingStepIndex = currentSteps.indexOfFirst { it.position == stepIndex }
+        
+        if (existingStepIndex < 0) {
+            // No step exists at this position
+            return pattern
+        }
+        
+        val updatedSteps = currentSteps.toMutableList().apply {
+            this[existingStepIndex] = this[existingStepIndex].copy(probability = probability)
+        }
+        
+        val newStepsMap = pattern.steps.toMutableMap()
+        newStepsMap[padIndex] = updatedSteps
+        
+        return pattern.copy(steps = newStepsMap).withModification()
+    }
+    
+    /**
+     * Sets condition for a specific step
+     */
+    fun setStepCondition(
+        pattern: Pattern,
+        padIndex: Int,
+        stepIndex: Int,
+        condition: com.high.theone.model.StepCondition
+    ): Pattern {
+        require(padIndex >= 0) { "Pad index must be non-negative" }
+        require(stepIndex in 0 until pattern.length) { "Step index must be within pattern length" }
+        
+        val currentSteps = pattern.steps[padIndex] ?: return pattern
+        val existingStepIndex = currentSteps.indexOfFirst { it.position == stepIndex }
+        
+        if (existingStepIndex < 0) {
+            // No step exists at this position
+            return pattern
+        }
+        
+        val updatedSteps = currentSteps.toMutableList().apply {
+            this[existingStepIndex] = this[existingStepIndex].copy(condition = condition)
+        }
+        
+        val newStepsMap = pattern.steps.toMutableMap()
+        newStepsMap[padIndex] = updatedSteps
+        
+        return pattern.copy(steps = newStepsMap).withModification()
+    }
+    
+    /**
+     * Sets humanization for a specific step
+     */
+    fun setStepHumanization(
+        pattern: Pattern,
+        padIndex: Int,
+        stepIndex: Int,
+        humanization: com.high.theone.model.StepHumanization
+    ): Pattern {
+        require(padIndex >= 0) { "Pad index must be non-negative" }
+        require(stepIndex in 0 until pattern.length) { "Step index must be within pattern length" }
+        
+        val currentSteps = pattern.steps[padIndex] ?: return pattern
+        val existingStepIndex = currentSteps.indexOfFirst { it.position == stepIndex }
+        
+        if (existingStepIndex < 0) {
+            // No step exists at this position
+            return pattern
+        }
+        
+        val updatedSteps = currentSteps.toMutableList().apply {
+            this[existingStepIndex] = this[existingStepIndex].copy(humanization = humanization)
+        }
+        
+        val newStepsMap = pattern.steps.toMutableMap()
+        newStepsMap[padIndex] = updatedSteps
+        
+        return pattern.copy(steps = newStepsMap).withModification()
+    }
+    
+    /**
+     * Randomizes all step parameters in a pattern
+     */
+    fun randomizePattern(
+        pattern: Pattern,
+        timingRange: Float = 5f,
+        velocityRange: Int = 10,
+        probabilityRange: Float = 0.2f
+    ): Pattern {
+        require(timingRange >= 0f) { "Timing range must be non-negative" }
+        require(velocityRange >= 0) { "Velocity range must be non-negative" }
+        require(probabilityRange >= 0f) { "Probability range must be non-negative" }
+        
+        val newStepsMap = pattern.steps.mapValues { (_, steps) ->
+            steps.map { step ->
+                val randomTiming = step.microTiming + ((-1f..1f).random() * timingRange)
+                val randomVelocity = step.velocity + ((-velocityRange..velocityRange).random())
+                val randomProbability = step.probability + ((-1f..1f).random() * probabilityRange)
+                
+                step.copy(
+                    microTiming = randomTiming.coerceIn(-50f, 50f),
+                    velocity = randomVelocity.coerceIn(1, 127),
+                    probability = randomProbability.coerceIn(0f, 1f)
+                )
+            }
+        }
+        
+        return pattern.copy(steps = newStepsMap).withModification()
+    }
+    
+    /**
+     * Applies humanization to all steps in a pattern
+     */
+    fun humanizePattern(
+        pattern: Pattern,
+        timingVariation: Float = 3f,
+        velocityVariation: Float = 0.15f
+    ): Pattern {
+        require(timingVariation in 0f..10f) { "Timing variation must be between 0 and 10ms" }
+        require(velocityVariation in 0f..1f) { "Velocity variation must be between 0.0 and 1.0" }
+        
+        val humanization = com.high.theone.model.StepHumanization(
+            timingVariation = timingVariation,
+            velocityVariation = velocityVariation,
+            enabled = true
+        )
+        
+        val newStepsMap = pattern.steps.mapValues { (_, steps) ->
+            steps.map { step ->
+                step.copy(humanization = humanization)
+            }
+        }
+        
+        return pattern.copy(steps = newStepsMap).withModification()
+    }
+    
+    /**
+     * Sets probability for all steps in a pattern
+     */
+    fun setPatternProbability(pattern: Pattern, probability: Float): Pattern {
+        require(probability in 0f..1f) { "Probability must be between 0.0 and 1.0" }
+        
+        val newStepsMap = pattern.steps.mapValues { (_, steps) ->
+            steps.map { step ->
+                step.copy(probability = probability)
+            }
+        }
+        
+        return pattern.copy(steps = newStepsMap).withModification()
+    }
+    
+    /**
+     * Creates a euclidean rhythm pattern for a specific pad
+     */
+    fun createEuclideanRhythm(
+        pattern: Pattern,
+        padIndex: Int,
+        hits: Int,
+        steps: Int,
+        rotation: Int = 0,
+        velocity: Int = 100
+    ): Pattern {
+        require(padIndex >= 0) { "Pad index must be non-negative" }
+        require(hits >= 0) { "Hits must be non-negative" }
+        require(steps > 0) { "Steps must be positive" }
+        require(hits <= steps) { "Hits cannot exceed steps" }
+        require(steps <= pattern.length) { "Steps cannot exceed pattern length" }
+        require(velocity in 1..127) { "Velocity must be between 1 and 127" }
+        
+        // Generate euclidean rhythm
+        val euclideanSteps = generateEuclideanRhythm(hits, steps, rotation)
+        
+        // Convert to Step objects
+        val newSteps = euclideanSteps.mapIndexed { index, isActive ->
+            if (isActive) {
+                Step(position = index, velocity = velocity, isActive = true)
+            } else null
+        }.filterNotNull()
+        
+        val newStepsMap = pattern.steps.toMutableMap()
+        if (newSteps.isEmpty()) {
+            newStepsMap.remove(padIndex)
+        } else {
+            newStepsMap[padIndex] = newSteps
+        }
+        
+        return pattern.copy(steps = newStepsMap).withModification()
+    }
+    
+    private fun generateEuclideanRhythm(hits: Int, steps: Int, rotation: Int): List<Boolean> {
+        if (hits == 0) return List(steps) { false }
+        if (hits >= steps) return List(steps) { true }
+        
+        val rhythm = MutableList(steps) { false }
+        val interval = steps.toFloat() / hits
+        
+        for (i in 0 until hits) {
+            val position = ((i * interval).toInt() + rotation) % steps
+            rhythm[position] = true
+        }
+        
+        return rhythm
     }
     
     /**

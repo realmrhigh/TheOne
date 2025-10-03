@@ -25,7 +25,7 @@ import kotlinx.coroutines.delay
  * Individual step button component with tap-to-toggle and long-press velocity editing.
  * Provides visual feedback for step states and current playback position.
  * 
- * Requirements: 1.2, 6.1, 6.2, 6.3, 9.2, 9.4
+ * Requirements: 1.2, 6.1, 6.2, 6.3, 9.2, 9.4, 6.7
  */
 @Composable
 fun StepButton(
@@ -33,13 +33,17 @@ fun StepButton(
     velocity: Int = 100,
     isCurrentStep: Boolean = false,
     isEnabled: Boolean = true,
+    step: com.high.theone.model.Step? = null,
     onToggle: () -> Unit,
     onVelocityChange: (Int) -> Unit,
+    onAdvancedEdit: ((com.high.theone.model.Step) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     var isPressed by remember { mutableStateOf(false) }
     var showVelocityEditor by remember { mutableStateOf(false) }
+    var showAdvancedEditor by remember { mutableStateOf(false) }
+    var lastTapTime by remember { mutableStateOf(0L) }
     
     // Animation states
     val scale by animateFloatAsState(
@@ -103,8 +107,17 @@ fun StepButton(
                         },
                         onTap = {
                             if (!showVelocityEditor) {
-                                onToggle()
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                val currentTime = System.currentTimeMillis()
+                                if (currentTime - lastTapTime < 300 && step != null && onAdvancedEdit != null) {
+                                    // Double tap - show advanced editor
+                                    showAdvancedEditor = true
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                } else {
+                                    // Single tap - toggle step
+                                    onToggle()
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                                lastTapTime = currentTime
                             }
                         }
                     )
@@ -117,6 +130,12 @@ fun StepButton(
             VelocityIndicator(
                 velocity = velocity,
                 isCurrentStep = isCurrentStep,
+                hasAdvancedFeatures = step?.let { 
+                    it.probability < 1.0f || 
+                    it.condition != com.high.theone.model.StepCondition.Always || 
+                    it.humanization.enabled ||
+                    it.microTiming != 0f
+                } ?: false,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -135,6 +154,15 @@ fun StepButton(
             currentVelocity = velocity,
             onVelocityChange = onVelocityChange,
             onDismiss = { showVelocityEditor = false }
+        )
+    }
+    
+    // Advanced step editor dialog
+    if (showAdvancedEditor && step != null && onAdvancedEdit != null) {
+        AdvancedStepEditor(
+            step = step,
+            onStepChange = onAdvancedEdit,
+            onDismiss = { showAdvancedEditor = false }
         )
     }
 }
@@ -171,6 +199,7 @@ private fun getStepButtonColor(
 private fun VelocityIndicator(
     velocity: Int,
     isCurrentStep: Boolean,
+    hasAdvancedFeatures: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val velocityRatio = (velocity / 127f).coerceIn(0f, 1f)
@@ -193,6 +222,19 @@ private fun VelocityIndicator(
                     shape = RoundedCornerShape(2.dp)
                 )
         )
+        
+        // Advanced features indicator
+        if (hasAdvancedFeatures) {
+            Box(
+                modifier = Modifier
+                    .size(4.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.secondary,
+                        shape = RoundedCornerShape(2.dp)
+                    )
+                    .align(Alignment.TopEnd)
+            )
+        }
     }
 }
 

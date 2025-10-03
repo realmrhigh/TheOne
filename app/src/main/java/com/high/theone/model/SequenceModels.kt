@@ -32,12 +32,69 @@ data class Step(
     val position: Int, // 0-31 for step position within pattern
     val velocity: Int = 100, // 1-127 MIDI velocity
     val isActive: Boolean = true,
-    val microTiming: Float = 0f // Fine timing adjustment in milliseconds (-50 to +50)
+    val microTiming: Float = 0f, // Fine timing adjustment in milliseconds (-50 to +50)
+    val probability: Float = 1.0f, // 0.0 to 1.0 - probability of step triggering
+    val condition: StepCondition = StepCondition.Always, // Condition for step playback
+    val humanization: StepHumanization = StepHumanization()
 ) {
     init {
         require(position >= 0) { "Step position must be non-negative" }
         require(velocity in 1..127) { "Velocity must be between 1 and 127" }
         require(microTiming in -50f..50f) { "Micro timing must be between -50ms and +50ms" }
+        require(probability in 0f..1f) { "Probability must be between 0.0 and 1.0" }
+    }
+}
+
+/**
+ * Conditions that determine when a step should play
+ */
+@Serializable
+sealed class StepCondition {
+    @Serializable
+    object Always : StepCondition()
+    
+    @Serializable
+    data class EveryNTimes(val n: Int, val offset: Int = 0) : StepCondition() {
+        init {
+            require(n > 0) { "N must be positive" }
+            require(offset >= 0) { "Offset must be non-negative" }
+        }
+    }
+    
+    @Serializable
+    data class FirstOfN(val n: Int) : StepCondition() {
+        init {
+            require(n > 0) { "N must be positive" }
+        }
+    }
+    
+    @Serializable
+    data class LastOfN(val n: Int) : StepCondition() {
+        init {
+            require(n > 0) { "N must be positive" }
+        }
+    }
+    
+    @Serializable
+    data class NotOnBeat(val beat: Int) : StepCondition() {
+        init {
+            require(beat > 0) { "Beat must be positive" }
+        }
+    }
+}
+
+/**
+ * Humanization settings for adding natural variation to steps
+ */
+@Serializable
+data class StepHumanization(
+    val timingVariation: Float = 0f, // -10 to +10ms random timing variation
+    val velocityVariation: Float = 0f, // 0.0 to 1.0 - amount of random velocity variation
+    val enabled: Boolean = false
+) {
+    init {
+        require(timingVariation in -10f..10f) { "Timing variation must be between -10ms and +10ms" }
+        require(velocityVariation in 0f..1f) { "Velocity variation must be between 0.0 and 1.0" }
     }
 }
 
