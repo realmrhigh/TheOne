@@ -230,7 +230,7 @@ object PatternValidation {
                 code = "NEGATIVE_STEP_POSITION",
                 message = "Step position cannot be negative",
                 field = "steps",
-                context = context + ("position" to step.position)
+                context = context + mapOf("position" to step.position)
             ))
         }
         
@@ -239,7 +239,7 @@ object PatternValidation {
                 code = "STEP_POSITION_OUT_OF_BOUNDS",
                 message = "Step position ${step.position} exceeds pattern length $patternLength",
                 field = "steps",
-                context = context + ("position" to step.position, "patternLength" to patternLength)
+                context = context + mapOf("position" to step.position, "patternLength" to patternLength)
             ))
         }
         
@@ -249,7 +249,7 @@ object PatternValidation {
                 code = "INVALID_STEP_VELOCITY",
                 message = "Step velocity must be between 1 and 127",
                 field = "steps",
-                context = context + ("velocity" to step.velocity)
+                context = context + mapOf("velocity" to step.velocity)
             ))
         }
         
@@ -269,7 +269,7 @@ object PatternValidation {
                 code = "INVALID_MICRO_TIMING",
                 message = "Micro timing must be between -50ms and +50ms",
                 field = "steps",
-                context = context + ("microTiming" to step.microTiming)
+                context = context + mapOf("microTiming" to step.microTiming)
             ))
         }
         
@@ -341,7 +341,8 @@ object PatternValidation {
         }
         
         // Check for patterns with no steps
-        if (pattern.steps.isEmpty() || !pattern.hasActiveSteps()) {
+        val hasActiveSteps = pattern.steps.values.flatten().any { it.isActive }
+        if (pattern.steps.isEmpty() || !hasActiveSteps) {
             warnings.add(ValidationWarning(
                 code = "EMPTY_PATTERN",
                 message = "Pattern has no active steps",
@@ -466,7 +467,7 @@ object PatternValidation {
                 code = "INVALID_REPEAT_COUNT",
                 message = "Song step repeat count must be positive",
                 field = "sequence",
-                context = context + ("repeatCount" to songStep.repeatCount)
+                context = context + mapOf("repeatCount" to songStep.repeatCount)
             ))
         }
         
