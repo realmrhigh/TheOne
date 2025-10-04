@@ -89,6 +89,28 @@ interface TimingEngine {
     fun getTimingStats(): TimingStats
     
     /**
+     * Set the clock source for timing synchronization
+     * @param source Clock source (INTERNAL or EXTERNAL)
+     */
+    fun setClockSource(source: ClockSource)
+    
+    /**
+     * Process external MIDI clock pulse for synchronization
+     * @param clockPulse MIDI clock pulse with timing information
+     */
+    fun processExternalClockPulse(clockPulse: com.high.theone.midi.model.MidiClockPulse)
+    
+    /**
+     * Check if currently synchronized to external clock
+     */
+    fun isExternalClockSynced(): Boolean
+    
+    /**
+     * Get the current clock source
+     */
+    fun getCurrentClockSource(): ClockSource
+    
+    /**
      * Release resources and cleanup
      */
     fun release()
@@ -102,8 +124,19 @@ data class TimingStats(
     val maxJitter: Long,          // Maximum jitter observed
     val missedCallbacks: Int,     // Number of missed timing callbacks
     val cpuUsage: Float,          // Estimated CPU usage percentage
-    val isRealTime: Boolean       // Whether running in real-time priority
+    val isRealTime: Boolean,      // Whether running in real-time priority
+    val clockSource: ClockSource, // Current clock source
+    val isExternalClockSynced: Boolean, // Whether synced to external clock
+    val detectedExternalTempo: Float    // Detected external tempo (if applicable)
 )
+
+/**
+ * Clock source options for timing synchronization
+ */
+enum class ClockSource {
+    INTERNAL,    // Use internal timing engine
+    EXTERNAL     // Synchronize to external MIDI clock
+}
 
 /**
  * Transport actions for timing engine control
@@ -117,4 +150,5 @@ sealed class TransportAction {
     data class SetTempo(val bpm: Float) : TransportAction()
     data class SetSwing(val amount: Float) : TransportAction()
     data class SetPatternLength(val length: Int) : TransportAction()
+    data class SetClockSource(val source: ClockSource) : TransportAction()
 }

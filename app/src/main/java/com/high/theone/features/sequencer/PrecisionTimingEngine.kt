@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Process
 import android.os.SystemClock
+import com.high.theone.midi.model.MidiClockPulse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,8 +14,10 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 
 /**
  * High-precision timing engine implementation for step sequencer
@@ -50,6 +53,21 @@ class PrecisionTimingEngine @Inject constructor(
     private var currentSwing = 0f
     private var patternLength = 16
     
+    // External clock synchronization
+    private val _clockSource = MutableStateFlow(ClockSource.INTERNAL)
+    val clockSource: StateFlow<ClockSource> = _clockSource.asStateFlow()
+    
+    private val _isExternalClockSynced = MutableStateFlow(false)
+    val isExternalClockSynced: StateFlow<Boolean> = _isExternalClockSynced.asStateFlow()
+    
+    private val externalClockBuffer = ArrayDeque<MidiClockPulse>(24) // Buffer for tempo detection
+    private var lastExternalClockTime = AtomicLong(0L)
+    private var externalClockPulseCount = AtomicInteger(0)
+    private var detectedExternalTempo = AtomicReference(120f)
+    private var clockSyncJob: ScheduledExecutorService? = null
+    private val clockSyncTolerance = 50_000L // 50ms tolerance for clock sync
+    private val clockTimeoutMs = 2000L // 2 second timeout for external clock
+    
     // Timing state
     private var stepDurationMicros = AtomicLong(0L)
     private var patternStartTime = AtomicLong(0L)
@@ -74,6 +92,8 @@ class PrecisionTimingEngine @Inject constructor(
         const val PROGRESS_UPDATE_INTERVAL_MS = 16L // ~60fps UI updates
         const val MAX_JITTER_SAMPLES = 100
         const val CALLBACK_TOLERANCE_MICROS = 5000L // 5ms tolerance
+        const val MIDI_CLOCK_PULSES_PER_QUARTER_NOTE = 24
+        const val TEMPO_SMOOTHING_FACTOR = 0.1f // For smooth tempo transitions
     }
     
     init {
@@ -101,7 +121,11 @@ class PrecisionTimingEngine @Inject constructor(
         }
         
         // Validate and set parameters
-        currentTempo = TempoUtils.clampTempo(tempo)
+        currentTempo = if (_clockSource.value == ClockSource.EXTERNAL && detectedExternalTempo.get() > 0) {
+            detectedExternalTempo.get()
+        } else {
+            TempoUtils.clampTempo(tempo)
+        }
         currentSwing = swing.coerceIn(0f, 0.75f)
         this.patternLength = patternLength.coerceIn(8, 32)
         
@@ -121,10 +145,10 @@ class PrecisionTimingEngine @Inject constructor(
         _currentStep.value = 0
         _stepProgress.value = 0f
         
-
-        
-        // Start timing loops
-        startTimingLoop()
+        // Start timing loops (only if using internal clock or external clock is synced)
+        if (_clockSource.value == ClockSource.INTERNAL || _isExternalClockSynced.value) {
+            startTimingLoop()
+        }
         startProgressUpdates()
     }
     
@@ -175,12 +199,15 @@ class PrecisionTimingEngine @Inject constructor(
     }
     
     override fun setTempo(bpm: Float) {
+        // Don't allow manual tempo changes when using external clock
+        if (_clockSource.value == ClockSource.EXTERNAL) {
+            return
+        }
+        
         val newTempo = TempoUtils.clampTempo(bpm)
         if (newTempo == currentTempo) return
         
         currentTempo = newTempo
-        
-
         
         // Recalculate step duration
         val stepDurationMs = timingCalculator.calculateStepDuration(currentTempo)
@@ -239,13 +266,68 @@ class PrecisionTimingEngine @Inject constructor(
             maxJitter = maxJitter,
             missedCallbacks = missedCallbacks.get(),
             cpuUsage = estimateCpuUsage(),
-            isRealTime = audioThread?.isAlive == true
+            isRealTime = audioThread?.isAlive == true,
+            clockSource = _clockSource.value,
+            isExternalClockSynced = _isExternalClockSynced.value,
+            detectedExternalTempo = detectedExternalTempo.get()
         )
     }
     
+    override fun setClockSource(source: ClockSource) {
+        _clockSource.value = source
+        
+        when (source) {
+            ClockSource.INTERNAL -> {
+                stopExternalClockSync()
+                _isExternalClockSynced.value = false
+            }
+            ClockSource.EXTERNAL -> {
+                startExternalClockSync()
+            }
+        }
+    }
+    
+    override fun processExternalClockPulse(clockPulse: MidiClockPulse) {
+        if (_clockSource.value != ClockSource.EXTERNAL) return
+        
+        val currentTime = SystemClock.elapsedRealtimeNanos() / 1000L // Convert to microseconds
+        lastExternalClockTime.set(currentTime)
+        
+        // Add to buffer for tempo detection
+        synchronized(externalClockBuffer) {
+            externalClockBuffer.addLast(clockPulse)
+            if (externalClockBuffer.size > MIDI_CLOCK_PULSES_PER_QUARTER_NOTE) {
+                externalClockBuffer.removeFirst()
+            }
+        }
+        
+        val pulseCount = externalClockPulseCount.incrementAndGet()
+        
+        // Calculate tempo every quarter note (24 pulses)
+        if (pulseCount % MIDI_CLOCK_PULSES_PER_QUARTER_NOTE == 0) {
+            val detectedTempo = calculateTempoFromClockPulses()
+            if (detectedTempo > 0) {
+                updateExternalTempo(detectedTempo)
+            }
+        }
+        
+        // Synchronize timing if playing
+        if (_isPlaying.value && !_isPaused.value) {
+            synchronizeToExternalClock(clockPulse)
+        }
+        
+        _isExternalClockSynced.value = true
+    }
+    
+    override fun isExternalClockSynced(): Boolean = _isExternalClockSynced.value
+    
+    override fun getCurrentClockSource(): ClockSource = _clockSource.value
+    
     override fun release() {
         stop()
+        stopExternalClockSync()
         scheduler?.shutdownNow()
+        clockSyncJob?.shutdownNow()
         audioThread?.quitSafely()
         audioThread = null
         audioHandler = null
@@ -255,6 +337,11 @@ class PrecisionTimingEngine @Inject constructor(
     
     private fun startTimingLoop() {
         if (!isRunning.get()) return
+        
+        // For external clock, timing is driven by MIDI clock pulses
+        if (_clockSource.value == ClockSource.EXTERNAL) {
+            return
+        }
         
         val stepDuration = stepDurationMicros.get()
         if (stepDuration <= 0) return
@@ -398,6 +485,141 @@ class PrecisionTimingEngine @Inject constructor(
                 priority = Thread.MAX_PRIORITY
                 isDaemon = true
             }
+        }
+    }
+    
+    /**
+     * Start external clock synchronization monitoring
+     */
+    private fun startExternalClockSync() {
+        stopExternalClockSync()
+        
+        clockSyncJob = ScheduledThreadPoolExecutor(1) { runnable ->
+            Thread(runnable, "ExternalClockSync").apply {
+                priority = Thread.MAX_PRIORITY
+                isDaemon = true
+            }
+        }
+        
+        // Monitor for clock timeout
+        clockSyncJob?.scheduleAtFixedRate({
+            monitorExternalClockTimeout()
+        }, clockTimeoutMs, clockTimeoutMs / 2, TimeUnit.MILLISECONDS)
+        
+        externalClockPulseCount.set(0)
+        synchronized(externalClockBuffer) {
+            externalClockBuffer.clear()
+        }
+    }
+    
+    /**
+     * Stop external clock synchronization
+     */
+    private fun stopExternalClockSync() {
+        clockSyncJob?.shutdownNow()
+        clockSyncJob = null
+        _isExternalClockSynced.value = false
+    }
+    
+    /**
+     * Monitor for external clock timeout
+     */
+    private fun monitorExternalClockTimeout() {
+        if (_clockSource.value != ClockSource.EXTERNAL) return
+        
+        val currentTime = SystemClock.elapsedRealtimeNanos() / 1000L
+        val lastClockTime = lastExternalClockTime.get()
+        
+        if (lastClockTime > 0 && (currentTime - lastClockTime) > (clockTimeoutMs * 1000)) {
+            // Clock timeout - fall back to internal clock
+            audioHandler?.post {
+                _clockSource.value = ClockSource.INTERNAL
+                _isExternalClockSynced.value = false
+                stopExternalClockSync()
+            }
+        }
+    }
+    
+    /**
+     * Calculate tempo from external clock pulses
+     */
+    private fun calculateTempoFromClockPulses(): Float {
+        synchronized(externalClockBuffer) {
+            if (externalClockBuffer.size < MIDI_CLOCK_PULSES_PER_QUARTER_NOTE) return 0f
+            
+            val firstPulse = externalClockBuffer.first()
+            val lastPulse = externalClockBuffer.last()
+            val timeDiff = lastPulse.timestamp - firstPulse.timestamp
+            
+            if (timeDiff <= 0) return 0f
+            
+            // Calculate BPM: 24 pulses = 1 quarter note
+            val quarterNoteTimeMicros = timeDiff.toDouble()
+            val quarterNoteTimeMinutes = quarterNoteTimeMicros / (60_000_000.0) // Convert to minutes
+            val bpm = 1.0 / quarterNoteTimeMinutes
+            
+            return bpm.toFloat().coerceIn(60f, 200f)
+        }
+    }
+    
+    /**
+     * Update tempo based on external clock with smoothing
+     */
+    private fun updateExternalTempo(detectedTempo: Float) {
+        val currentDetectedTempo = detectedExternalTempo.get()
+        
+        // Apply smoothing to prevent tempo jitter
+        val smoothedTempo = if (currentDetectedTempo > 0) {
+            currentDetectedTempo * (1f - TEMPO_SMOOTHING_FACTOR) + detectedTempo * TEMPO_SMOOTHING_FACTOR
+        } else {
+            detectedTempo
+        }
+        
+        detectedExternalTempo.set(smoothedTempo)
+        
+        // Update internal tempo if the change is significant
+        if (abs(smoothedTempo - currentTempo) > 1f) {
+            currentTempo = smoothedTempo
+            
+            // Recalculate step duration
+            val stepDurationMs = timingCalculator.calculateStepDuration(currentTempo)
+            stepDurationMicros.set(stepDurationMs * MICROSECONDS_PER_MILLISECOND)
+        }
+    }
+    
+    /**
+     * Synchronize internal timing to external clock pulse
+     */
+    private fun synchronizeToExternalClock(clockPulse: MidiClockPulse) {
+        val currentTime = SystemClock.elapsedRealtimeNanos() / 1000L
+        
+        // Calculate expected step position based on external clock
+        val pulsesPerStep = MIDI_CLOCK_PULSES_PER_QUARTER_NOTE / 4 // 6 pulses per 16th note step
+        val expectedStep = (clockPulse.pulseNumber / pulsesPerStep) % patternLength
+        val currentStep = currentStepIndex.get()
+        
+        // Trigger step callback on step boundaries (every 6th pulse)
+        if (clockPulse.pulseNumber % pulsesPerStep == 0) {
+            executeStepCallback(expectedStep)
+            
+            // Update step index
+            currentStepIndex.set(expectedStep)
+            audioHandler?.post {
+                _currentStep.value = expectedStep
+            }
+            
+            // Check for pattern completion
+            if (expectedStep == 0 && clockPulse.pulseNumber > 0) {
+                patternCompleteCallback?.invoke()
+            }
+        }
+        
+        // Adjust pattern start time to maintain sync
+        val stepDifference = expectedStep - currentStep
+        if (abs(stepDifference) > 0 && abs(stepDifference) < patternLength / 2) {
+            val stepDuration = stepDurationMicros.get()
+            val adjustment = stepDifference * stepDuration
+            patternStartTime.addAndGet(-adjustment)
         }
     }
 }
