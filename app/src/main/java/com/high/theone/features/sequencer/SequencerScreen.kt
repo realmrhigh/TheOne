@@ -262,6 +262,14 @@ private fun PortraitSequencerLayout(
                             viewModel = viewModel,
                             onShowPatternCreationDialog = onShowPatternCreationDialog
                         )
+                        
+                        // Test pattern button
+                        Button(
+                            onClick = { viewModel.addTestPattern() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Add Test Beat")
+                        }
                     }
                     
                     // Pad selector section
@@ -582,6 +590,33 @@ private fun TransportControlsSection(
             isPlaying = sequencerState.isActivelyPlaying,
             modifier = Modifier.fillMaxWidth()
         )
+        
+        // Audio test buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = { viewModel.testAudioEngine() },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Test Audio")
+            }
+            
+            OutlinedButton(
+                onClick = { viewModel.triggerPadManually(0) },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Test Pad 0")
+            }
+            
+            OutlinedButton(
+                onClick = { viewModel.addTestPattern() },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Add Test Beat")
+            }
+        }
     }
 }
 
@@ -624,7 +659,10 @@ private fun PadSelectorSection(
         selectedPads = sequencerState.selectedPads,
         mutedPads = muteSoloState.mutedTracks,
         soloedPads = muteSoloState.soloedTracks,
-        onPadSelect = viewModel::togglePadSelection,
+        onPadSelect = { padIndex -> 
+            viewModel.togglePadSelection(padIndex)
+            viewModel.triggerPadManually(padIndex) // Also trigger audio
+        },
         onPadMute = viewModel::togglePadMute,
         onPadSolo = viewModel::togglePadSolo,
         onShowAll = viewModel::selectAllPads,
@@ -664,10 +702,10 @@ private fun StepGridSection(
                 currentStep = sequencerState.currentStep,
                 selectedPads = sequencerState.selectedPads,
                 onStepToggle = { padIndex, stepIndex -> 
-                    // Placeholder implementation
+                    viewModel.toggleStep(padIndex, stepIndex)
                 },
                 onStepVelocityChange = { padIndex, stepIndex, velocity -> 
-                    // Placeholder implementation
+                    viewModel.setStepVelocity(padIndex, stepIndex, velocity)
                 },
                 onPadSelect = viewModel::togglePadSelection,
                 modifier = Modifier.fillMaxWidth()

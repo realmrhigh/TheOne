@@ -5,9 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,7 +40,6 @@ fun StepGrid(
     onPadSelect: (padIndex: Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberLazyListState()
     val density = LocalDensity.current
     
     // Filter pads to show only those with assigned samples or selected pads
@@ -69,15 +66,11 @@ fun StepGrid(
             )
             
             // Step grid rows
-            LazyColumn(
-                state = listState,
+            Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(
-                    items = visiblePads,
-                    key = { it.index }
-                ) { pad ->
+                visiblePads.forEach { pad ->
                     StepRow(
                         pad = pad,
                         steps = pattern?.steps?.get(pad.index) ?: emptyList(),

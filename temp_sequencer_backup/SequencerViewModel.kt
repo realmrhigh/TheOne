@@ -19,8 +19,8 @@ import javax.inject.Inject
  * 
  * Requirements: All requirements - comprehensive state management and coordination
  */
-@HiltViewModel
-class SequencerViewModel @Inject constructor(
+// @HiltViewModel - Temporarily disabled to use SimpleSequencerViewModel
+class SequencerViewModelOld /*@Inject constructor(
     private val audioEngine: AudioEngineControl,
     private val patternRepository: PatternRepository,
     private val timingEngine: TimingEngine,
@@ -38,7 +38,7 @@ class SequencerViewModel @Inject constructor(
     private val sequencerVoiceManager: SequencerVoiceManager,
     private val errorHandler: SequencerErrorHandler,
     private val logger: SequencerLogger
-) : ViewModel() {
+)*/ : ViewModel() {
     
     companion object {
         private const val TAG = "SequencerViewModel"

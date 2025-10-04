@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -32,7 +33,6 @@ import com.high.theone.features.debug.DebugScreen
 import com.high.theone.features.drumtrack.DrumTrackViewModel
 import com.high.theone.features.drumtrack.ui.DrumPadScreen
 import com.high.theone.features.sequencer.SequencerScreen
-import com.high.theone.features.sequencer.SequencerSettingsScreen
 import com.high.theone.features.sequencer.SequencerHelpScreen
 import com.high.theone.features.sequencer.SequencerTutorialScreen
 import com.high.theone.ui.theme.TheOneTheme
@@ -71,7 +71,13 @@ class MainActivity : ComponentActivity() {
                             SequencerScreen(navController = navController)
                         }
                         composable("sequencer_settings") {
-                            SequencerSettingsScreen(navController = navController)
+                            // Temporarily disabled - settings screen moved
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Settings coming soon")
+                            }
                         }
                         composable("sequencer_help") {
                             SequencerHelpScreen(navController = navController)
