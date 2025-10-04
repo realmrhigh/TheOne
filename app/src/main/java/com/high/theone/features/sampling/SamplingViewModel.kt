@@ -31,7 +31,8 @@ class SamplingViewModel @Inject constructor(
     private val voiceManager: VoiceManager,
     private val performanceMonitor: PerformanceMonitor,
     private val debugManager: SamplingDebugManager,
-    private val midiSamplingAdapter: MidiSamplingAdapter
+    private val midiSamplingAdapter: MidiSamplingAdapter,
+    private val padStateProvider: PadStateProvider
 ) : ViewModel() {
 
     companion object {
@@ -58,6 +59,18 @@ class SamplingViewModel @Inject constructor(
         loadAvailableSamples()
         startPerformanceMonitoring()
         initializeMidiIntegration()
+        observePadStateChanges()
+    }
+
+    /**
+     * Observe changes to uiState and update the PadStateProvider
+     */
+    private fun observePadStateChanges() {
+        viewModelScope.launch {
+            uiState.collect { state ->
+                padStateProvider.updatePadState(state)
+            }
+        }
     }
 
     /**
@@ -601,16 +614,7 @@ class SamplingViewModel @Inject constructor(
                 }
 
                 // Trigger the sample in the audio engine
-                val success = audioEngine.triggerDrumPad(padIndex, velocity)
-                
-                if (success.not()) {
-                    Log.e(TAG, "Failed to trigger pad $padIndex in audio engine")
-                    voiceManager.releaseVoice(voiceId)
-                    updatePadState(padIndex) { padState ->
-                        padState.copy(isPlaying = false)
-                    }
-                    return@launch
-                }
+                audioEngine.triggerDrumPad(padIndex, velocity)
 
                 // Handle playback mode with voice management
                 when (pad.playbackMode) {
@@ -924,6 +928,24 @@ class SamplingViewModel @Inject constructor(
         // Cancel ongoing jobs
         levelMonitoringJob?.cancel()
         recordingDurationJob?.cancel()
+        
+        // Stop level monitoring and duration tracking
+        stopLevelMonitoring()
+        stopDurationTracking()
+        
+        // Shutdown MIDI integration
+        midiSamplingAdapter.shutdown()
+        
+        // Clean up audio engine if needed
+        viewModelScope.launch {
+            try {
+                if (_uiState.value.recordingState.isRecording) {
+                    audioEngine.stopAudioRecording()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error cleaning up audio engine", e)
+            }
+        }
         
         Log.d(TAG, "SamplingViewModel cleared and resources cleaned up")
     }
@@ -2226,26 +2248,6 @@ class SamplingViewModel @Inject constructor(
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Error clearing MIDI mappings", e)
-            }
-        }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        stopLevelMonitoring()
-        stopDurationTracking()
-        
-        // Shutdown MIDI integration
-        midiSamplingAdapter.shutdown()
-        
-        // Clean up audio engine if needed
-        viewModelScope.launch {
-            try {
-                if (_uiState.value.recordingState.isRecording) {
-                    audioEngine.stopAudioRecording()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error cleaning up audio engine", e)
             }
         }
     }

@@ -1,5 +1,5 @@
+@file:OptIn(ExperimentalAnimationApi::class)
 package com.high.theone.features.sampling
-
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background

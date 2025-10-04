@@ -426,6 +426,7 @@ private fun InputSourceSettings(
                                 AudioInputSource.MICROPHONE -> "Microphone"
                                 AudioInputSource.LINE_IN -> "Line In"
                                 AudioInputSource.USB_AUDIO -> "USB Audio"
+                                AudioInputSource.BLUETOOTH -> "Bluetooth"
                             },
                             style = MaterialTheme.typography.bodyMedium
                         )

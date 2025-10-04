@@ -31,6 +31,7 @@ class MidiAudioEngineAdapterImpl @Inject constructor(
     private var clockDeviceId: String? = null
     private var midiInputLatency = 0.0f
     private var monitoringEnabled = false
+    private var currentVelocityCurve = MidiCurve.LINEAR
     
     // MIDI note mappings: (note, channel) -> padIndex
     private val noteMappings = mutableMapOf<Pair<Int, Int>, Int>()
@@ -66,7 +67,7 @@ class MidiAudioEngineAdapterImpl @Inject constructor(
             require(midiChannel in 0..15) { "MIDI channel must be between 0 and 15" }
             
             // Apply velocity curve
-            val processedVelocity = velocityCurve.applyVelocityCurve(velocity)
+            val processedVelocity = velocityCurve.transformVelocity(velocity, currentVelocityCurve) / 127.0f
             
             // Trigger the drum pad with processed velocity
             audioEngine.triggerDrumPad(padIndex, processedVelocity)
@@ -303,7 +304,8 @@ class MidiAudioEngineAdapterImpl @Inject constructor(
     
     override suspend fun setMidiVelocityCurve(curve: MidiCurve, sensitivity: Float) {
         require(sensitivity > 0.0f) { "Velocity sensitivity must be positive" }
-        velocityCurve.setCurve(curve, sensitivity)
+        currentVelocityCurve = curve
+        velocityCurve.setVelocitySensitivity(sensitivity)
         
         // Update native curve
         val curveType = when (curve) {
@@ -317,7 +319,7 @@ class MidiAudioEngineAdapterImpl @Inject constructor(
     
     override suspend fun applyVelocityCurve(velocity: Int): Float {
         require(velocity in 0..127) { "Velocity must be between 0 and 127" }
-        return velocityCurve.applyVelocityCurve(velocity)
+        return velocityCurve.transformVelocity(velocity, currentVelocityCurve) / 127.0f
     }
     
     override suspend fun getMidiProcessingStats(): MidiStatistics {

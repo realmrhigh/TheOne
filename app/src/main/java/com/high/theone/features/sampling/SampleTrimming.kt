@@ -391,7 +391,7 @@ private fun DrawScope.drawTrimWaveform(
     if (trimSettings.fadeOutMs > 0f) {
         val fadeOutWidth = (trimSettings.fadeOutMs / 1000f) * (trimEndX - trimStartX) * 0.1f // Approximate
         drawRect(
-            color = Color.Orange.copy(alpha = 0.2f),
+            color = Color(0xFFFFA500).copy(alpha = 0.2f), // Orange color
             topLeft = Offset(trimEndX - fadeOutWidth, 0f),
             size = Size(fadeOutWidth, height)
         )

@@ -254,7 +254,7 @@ class RecordingEngine @Inject constructor(
                 hits.map { hit ->
                     val exactStepPosition = (hit.currentStep + hit.stepProgress).toInt()
                     val microTiming = ((hit.currentStep + hit.stepProgress) - exactStepPosition) * 
-                                    timingCalculator.getStepDurationMs(hit.tempo)
+                                    timingCalculator.calculateStepDuration(hit.tempo).toFloat()
                     
                     Step(
                         position = exactStepPosition.coerceIn(0, patternLength - 1),
@@ -293,7 +293,7 @@ class RecordingEngine @Inject constructor(
     ): Float {
         val exactPosition = hit.currentStep + hit.stepProgress
         val timingOffset = (exactPosition - quantizedStep) * 
-                          timingCalculator.getStepDurationMs(hit.tempo)
+                          timingCalculator.calculateStepDuration(hit.tempo).toFloat()
         
         return timingOffset.coerceIn(-50f, 50f)
     }

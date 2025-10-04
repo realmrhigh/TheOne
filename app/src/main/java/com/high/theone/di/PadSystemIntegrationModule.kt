@@ -4,6 +4,7 @@ import com.high.theone.audio.AudioEngineControl
 import com.high.theone.features.sampling.SamplingViewModel
 import com.high.theone.features.sampling.SampleCacheManager
 import com.high.theone.features.sampling.VoiceManager
+import com.high.theone.features.sampling.PadStateProvider
 import com.high.theone.features.sequencer.*
 import dagger.Module
 import dagger.Provides
@@ -24,9 +25,9 @@ object PadSystemIntegrationModule {
     @ViewModelScoped
     fun providePadSystemIntegration(
         audioEngine: AudioEngineControl,
-        samplingViewModel: SamplingViewModel
+        padStateProvider: PadStateProvider
     ): PadSystemIntegration {
-        return PadSystemIntegration(audioEngine, samplingViewModel)
+        return PadSystemIntegration(audioEngine, padStateProvider)
     }
 
     @Provides
@@ -40,7 +41,7 @@ object PadSystemIntegrationModule {
     }
 
     @Provides
-    @Singleton
+    @ViewModelScoped
     fun provideSequencerSampleCache(
         baseSampleCache: SampleCacheManager
     ): SequencerSampleCache {
@@ -48,7 +49,7 @@ object PadSystemIntegrationModule {
     }
 
     @Provides
-    @Singleton
+    @ViewModelScoped
     fun provideSequencerVoiceManager(
         baseVoiceManager: VoiceManager
     ): SequencerVoiceManager {
@@ -65,7 +66,7 @@ object PadSystemIntegrationModule {
     }
 
     @Provides
-    @Singleton
+    @ViewModelScoped
     fun provideSequencerLogger(): SequencerLogger {
         return SequencerLogger()
     }

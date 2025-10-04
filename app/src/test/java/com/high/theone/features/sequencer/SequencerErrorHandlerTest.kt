@@ -113,30 +113,32 @@ class SequencerErrorHandlerTest {
     fun `should handle pattern loading error with recovery`() = runTest {
         // Given - pattern repository that can load pattern
         val testPattern = Pattern(id = "test_pattern", name = "Test Pattern")
-        coEvery { patternRepository.loadPattern("test_pattern") } returns 
+        coEvery { patternRepository.loadPattern("test_pattern", "test_project") } returns 
             com.high.theone.domain.Result.Success(testPattern)
         
         // When - handling pattern loading error
         val result = errorHandler.handlePatternLoadingError(
             "test_pattern",
+            "test_project",
             RuntimeException("Loading failed")
         )
         
         // Then - should recover successfully
         assertEquals(RecoveryResult.SUCCESS, result)
-        coVerify { patternRepository.loadPattern("test_pattern") }
+        coVerify { patternRepository.loadPattern("test_pattern", "test_project") }
     }
 
     @Test
     fun `should handle pattern loading error with failure`() = runTest {
         // Given - pattern repository that fails to load pattern
-        coEvery { patternRepository.loadPattern("test_pattern") } returns 
+        coEvery { patternRepository.loadPattern("test_pattern", "test_project") } returns 
             com.high.theone.domain.Result.Failure(RuntimeException("Pattern not found"))
         
         // When - handling pattern loading error multiple times
         repeat(4) { // Exceed MAX_RETRY_ATTEMPTS
             errorHandler.handlePatternLoadingError(
                 "test_pattern",
+                "test_project",
                 RuntimeException("Loading failed")
             )
             advanceUntilIdle()

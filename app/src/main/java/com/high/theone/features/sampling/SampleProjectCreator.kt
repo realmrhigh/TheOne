@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
+import java.util.UUID
 
 /**
  * Creates sample projects with pre-loaded sounds for onboarding and demonstration.
@@ -230,7 +231,7 @@ class SampleProjectCreator {
         return if (sample != null) {
             PadState(
                 index = index,
-                sampleId = sample.id,
+                sampleId = sample.id.toString(),
                 sampleName = sample.name,
                 hasAssignedSample = true,
                 volume = volume,
@@ -254,16 +255,15 @@ class SampleProjectCreator {
         sampleFile.createNewFile()
         
         SampleMetadata(
-            id = "synthetic_${asset.filename.replace(".", "_")}",
+            id = UUID.randomUUID(),
             name = asset.name,
-            description = asset.description,
             filePath = sampleFile.absolutePath,
-            duration = 1000, // 1 second
+            durationMs = 1000, // 1 second
             sampleRate = 44100,
             channels = 1,
             createdAt = System.currentTimeMillis(),
             tags = asset.tags,
-            fileSize = 44100 * 2, // Approximate size for 1 second of 16-bit mono audio
+            fileSizeBytes = 44100 * 2, // Approximate size for 1 second of 16-bit mono audio
             format = "WAV"
         )
     }
@@ -273,16 +273,15 @@ class SampleProjectCreator {
      */
     private fun createSampleMetadata(asset: DemoSampleAsset, sampleFile: File): SampleMetadata {
         return SampleMetadata(
-            id = "demo_${asset.filename.replace(".", "_")}",
+            id = UUID.randomUUID(),
             name = asset.name,
-            description = asset.description,
             filePath = sampleFile.absolutePath,
-            duration = 1000, // Default duration - would be read from actual file
+            durationMs = 1000, // Default duration - would be read from actual file
             sampleRate = 44100,
             channels = 1,
             createdAt = System.currentTimeMillis(),
             tags = asset.tags,
-            fileSize = sampleFile.length(),
+            fileSizeBytes = sampleFile.length(),
             format = "WAV"
         )
     }

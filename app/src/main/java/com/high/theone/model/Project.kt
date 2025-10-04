@@ -2,6 +2,10 @@ package com.high.theone.model
 
 data class Project(
     val id: String,
-    val name: String
-    // TODO: Add more fields as needed
+    val name: String,
+    val description: String = "",
+    val createdAt: Long = 0L,
+    val modifiedAt: Long = 0L,
+    val samplesDirectory: String = "",
+    val padsDirectory: String = ""
 )

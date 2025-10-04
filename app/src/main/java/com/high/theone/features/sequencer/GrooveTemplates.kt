@@ -110,7 +110,7 @@ sealed class GrooveTemplate {
     /**
      * Gets the swing amount for display purposes
      */
-    abstract fun getSwingAmount(): Float
+    abstract val swingAmount: Float
 }
 
 /**
@@ -121,7 +121,7 @@ data class BuiltInGrooveTemplate(
     override val name: String,
     override val description: String,
     val swingType: SwingType,
-    val swingAmount: Float,
+    override val swingAmount: Float,
     val accentPattern: List<Float> = emptyList(),
     val timingOffsets: List<Float> = emptyList()
 ) : GrooveTemplate() {
@@ -144,28 +144,19 @@ data class BuiltInGrooveTemplate(
             timing += timingOffsets[offsetIndex]
         }
         
-        return timing.coerceIn(-50f, 50f)
+        return maxOf(-50f, minOf(50f, timing))
     }
-    
-    override fun getSwingAmount(): Float = swingAmount
     
     private fun calculateSwingOffset(stepPosition: Int, amount: Float, type: SwingType): Float {
         if (amount == 0f || stepPosition % 2 == 0) return 0f
         
+        val clampedAmount = if (amount < 0f) 0f else if (amount > 1f) 1f else amount
+        
         return when (type) {
-            SwingType.LINEAR -> amount * 20f // Linear swing up to 20ms
-            SwingType.EXPONENTIAL -> {
-                val normalized = amount.coerceIn(0f, 1f)
-                (normalized.pow(1.5f) * 25f) // Exponential curve, max 25ms
-            }
-            SwingType.LOGARITHMIC -> {
-                val normalized = amount.coerceIn(0f, 1f)
-                (ln(1f + normalized * (E - 1f)) * 15f) // Logarithmic curve, max 15ms
-            }
-            SwingType.SINE -> {
-                val normalized = amount.coerceIn(0f, 1f)
-                (sin(normalized * PI / 2).toFloat() * 20f) // Sine curve, max 20ms
-            }
+            SwingType.LINEAR -> (clampedAmount * 20f)
+            SwingType.EXPONENTIAL -> (clampedAmount * 25f)
+            SwingType.LOGARITHMIC -> (ln(1f + clampedAmount * (E - 1f)).toFloat() * 15f)
+            SwingType.SINE -> (sin(clampedAmount * PI / 2).toFloat() * 20f)
         }
     }
 }
@@ -178,7 +169,7 @@ data class CustomGrooveTemplate(
     override val name: String,
     override val description: String = "Custom groove",
     val swingType: SwingType,
-    val swingAmount: Float,
+    override val swingAmount: Float,
     val accentPattern: List<Float>,
     val timingOffsets: List<Float>,
     val humanization: Float = 0f
@@ -208,10 +199,8 @@ data class CustomGrooveTemplate(
             timing += randomOffset * humanization * 5f // Max 5ms humanization
         }
         
-        return timing.coerceIn(-50f, 50f)
+        return maxOf(-50f, minOf(50f, timing))
     }
-    
-    override fun getSwingAmount(): Float = swingAmount
     
     private fun calculateSwingOffset(stepPosition: Int, amount: Float, type: SwingType): Float {
         if (amount == 0f || stepPosition % 2 == 0) return 0f
@@ -219,8 +208,8 @@ data class CustomGrooveTemplate(
         return when (type) {
             SwingType.LINEAR -> amount * 20f
             SwingType.EXPONENTIAL -> (amount.pow(1.5f) * 25f)
-            SwingType.LOGARITHMIC -> (ln(1f + amount * (E - 1f)) * 15f)
-            SwingType.SINE -> (sin(amount * PI / 2).toFloat() * 20f)
+            SwingType.LOGARITHMIC -> (ln(1f + amount * (E.toFloat() - 1f)) * 15f).toFloat()
+            SwingType.SINE -> (sin(amount * PI.toFloat() / 2).toFloat() * 20f)
         }
     }
 }

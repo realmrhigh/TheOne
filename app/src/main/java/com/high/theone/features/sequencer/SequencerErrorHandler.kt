@@ -135,6 +135,7 @@ class SequencerErrorHandler @Inject constructor(
      */
     suspend fun handlePatternLoadingError(
         patternId: String,
+        projectId: String,
         exception: Throwable,
         context: Map<String, Any> = emptyMap()
     ): RecoveryResult {
@@ -161,7 +162,7 @@ class SequencerErrorHandler @Inject constructor(
                 
                 delay(RETRY_DELAY_MS * attempts) // Exponential backoff
                 
-                val recovered = recoverPattern(patternId)
+                val recovered = recoverPattern(patternId, projectId)
                 if (recovered) {
                     recoveryAttempts.remove(recoveryKey)
                     updateErrorState(lastRecoverySuccess = true)
@@ -415,12 +416,12 @@ class SequencerErrorHandler @Inject constructor(
      * Recover pattern loading
      * Requirements: 8.7
      */
-    private suspend fun recoverPattern(patternId: String): Boolean {
+    private suspend fun recoverPattern(patternId: String, projectId: String): Boolean {
         return try {
             Log.d(TAG, "Attempting pattern recovery for $patternId")
             
             // Try to reload the pattern from repository
-            val result = patternRepository.loadPattern(patternId)
+            val result = patternRepository.loadPattern(patternId, projectId)
             
             when (result) {
                 is com.high.theone.domain.Result.Success -> {

@@ -72,8 +72,8 @@ fun StepSequencerScreen(
             CompactTempoSwingControls(
                 tempo = currentPattern?.tempo ?: 120f,
                 swing = currentPattern?.swing ?: 0f,
-                onTempoChange = { viewModel.handleTransportAction(TransportAction.SetTempo(it)) },
-                onSwingChange = { viewModel.handleTransportAction(TransportAction.SetSwing(it)) },
+                onTempoChange = { viewModel.handleTransportAction(TransportControlAction.SetTempo(it)) },
+                onSwingChange = { viewModel.handleTransportAction(TransportControlAction.SetSwing(it)) },
                 isPlaying = sequencerState.isPlaying,
                 modifier = Modifier.fillMaxWidth()
             )

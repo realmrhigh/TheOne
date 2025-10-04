@@ -10,6 +10,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// Constants
+private const val MAX_SEQUENCER_VOICES = 32
+
 /**
  * Specialized voice management system optimized for sequencer playback.
  * Provides intelligent voice allocation, polyphony management, and performance
@@ -23,7 +26,6 @@ class SequencerVoiceManager @Inject constructor(
 ) {
     companion object {
         private const val TAG = "SequencerVoiceManager"
-        private const val MAX_SEQUENCER_VOICES = 32
         private const val VOICE_CLEANUP_INTERVAL_MS = 1000L
         private const val VOICE_TIMEOUT_MS = 30000L
         private const val POLYPHONY_LIMIT_PER_PAD = 4

@@ -20,6 +20,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Individual step button component with tap-to-toggle and long-press velocity editing.
@@ -44,6 +45,7 @@ fun StepButton(
     var showVelocityEditor by remember { mutableStateOf(false) }
     var showAdvancedEditor by remember { mutableStateOf(false) }
     var lastTapTime by remember { mutableStateOf(0L) }
+    val coroutineScope = rememberCoroutineScope()
     
     // Animation states
     val scale by animateFloatAsState(
@@ -92,7 +94,7 @@ fun StepButton(
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                             
                             // Wait for long press threshold
-                            val longPressJob = kotlinx.coroutines.launch {
+                            val longPressJob = coroutineScope.launch {
                                 delay(500) // 500ms for long press
                                 if (isPressed) {
                                     showVelocityEditor = true

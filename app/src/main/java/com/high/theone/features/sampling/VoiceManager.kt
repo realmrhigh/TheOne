@@ -291,6 +291,11 @@ class VoiceManager @Inject constructor(
         }
     }
 
+    /**
+     * Get the maximum number of voices supported
+     */
+    fun getMaxVoices(): Int = MAX_VOICES
+
     data class VoiceStats(
         val activeVoices: Int,
         val maxVoices: Int,

@@ -321,6 +321,8 @@ private fun AudioControlsSection(
                                 when (mode) {
                                     PlaybackMode.ONE_SHOT -> "One-Shot"
                                     PlaybackMode.LOOP -> "Loop"
+                                    PlaybackMode.GATE -> "Gate"
+                                    PlaybackMode.NOTE_ON_OFF -> "Note On/Off"
                                 }
                             )
                         },

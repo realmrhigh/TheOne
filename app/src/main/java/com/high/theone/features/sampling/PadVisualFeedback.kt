@@ -1,6 +1,8 @@
 package com.high.theone.features.sampling
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -13,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import com.high.theone.model.PadState
@@ -43,6 +46,8 @@ fun WaveformThumbnail(
         label = "waveform_playback_position"
     )
     
+    val primaryColor = MaterialTheme.colorScheme.primary
+    
     Canvas(
         modifier = modifier
             .fillMaxWidth()
@@ -51,6 +56,7 @@ fun WaveformThumbnail(
         drawWaveform(
             waveformData = waveformData,
             color = color,
+            playbackIndicatorColor = primaryColor,
             playbackPosition = animatedPlaybackPosition,
             isPlaying = isPlaying
         )
@@ -269,6 +275,8 @@ fun VolumeLevelIndicator(
         label = "volume_level"
     )
     
+    val primaryColor = MaterialTheme.colorScheme.primary
+    
     Canvas(
         modifier = modifier
             .width(4.dp)
@@ -276,7 +284,7 @@ fun VolumeLevelIndicator(
     ) {
         drawVolumeLevel(
             volume = animatedVolume,
-            color = MaterialTheme.colorScheme.primary
+            color = primaryColor
         )
     }
 }
@@ -296,6 +304,8 @@ fun PanIndicator(
         label = "pan_position"
     )
     
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    
     Canvas(
         modifier = modifier
             .width(20.dp)
@@ -303,7 +313,7 @@ fun PanIndicator(
     ) {
         drawPanIndicator(
             pan = animatedPan,
-            color = MaterialTheme.colorScheme.secondary
+            color = secondaryColor
         )
     }
 }
@@ -428,6 +438,7 @@ fun PadStateOverlay(
 private fun DrawScope.drawWaveform(
     waveformData: FloatArray,
     color: Color,
+    playbackIndicatorColor: Color,
     playbackPosition: Float,
     isPlaying: Boolean
 ) {
@@ -465,7 +476,7 @@ private fun DrawScope.drawWaveform(
     if (isPlaying && playbackPosition > 0f) {
         val playbackX = width * playbackPosition
         drawLine(
-            color = MaterialTheme.colorScheme.primary,
+            color = playbackIndicatorColor,
             start = Offset(playbackX, 0f),
             end = Offset(playbackX, height),
             strokeWidth = 2.dp.toPx()

@@ -240,7 +240,7 @@ class SequencerSampleCache @Inject constructor(
      * Clean up samples not used in current or upcoming patterns
      * Requirements: 10.6
      */
-    private fun cleanupUnusedSamples(currentPattern: Pattern, upcomingPatterns: List<Pattern>) {
+    private suspend fun cleanupUnusedSamples(currentPattern: Pattern, upcomingPatterns: List<Pattern>) {
         try {
             val usedSamples = mutableSetOf<String>()
             
@@ -322,7 +322,7 @@ class SequencerSampleCache @Inject constructor(
      * Perform cache eviction based on priority and usage
      * Requirements: 10.6
      */
-    private fun performCacheEviction(newSamplePriority: CachePriority) {
+    private suspend fun performCacheEviction(newSamplePriority: CachePriority) {
         try {
             val currentTime = System.currentTimeMillis()
             
@@ -360,7 +360,7 @@ class SequencerSampleCache @Inject constructor(
      * Remove sample from cache
      * Requirements: 10.6
      */
-    private fun removeSampleFromCache(sampleId: String) {
+    private suspend fun removeSampleFromCache(sampleId: String) {
         sequencerCache.remove(sampleId)?.let { sample ->
             totalCacheSize.addAndGet(-sample.estimatedSize)
             baseSampleCache.unloadSample(sampleId)
@@ -399,7 +399,7 @@ class SequencerSampleCache @Inject constructor(
      * Perform periodic cache cleanup
      * Requirements: 10.6
      */
-    private fun performPeriodicCleanup() {
+    private suspend fun performPeriodicCleanup() {
         try {
             val currentTime = System.currentTimeMillis()
             val toRemove = mutableListOf<String>()
@@ -433,7 +433,7 @@ class SequencerSampleCache @Inject constructor(
         return SequencerCacheStatistics(
             totalSamples = sequencerCache.size,
             totalSizeBytes = totalCacheSize.get(),
-            maxSizeBytes = MAX_SEQUENCER_CACHE_SIZE,
+            maxSizeBytes = MAX_SEQUENCER_CACHE_SIZE.toLong(),
             cacheHits = cacheHits.get(),
             cacheMisses = cacheMisses.get(),
             hitRate = if (cacheHits.get() + cacheMisses.get() > 0) {
@@ -449,7 +449,7 @@ class SequencerSampleCache @Inject constructor(
      * Clear all cached samples
      * Requirements: 10.6
      */
-    fun clearCache() {
+    suspend fun clearCache() {
         try {
             sequencerCache.keys.forEach { sampleId ->
                 baseSampleCache.unloadSample(sampleId)
@@ -471,7 +471,7 @@ class SequencerSampleCache @Inject constructor(
     /**
      * Shutdown the cache system
      */
-    fun shutdown() {
+    suspend fun shutdown() {
         cleanupJob?.cancel()
         clearCache()
         Log.d(TAG, "Sequencer sample cache shutdown")

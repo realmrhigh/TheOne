@@ -232,7 +232,7 @@ class SampleCacheManager @Inject constructor(
     private suspend fun evictLeastRecentlyUsed() {
         accessMutex.withLock {
             if (accessOrder.isNotEmpty()) {
-                val lruSampleId = accessOrder.removeFirst()
+                val lruSampleId = accessOrder.removeAt(0)
                 loadedSamples.remove(lruSampleId)
                 
                 try {

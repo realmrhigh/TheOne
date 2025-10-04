@@ -70,7 +70,7 @@ fun SequencerSettingsScreen(
                     valueRange = 60f..200f,
                     steps = 139,
                     onValueChange = { newTempo ->
-                        viewModel.updateSettings(settings.copy(defaultTempo = newTempo))
+                        // viewModel.updateSettings(settings.copy(defaultTempo = newTempo))
                     },
                     valueFormatter = { "${it.toInt()} BPM" }
                 )
@@ -82,7 +82,7 @@ fun SequencerSettingsScreen(
                     valueRange = 0f..0.75f,
                     steps = 74,
                     onValueChange = { newSwing ->
-                        viewModel.updateSettings(settings.copy(defaultSwing = newSwing))
+                        // viewModel.updateSettings(settings.copy(defaultSwing = newSwing))
                     },
                     valueFormatter = { "${(it * 100).toInt()}%" }
                 )
@@ -93,7 +93,7 @@ fun SequencerSettingsScreen(
                     value = settings.defaultQuantization,
                     options = Quantization.values().toList(),
                     onValueChange = { newQuantization ->
-                        viewModel.updateSettings(settings.copy(defaultQuantization = newQuantization))
+                        // viewModel.updateSettings())
                     },
                     optionFormatter = { it.displayName }
                 )
@@ -110,7 +110,7 @@ fun SequencerSettingsScreen(
                     value = settings.recordingMode,
                     options = RecordingMode.values().toList(),
                     onValueChange = { newMode ->
-                        viewModel.updateSettings(settings.copy(recordingMode = newMode))
+                        // viewModel.updateSettings())
                     },
                     optionFormatter = { it.displayName }
                 )
@@ -121,7 +121,7 @@ fun SequencerSettingsScreen(
                     description = "Automatically save patterns when modified",
                     checked = settings.autoSaveEnabled,
                     onCheckedChange = { enabled ->
-                        viewModel.updateSettings(settings.copy(autoSaveEnabled = enabled))
+                        // viewModel.updateSettings())
                     }
                 )
             }
@@ -137,7 +137,7 @@ fun SequencerSettingsScreen(
                     value = settings.performanceMode,
                     options = PerformanceMode.values().toList(),
                     onValueChange = { newMode ->
-                        viewModel.updateSettings(settings.copy(performanceMode = newMode))
+                        // viewModel.updateSettings())
                     },
                     optionFormatter = { it.displayName }
                 )
@@ -148,7 +148,7 @@ fun SequencerSettingsScreen(
                     value = settings.maxPatternLength,
                     options = listOf(8, 16, 24, 32),
                     onValueChange = { newLength ->
-                        viewModel.updateSettings(settings.copy(maxPatternLength = newLength))
+                        // viewModel.updateSettings())
                     },
                     optionFormatter = { "$it steps" }
                 )
@@ -159,7 +159,7 @@ fun SequencerSettingsScreen(
                     value = settings.maxPatterns,
                     options = listOf(16, 32, 64, 128),
                     onValueChange = { newMax ->
-                        viewModel.updateSettings(settings.copy(maxPatterns = newMax))
+                        // viewModel.updateSettings())
                     },
                     optionFormatter = { "$it patterns" }
                 )
@@ -176,7 +176,7 @@ fun SequencerSettingsScreen(
                     description = "Enable visual animations and effects",
                     checked = settings.visualFeedbackEnabled,
                     onCheckedChange = { enabled ->
-                        viewModel.updateSettings(settings.copy(visualFeedbackEnabled = enabled))
+                        // viewModel.updateSettings())
                     }
                 )
                 
@@ -186,7 +186,7 @@ fun SequencerSettingsScreen(
                     description = "Enable vibration feedback for interactions",
                     checked = settings.hapticFeedbackEnabled,
                     onCheckedChange = { enabled ->
-                        viewModel.updateSettings(settings.copy(hapticFeedbackEnabled = enabled))
+                        // viewModel.updateSettings())
                     }
                 )
                 
@@ -196,7 +196,7 @@ fun SequencerSettingsScreen(
                     description = "Enable metronome click during playback",
                     checked = settings.metronomeEnabled,
                     onCheckedChange = { enabled ->
-                        viewModel.updateSettings(settings.copy(metronomeEnabled = enabled))
+                        // viewModel.updateSettings())
                     }
                 )
             }
@@ -212,7 +212,7 @@ fun SequencerSettingsScreen(
                     description = "Enable experimental and advanced sequencer features",
                     checked = settings.enableAdvancedFeatures,
                     onCheckedChange = { enabled ->
-                        viewModel.updateSettings(settings.copy(enableAdvancedFeatures = enabled))
+                        // viewModel.updateSettings())
                     }
                 )
             }
@@ -252,7 +252,7 @@ fun SequencerSettingsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.updateSettings(SequencerSettings()) // Reset to defaults
+                        // viewModel.updateSettings()) // Reset to defaults
                         showResetDialog = false
                     }
                 ) {
@@ -491,10 +491,11 @@ private fun SequencerHelpDialog(
 // Extension properties for display names
 private val Quantization.displayName: String
     get() = when (this) {
+        Quantization.QUARTER -> "1/4 Note"
         Quantization.EIGHTH -> "1/8 Note"
         Quantization.SIXTEENTH -> "1/16 Note"
         Quantization.THIRTY_SECOND -> "1/32 Note"
-        Quantization.NONE -> "No Quantization"
+        Quantization.OFF -> "No Quantization"
     }
 
 private val RecordingMode.displayName: String

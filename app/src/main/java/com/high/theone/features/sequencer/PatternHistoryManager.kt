@@ -205,6 +205,10 @@ private data class PatternHistory(
     val lastAccessTime: Long = System.currentTimeMillis()
 ) {
     
+    companion object {
+        private const val MAX_HISTORY_SIZE = 50 // Maximum number of undo states per pattern
+    }
+    
     /**
      * Add a new history entry
      */
@@ -217,8 +221,8 @@ private data class PatternHistory(
         }
         
         // Limit history size
-        val limitedEntries = if (newEntries.size > PatternHistoryManager.MAX_HISTORY_SIZE) {
-            newEntries.takeLast(PatternHistoryManager.MAX_HISTORY_SIZE)
+        val limitedEntries = if (newEntries.size > MAX_HISTORY_SIZE) {
+            newEntries.takeLast(MAX_HISTORY_SIZE)
         } else {
             newEntries
         }

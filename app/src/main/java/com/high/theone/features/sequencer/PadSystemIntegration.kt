@@ -1,11 +1,13 @@
 package com.high.theone.features.sequencer
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import com.high.theone.audio.AudioEngineControl
-import com.high.theone.features.sampling.SamplingViewModel
+import com.high.theone.features.sampling.PadStateProvider
 import com.high.theone.model.*
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import android.util.Log
@@ -18,11 +20,11 @@ import javax.inject.Inject
  * 
  * Requirements: 8.2, 8.3, 8.5, 8.6
  */
-@HiltViewModel
 class PadSystemIntegration @Inject constructor(
     private val audioEngine: AudioEngineControl,
-    private val samplingViewModel: SamplingViewModel
-) : ViewModel() {
+    private val padStateProvider: PadStateProvider
+) {
+    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     companion object {
         private const val TAG = "PadSystemIntegration"
@@ -50,8 +52,8 @@ class PadSystemIntegration @Inject constructor(
      * Requirements: 8.2 (pad state integration)
      */
     private fun observePadStates() {
-        viewModelScope.launch {
-            samplingViewModel.uiState.collect { samplingState ->
+        coroutineScope.launch {
+            padStateProvider.padState.collect { samplingState ->
                 val sequencerPads = samplingState.pads.map { padState ->
                     SequencerPadInfo(
                         index = padState.index,
@@ -90,7 +92,7 @@ class PadSystemIntegration @Inject constructor(
      * Requirements: 8.3 (pad configuration synchronization)
      */
     private fun initializePadSync() {
-        viewModelScope.launch {
+        coroutineScope.launch {
             try {
                 // Ensure audio engine is ready for pad operations
                 val isReady = audioEngine.initialize(
@@ -131,7 +133,7 @@ class PadSystemIntegration @Inject constructor(
      * Requirements: 8.6 (seamless switching between modes)
      */
     fun switchToMode(mode: PlaybackMode) {
-        viewModelScope.launch {
+        coroutineScope.launch {
             try {
                 val previousMode = _currentMode.value
                 
@@ -237,7 +239,7 @@ class PadSystemIntegration @Inject constructor(
      * Requirements: 8.2 (automatic pad assignment detection)
      */
     fun detectPadAssignments() {
-        viewModelScope.launch {
+        coroutineScope.launch {
             try {
                 val currentPads = _sequencerPadState.value
                 val detectedAssignments = mutableListOf<PadAssignmentInfo>()
@@ -277,10 +279,13 @@ class PadSystemIntegration @Inject constructor(
     /**
      * Trigger a pad through the sampling system (for live mode)
      * Requirements: 8.6 (seamless switching)
+     * Note: Direct pad triggering is handled by the sampling system itself
      */
     fun triggerPadLive(padIndex: Int, velocity: Float) {
         if (_currentMode.value == PlaybackMode.LIVE) {
-            samplingViewModel.triggerPad(padIndex, velocity)
+            // Pad triggering is handled by the sampling system directly
+            // This method is kept for API compatibility but doesn't perform actions
+            Log.d(TAG, "Pad triggering request in live mode - handled by sampling system")
         } else {
             Log.w(TAG, "Cannot trigger pad in live mode - currently in ${_currentMode.value}")
         }
@@ -337,7 +342,7 @@ class PadSystemIntegration @Inject constructor(
      * Force resynchronization of all pads
      */
     fun forcePadResync() {
-        viewModelScope.launch {
+        coroutineScope.launch {
             Log.d(TAG, "Forcing pad resynchronization")
             synchronizeAllPadConfigurations()
             detectPadAssignments()
@@ -356,6 +361,13 @@ class PadSystemIntegration @Inject constructor(
             syncState.syncedPads < syncState.assignedPads -> PadSyncStatus.PARTIAL_SYNC
             else -> PadSyncStatus.FULLY_SYNCED
         }
+    }
+
+    /**
+     * Cleanup resources
+     */
+    fun cleanup() {
+        coroutineScope.cancel()
     }
 }
 

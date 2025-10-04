@@ -112,7 +112,7 @@ bool AudioEngine::initialize() {
     return false;
 }
 
-void AudioEngine::shutdown() {
+void theone::audio::AudioEngine::shutdown() {
     if (isRecording_.load()) {
         __android_log_print(ANDROID_LOG_INFO, APP_NAME, "AudioEngine::shutdown - Stopping active recording.");
         
@@ -421,20 +421,34 @@ void AudioEngine::triggerDrumPad(int padIndex, float velocity) {
     // Get pad settings
     std::lock_guard<std::mutex> padLock(padSettingsMutex_);
     auto it = padSettingsMap_.find(padKey);
-    if (it == padSettingsMap_.end() || it->second.sampleId.empty()) {
+    if (it == padSettingsMap_.end() || it->second.layers.empty()) {
         __android_log_print(ANDROID_LOG_WARN, APP_NAME, "No sample assigned to drum pad %d", padIndex);
         return;
     }
     
     const PadSettingsCpp& padSettings = it->second;
     
+    // Get the first enabled layer's sample ID
+    std::string sampleId;
+    for (const auto& layer : padSettings.layers) {
+        if (layer.enabled) {
+            sampleId = layer.sampleId;
+            break;
+        }
+    }
+    
+    if (sampleId.empty()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME, "No enabled sample layer for drum pad %d", padIndex);
+        return;
+    }
+    
     // Trigger the sample with pad settings
     float finalVolume = velocity * padSettings.volume;
-    triggerSample(padSettings.sampleId, finalVolume, padSettings.pan);
+    triggerSample(sampleId, finalVolume, padSettings.pan);
     
     __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, 
                        "🥁 Triggered drum pad %d: sample=%s, velocity=%f, volume=%f", 
-                       padIndex, padSettings.sampleId.c_str(), velocity, finalVolume);
+                       padIndex, sampleId.c_str(), velocity, finalVolume);
 }
 
 void AudioEngine::stopAllSamples() {
@@ -1592,8 +1606,8 @@ int64_t AudioEngine::getAudioLatencyMicros() const {
     if (outStream_) {
         // Get latency from Oboe and convert to microseconds
         auto latencyResult = outStream_->calculateLatencyMillis();
-        if (latencyResult.error == oboe::Result::OK) {
-            int64_t latencyMicros = static_cast<int64_t>(latencyResult.value * 1000.0);
+        if (latencyResult) {
+            int64_t latencyMicros = static_cast<int64_t>(latencyResult.value() * 1000.0);
             return latencyMicros;
         }
     }
@@ -1628,11 +1642,11 @@ bool AudioEngine::preloadSequencerSamples(const int* padIndices, int count) {
             
             std::lock_guard<std::mutex> lock(padSettingsMutex_);
             auto it = padSettingsMap_.find(padKey);
-            if (it != padSettingsMap_.end() && !it->second.sampleId.empty()) {
+            if (it != padSettingsMap_.end() && !it->second.layers.empty() && !it->second.layers[0].sampleId.empty()) {
                 // Sample is already loaded if it's in the pad settings
                 successCount++;
                 __android_log_print(ANDROID_LOG_DEBUG, APP_NAME, 
-                                   "Pad %d sample preloaded: %s", padIndex, it->second.sampleId.c_str());
+                                   "Pad %d sample preloaded: %s", padIndex, it->second.layers[0].sampleId.c_str());
             }
         }
     }
@@ -1681,10 +1695,10 @@ std::map<std::string, double> AudioEngine::getTimingStatistics() const {
 
 } // namespace audio
 } // namespace theone
-// 🎹
- MIDI PROCESSING IMPLEMENTATION
 
-void AudioEngine::processMidiMessage(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2, int64_t timestamp) {
+// MIDI PROCESSING IMPLEMENTATION
+
+void theone::audio::AudioEngine::processMidiMessage(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2, int64_t timestamp) {
     auto startTime = std::chrono::high_resolution_clock::now();
     
     try {
@@ -1710,7 +1724,7 @@ void AudioEngine::processMidiMessage(uint8_t type, uint8_t channel, uint8_t data
             auto endTime = std::chrono::high_resolution_clock::now();
             auto processingTime = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
             midiStats_.totalProcessingTime += processingTime;
-            midiStats_.maxProcessingTime = std::max(midiStats_.maxProcessingTime, processingTime);
+            midiStats_.maxProcessingTime = std::max(midiStats_.maxProcessingTime, static_cast<int64_t>(processingTime));
         }
         
     } catch (const std::exception& e) {
@@ -1720,7 +1734,7 @@ void AudioEngine::processMidiMessage(uint8_t type, uint8_t channel, uint8_t data
     }
 }
 
-void AudioEngine::processMidiMessageImmediate(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2) {
+void theone::audio::AudioEngine::processMidiMessageImmediate(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2) {
     switch (type & 0xF0) {
         case 0x90: // Note On
             if (data2 > 0) { // Velocity > 0 means note on
@@ -1764,7 +1778,7 @@ void AudioEngine::processMidiMessageImmediate(uint8_t type, uint8_t channel, uin
     }
 }
 
-void AudioEngine::handleMidiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
+void theone::audio::AudioEngine::handleMidiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
     // Look up pad mapping
     uint16_t mappingKey = (static_cast<uint16_t>(note) << 4) | channel;
     
@@ -1785,7 +1799,7 @@ void AudioEngine::handleMidiNoteOn(uint8_t channel, uint8_t note, uint8_t veloci
     }
 }
 
-void AudioEngine::handleMidiNoteOff(uint8_t channel, uint8_t note, uint8_t velocity) {
+void theone::audio::AudioEngine::handleMidiNoteOff(uint8_t channel, uint8_t note, uint8_t velocity) {
     // Look up pad mapping
     uint16_t mappingKey = (static_cast<uint16_t>(note) << 4) | channel;
     
@@ -1802,12 +1816,12 @@ void AudioEngine::handleMidiNoteOff(uint8_t channel, uint8_t note, uint8_t veloc
     }
 }
 
-void AudioEngine::handleMidiControlChange(uint8_t channel, uint8_t controller, uint8_t value) {
+void theone::audio::AudioEngine::handleMidiControlChange(uint8_t channel, uint8_t controller, uint8_t value) {
     float normalizedValue = value / 127.0f;
     
     switch (controller) {
         case 7: // Volume
-            setDrumMasterVolume(normalizedValue);
+            setMasterVolume(normalizedValue);
             break;
             
         case 10: // Pan
@@ -1827,7 +1841,7 @@ void AudioEngine::handleMidiControlChange(uint8_t channel, uint8_t controller, u
         channel, controller, value, normalizedValue);
 }
 
-void AudioEngine::scheduleMidiEvent(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2, int64_t timestamp) {
+void theone::audio::AudioEngine::scheduleMidiEvent(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2, int64_t timestamp) {
     std::lock_guard<std::mutex> lock(midiEventQueueMutex_);
     
     // Add to event queue
@@ -1851,7 +1865,7 @@ void AudioEngine::scheduleMidiEvent(uint8_t type, uint8_t channel, uint8_t data1
     }
 }
 
-void AudioEngine::processScheduledMidiEvents() {
+void theone::audio::AudioEngine::processScheduledMidiEvents() {
     auto currentTime = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     
@@ -1872,7 +1886,7 @@ void AudioEngine::processScheduledMidiEvents() {
         midiEventQueue_.end());
 }
 
-void AudioEngine::setMidiNoteMapping(uint8_t midiNote, uint8_t midiChannel, int padIndex) {
+void theone::audio::AudioEngine::setMidiNoteMapping(uint8_t midiNote, uint8_t midiChannel, int padIndex) {
     if (midiNote > 127 || midiChannel > 15 || padIndex < 0 || padIndex > 15) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, 
             "Invalid MIDI mapping parameters: note=%d, channel=%d, pad=%d", 
@@ -1890,7 +1904,7 @@ void AudioEngine::setMidiNoteMapping(uint8_t midiNote, uint8_t midiChannel, int 
         midiNote, midiChannel, padIndex);
 }
 
-void AudioEngine::removeMidiNoteMapping(uint8_t midiNote, uint8_t midiChannel) {
+void theone::audio::AudioEngine::removeMidiNoteMapping(uint8_t midiNote, uint8_t midiChannel) {
     if (midiNote > 127 || midiChannel > 15) {
         return;
     }
@@ -1905,7 +1919,7 @@ void AudioEngine::removeMidiNoteMapping(uint8_t midiNote, uint8_t midiChannel) {
         midiNote, midiChannel);
 }
 
-void AudioEngine::setMidiVelocityCurve(int curveType, float sensitivity) {
+void theone::audio::AudioEngine::setMidiVelocityCurve(int curveType, float sensitivity) {
     if (curveType < 0 || curveType > 3 || sensitivity <= 0.0f || sensitivity > 2.0f) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, 
             "Invalid velocity curve parameters: type=%d, sensitivity=%.3f", 
@@ -1921,7 +1935,7 @@ void AudioEngine::setMidiVelocityCurve(int curveType, float sensitivity) {
         curveType, sensitivity);
 }
 
-float AudioEngine::applyMidiVelocityCurve(uint8_t velocity) {
+float theone::audio::AudioEngine::applyMidiVelocityCurve(uint8_t velocity) {
     if (velocity == 0) return 0.0f;
     if (velocity >= 127) return 1.0f;
     
@@ -1955,53 +1969,23 @@ float AudioEngine::applyMidiVelocityCurve(uint8_t velocity) {
     return std::max(0.0f, std::min(1.0f, result));
 }
 
-void AudioEngine::setMidiClockSyncEnabled(bool enabled) {
+void theone::audio::AudioEngine::setMidiClockSyncEnabled(bool enabled) {
     midiClockSyncEnabled_.store(enabled);
     __android_log_print(ANDROID_LOG_INFO, APP_NAME, 
         "MIDI clock sync %s", enabled ? "enabled" : "disabled");
 }
 
-void AudioEngine::processMidiClockPulse(int64_t timestamp, float bpm) {
-    if (!midiClockSyncEnabled_.load()) return;
-    
-    externalClockBpm_.store(bpm);
-    
-    // Update sequencer tempo if available
-    setSequencerTempo(bpm);
-    
-    std::lock_guard<std::mutex> lock(midiStatsMutex_);
-    midiStats_.clockPulsesReceived++;
-}
 
-void AudioEngine::handleMidiTransport(int transportType) {
-    switch (transportType) {
-        case 0: // Start
-            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "MIDI Transport: Start");
-            // Start sequencer playback if available
-            break;
-            
-        case 1: // Stop
-            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "MIDI Transport: Stop");
-            stopAllSamples();
-            break;
-            
-        case 2: // Continue
-            __android_log_print(ANDROID_LOG_INFO, APP_NAME, "MIDI Transport: Continue");
-            // Continue sequencer playback if available
-            break;
-            
-        default:
-            break;
-    }
-}
 
-void AudioEngine::setMidiInputLatency(int64_t latencyMicros) {
+
+
+void theone::audio::AudioEngine::setMidiInputLatency(int64_t latencyMicros) {
     midiInputLatencyMicros_.store(latencyMicros);
     __android_log_print(ANDROID_LOG_INFO, APP_NAME, 
         "MIDI input latency set to %" PRId64 " microseconds", latencyMicros);
 }
 
-std::map<std::string, int64_t> AudioEngine::getMidiStatistics() const {
+std::map<std::string, int64_t> theone::audio::AudioEngine::getMidiStatistics() const {
     std::lock_guard<std::mutex> lock(midiStatsMutex_);
     
     std::map<std::string, int64_t> stats;
@@ -2022,7 +2006,7 @@ std::map<std::string, int64_t> AudioEngine::getMidiStatistics() const {
 }
 
 // Initialize default MIDI note mappings in constructor
-void AudioEngine::initializeDefaultMidiMappings() {
+void theone::audio::AudioEngine::initializeDefaultMidiMappings() {
     std::lock_guard<std::mutex> lock(midiNoteMappingsMutex_);
     
     // Map MIDI notes 60-75 (C4-D#5) to pads 0-15 on channel 0
@@ -2037,11 +2021,9 @@ void AudioEngine::initializeDefaultMidiMappings() {
         "Default MIDI mappings initialized: C4-D#5 -> pads 0-15");
 }
 
-} // namespace audio
-} // namespace theone/
-/ 🕐 MIDI CLOCK SYNCHRONIZATION IMPLEMENTATION
+// MIDI CLOCK SYNCHRONIZATION IMPLEMENTATION
 
-void AudioEngine::processMidiClockPulse(int64_t timestamp, float bpm) {
+void theone::audio::AudioEngine::processMidiClockPulse(int64_t timestamp, float bpm) {
     if (!midiClockSyncEnabled_.load()) return;
     
     // Update clock timing analysis
@@ -2066,7 +2048,7 @@ void AudioEngine::processMidiClockPulse(int64_t timestamp, float bpm) {
     midiStats_.clockPulsesReceived++;
 }
 
-void AudioEngine::updateClockTiming(int64_t timestamp) {
+void theone::audio::AudioEngine::updateClockTiming(int64_t timestamp) {
     std::lock_guard<std::mutex> lock(clockTimingMutex_);
     
     if (clockTiming_.lastClockTime == 0) {
@@ -2105,7 +2087,7 @@ void AudioEngine::updateClockTiming(int64_t timestamp) {
     clockTiming_.clockInterval = interval;
 }
 
-float AudioEngine::calculateBpmFromInterval(int64_t interval) {
+float theone::audio::AudioEngine::calculateBpmFromInterval(int64_t interval) {
     // MIDI clock sends 24 pulses per quarter note
     // BPM = (60 * 1000000) / (interval * 24)
     // where interval is in microseconds
@@ -2118,7 +2100,7 @@ float AudioEngine::calculateBpmFromInterval(int64_t interval) {
     return std::max(60.0f, std::min(200.0f, bpm));
 }
 
-void AudioEngine::smoothClockTempo(float newBpm) {
+void theone::audio::AudioEngine::smoothClockTempo(float newBpm) {
     float smoothingFactor = clockSmoothingFactor_.load();
     
     if (clockTiming_.detectedBpm == 0.0f) {
@@ -2131,7 +2113,7 @@ void AudioEngine::smoothClockTempo(float newBpm) {
     }
 }
 
-bool AudioEngine::isClockTimingStable() const {
+bool theone::audio::AudioEngine::isClockTimingStable() const {
     if (clockTiming_.recentIntervals.size() < 8) {
         return false; // Need at least 8 intervals for stability analysis
     }
@@ -2158,7 +2140,7 @@ bool AudioEngine::isClockTimingStable() const {
     return coefficientOfVariation < 0.05;
 }
 
-void AudioEngine::setExternalClockEnabled(bool useExternal) {
+void theone::audio::AudioEngine::setExternalClockEnabled(bool useExternal) {
     useExternalClock_.store(useExternal);
     
     if (!useExternal) {
@@ -2171,7 +2153,7 @@ void AudioEngine::setExternalClockEnabled(bool useExternal) {
         "External clock %s", useExternal ? "enabled" : "disabled");
 }
 
-void AudioEngine::setClockSmoothingFactor(float factor) {
+void theone::audio::AudioEngine::setClockSmoothingFactor(float factor) {
     factor = std::max(0.0f, std::min(1.0f, factor));
     clockSmoothingFactor_.store(factor);
     
@@ -2179,7 +2161,7 @@ void AudioEngine::setClockSmoothingFactor(float factor) {
         "Clock smoothing factor set to %.3f", factor);
 }
 
-float AudioEngine::getCurrentBpm() const {
+float theone::audio::AudioEngine::getCurrentBpm() const {
     if (useExternalClock_.load() && midiClockSyncEnabled_.load()) {
         std::lock_guard<std::mutex> lock(clockTimingMutex_);
         return clockTiming_.isStable ? clockTiming_.detectedBpm : 120.0f;
@@ -2188,7 +2170,7 @@ float AudioEngine::getCurrentBpm() const {
     }
 }
 
-bool AudioEngine::isClockStable() const {
+bool theone::audio::AudioEngine::isClockStable() const {
     if (!useExternalClock_.load() || !midiClockSyncEnabled_.load()) {
         return true; // Internal clock is always "stable"
     }
@@ -2197,7 +2179,7 @@ bool AudioEngine::isClockStable() const {
     return clockTiming_.isStable;
 }
 
-void AudioEngine::resetClockTiming() {
+void theone::audio::AudioEngine::resetClockTiming() {
     std::lock_guard<std::mutex> lock(clockTimingMutex_);
     
     clockTiming_.lastClockTime = 0;
@@ -2210,7 +2192,7 @@ void AudioEngine::resetClockTiming() {
     __android_log_print(ANDROID_LOG_INFO, APP_NAME, "Clock timing reset");
 }
 
-void AudioEngine::handleMidiTransport(int transportType) {
+void theone::audio::AudioEngine::handleMidiTransport(int transportType) {
     switch (transportType) {
         case 0: // Start
             __android_log_print(ANDROID_LOG_INFO, APP_NAME, "MIDI Transport: Start");
@@ -2236,16 +2218,3 @@ void AudioEngine::handleMidiTransport(int transportType) {
             break;
     }
 }
-
-// Update the onAudioReady callback to process scheduled MIDI events
-// This should be called from the existing onAudioReady method
-void AudioEngine::processAudioFrameWithMidi(float* outputBuffer, int32_t numFrames, int32_t channelCount) {
-    // Process any scheduled MIDI events first
-    processScheduledMidiEvents();
-    
-    // Then process regular audio
-    // This would integrate with the existing audio processing pipeline
-}
-
-} // namespace audio
-} // namespace theone

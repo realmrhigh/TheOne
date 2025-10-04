@@ -1,20 +1,6 @@
 package com.high.theone.model
 
-// Define PlaybackMode enum
-enum class PlaybackMode {
-    ONE_SHOT,
-    LOOP,
-    GATE,
-    NOTE_ON_OFF
-}
-
 // EnvelopeSettings is now defined in com.high.theone.model.SynthModels
-
-enum class AudioInputSource {
-    MICROPHONE,
-    LINE_IN,
-    USB_AUDIO
-}
 
 // Minimal stub for LayerTriggerRule (expand as needed)
 enum class LayerTriggerRule {
@@ -39,6 +25,7 @@ enum class LoopMode {
 
 // Minimal stub for EffectInstance (expand as needed)
 data class EffectInstance(
+    val id: String = "",
     val type: String = "",
     val params: Map<String, Float> = emptyMap()
 )

@@ -7,11 +7,12 @@ import com.high.theone.model.StepCondition
 import com.high.theone.model.StepHumanization
 import java.util.UUID
 import kotlin.random.Random
+import javax.inject.Inject
 
 /**
  * Manages pattern operations including creation, manipulation, and validation
  */
-class PatternManager {
+class PatternManager @Inject constructor() {
     
     /**
      * Creates a new empty pattern with specified parameters
@@ -431,13 +432,13 @@ class PatternManager {
         
         val newStepsMap = pattern.steps.mapValues { (_, steps) ->
             steps.map { step ->
-                val randomTiming = step.microTiming + ((-1f..1f).random() * timingRange)
-                val randomVelocity = step.velocity + ((-velocityRange..velocityRange).random())
-                val randomProbability = step.probability + ((-1f..1f).random() * probabilityRange)
+                val randomTiming = step.microTiming + (Random.nextFloat() * 2f - 1f) * timingRange
+                val randomVelocity = step.velocity + (Random.nextFloat() * 2f - 1f) * velocityRange
+                val randomProbability = step.probability + (Random.nextFloat() * 2f - 1f) * probabilityRange
                 
                 step.copy(
                     microTiming = randomTiming.coerceIn(-50f, 50f),
-                    velocity = randomVelocity.coerceIn(1, 127),
+                    velocity = randomVelocity.toInt().coerceIn(1, 127),
                     probability = randomProbability.coerceIn(0f, 1f)
                 )
             }

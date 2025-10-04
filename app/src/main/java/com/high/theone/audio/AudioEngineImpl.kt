@@ -374,72 +374,6 @@ class AudioEngineImpl @Inject constructor(
         }
     }
 
-    // Stub implementations for methods not yet implemented in native code
-    override suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, soundPrimaryUri: String, soundSecondaryUri: String?) {
-        Log.d(TAG, "setMetronomeState not yet implemented")
-    }
-
-    override suspend fun playPadSample(noteInstanceId: String, trackId: String, padId: String): Boolean {
-        Log.d(TAG, "playPadSample not yet implemented")
-        return false
-    }
-
-    override suspend fun stopNote(noteInstanceId: String, releaseTimeMs: Float?) {
-        Log.d(TAG, "stopNote not yet implemented")
-    }
-
-    override suspend fun stopAllNotes(trackId: String?, immediate: Boolean) {
-        Log.d(TAG, "stopAllNotes not yet implemented")
-    }
-
-    override suspend fun startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean {
-        Log.d(TAG, "startAudioRecording not yet implemented")
-        return false
-    }
-
-    override suspend fun stopAudioRecording(): SampleMetadata? {
-        Log.d(TAG, "stopAudioRecording not yet implemented")
-        return null
-    }
-
-    override suspend fun setTrackVolume(trackId: String, volume: Float) {
-        Log.d(TAG, "setTrackVolume not yet implemented")
-    }
-
-    override suspend fun setTrackPan(trackId: String, pan: Float) {
-        Log.d(TAG, "setTrackPan not yet implemented")
-    }
-
-    override suspend fun addTrackEffect(trackId: String, effectInstance: EffectInstance): Boolean {
-        Log.d(TAG, "addTrackEffect not yet implemented")
-        return false
-    }
-
-    override suspend fun removeTrackEffect(trackId: String, effectInstanceId: String): Boolean {
-        Log.d(TAG, "removeTrackEffect not yet implemented")
-        return false
-    }
-
-    override suspend fun setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings) {
-        Log.d(TAG, "setSampleEnvelope not yet implemented")
-    }
-
-    override suspend fun setSampleLFO(sampleId: String, lfo: LFOSettings) {
-        Log.d(TAG, "setSampleLFO not yet implemented")
-    }
-
-    override suspend fun setEffectParameter(effectId: String, parameter: String, value: Float) {
-        Log.d(TAG, "setEffectParameter not yet implemented")
-    }
-
-    override suspend fun setTransportBpm(bpm: Float) {
-        Log.d(TAG, "setTransportBpm not yet implemented")
-    }
-
-    override suspend fun getReportedLatencyMillis(): Float {
-        return getOboeReportedLatencyMillis()
-    }
-
     // Metronome implementation
     override suspend fun setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, soundPrimaryUri: String, soundSecondaryUri: String?) {
         withContext(Dispatchers.IO) {
@@ -516,8 +450,8 @@ class AudioEngineImpl @Inject constructor(
     override suspend fun addTrackEffect(trackId: String, effectInstance: EffectInstance): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Adding track effect: $trackId, effect=${effectInstance.id}")
-                val result = native_addTrackEffect(trackId, effectInstance.id, effectInstance.type)
+                Log.d(TAG, "Adding track effect: $trackId, effect=${effectInstance.type}")
+                val result = native_addTrackEffect(trackId, effectInstance.type, effectInstance.type)
                 Log.d(TAG, "Add track effect result: $result")
                 result
             } catch (e: Exception) {
@@ -758,5 +692,41 @@ class AudioEngineImpl @Inject constructor(
                 emptyMap()
             }
         }
+    }
+
+    // Transport
+    override suspend fun setTransportBpm(bpm: Float) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting transport BPM: $bpm")
+                native_setSequencerTempo(bpm)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception setting transport BPM", e)
+            }
+        }
+    }
+
+    override suspend fun getReportedLatencyMillis(): Float {
+        return withContext(Dispatchers.IO) {
+            try {
+                native_getOboeReportedLatencyMillis()
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception getting reported latency", e)
+                0f
+            }
+        }
+    }
+
+    // Effects and Modulation (stub implementations)
+    override suspend fun setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings) {
+        Log.d(TAG, "setSampleEnvelope not yet implemented")
+    }
+
+    override suspend fun setSampleLFO(sampleId: String, lfo: LFOSettings) {
+        Log.d(TAG, "setSampleLFO not yet implemented")
+    }
+
+    override suspend fun setEffectParameter(effectId: String, parameter: String, value: Float) {
+        Log.d(TAG, "setEffectParameter not yet implemented")
     }
 }

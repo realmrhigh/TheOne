@@ -341,7 +341,7 @@ class MidiTransportController @Inject constructor(
                     stop()
                 }
                 MidiMessageType.CONTINUE -> {
-                    continue()
+                    continueTransport()
                 }
                 else -> {
                     Result.success(Unit) // Ignore other message types

@@ -5,6 +5,7 @@ import android.media.midi.MidiInputPort
 import com.high.theone.midi.MidiError
 import com.high.theone.midi.model.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong

@@ -18,6 +18,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.high.theone.model.*
 
+typealias MuteSoloState = TrackMuteSoloState
+
 /**
  * Main sequencer screen with responsive design and tabbed interface.
  * Provides complete pattern programming interface with collapsible sections.
@@ -48,25 +50,19 @@ fun SequencerScreen(
     
     val currentPattern = patterns.find { it.id == sequencerState.currentPattern }
     
-    Scaffold(
-        topBar = {
-            SequencerTopBar(
-                currentPattern = currentPattern,
-                sequencerState = sequencerState,
-                onNavigateBack = { navController.popBackStack() },
-                onShowSettings = { navController.navigate("sequencer_settings") }
-            )
-        },
-        bottomBar = if (isLandscape) null else {
-            {
-                SequencerBottomBar(
-                    selectedTab = selectedTab,
-                    onTabSelected = { selectedTab = it }
-                )
-            }
-        }
-    ) { paddingValues ->
-        if (isLandscape) {
+    val topBar: @Composable () -> Unit = {
+        SequencerTopBar(
+            currentPattern = currentPattern,
+            sequencerState = sequencerState,
+            onNavigateBack = { navController.popBackStack() },
+            onShowSettings = { navController.navigate("sequencer_settings") }
+        )
+    }
+    
+    if (isLandscape) {
+        Scaffold(
+            topBar = topBar
+        ) { paddingValues: PaddingValues ->
             LandscapeSequencerLayout(
                 paddingValues = paddingValues,
                 selectedTab = selectedTab,
@@ -86,7 +82,17 @@ fun SequencerScreen(
                 showPatternCreationDialog = showPatternCreationDialog,
                 onShowPatternCreationDialog = { showPatternCreationDialog = it }
             )
-        } else {
+        }
+    } else {
+        Scaffold(
+            topBar = topBar,
+            bottomBar = {
+                SequencerBottomBar(
+                    selectedTab = selectedTab,
+                    onTabSelected = { selectedTab = it }
+                )
+            }
+        ) { paddingValues: PaddingValues ->
             PortraitSequencerLayout(
                 paddingValues = paddingValues,
                 selectedTab = selectedTab,
@@ -202,7 +208,7 @@ private fun PortraitSequencerLayout(
     selectedTab: SequencerTab,
     sequencerState: SequencerState,
     patterns: List<Pattern>,
-    pads: List<PadState>,
+    pads: List<SequencerPadInfo>,
     muteSoloState: MuteSoloState,
     currentPattern: Pattern?,
     viewModel: SequencerViewModel,
@@ -335,7 +341,7 @@ private fun LandscapeSequencerLayout(
     onTabSelected: (SequencerTab) -> Unit,
     sequencerState: SequencerState,
     patterns: List<Pattern>,
-    pads: List<PadState>,
+    pads: List<SequencerPadInfo>,
     muteSoloState: MuteSoloState,
     currentPattern: Pattern?,
     viewModel: SequencerViewModel,
@@ -563,8 +569,8 @@ private fun TransportControlsSection(
         CompactTempoSwingControls(
             tempo = currentPattern?.tempo ?: 120f,
             swing = currentPattern?.swing ?: 0f,
-            onTempoChange = { viewModel.handleTransportAction(TransportAction.SetTempo(it)) },
-            onSwingChange = { viewModel.handleTransportAction(TransportAction.SetSwing(it)) },
+            onTempoChange = { viewModel.handleTransportAction(TransportControlAction.SetTempo(it)) },
+            onSwingChange = { viewModel.handleTransportAction(TransportControlAction.SetSwing(it)) },
             isPlaying = sequencerState.isPlaying,
             modifier = Modifier.fillMaxWidth()
         )
@@ -607,7 +613,7 @@ private fun PatternManagementSection(
  */
 @Composable
 private fun PadSelectorSection(
-    pads: List<PadState>,
+    pads: List<SequencerPadInfo>,
     sequencerState: SequencerState,
     muteSoloState: MuteSoloState,
     viewModel: SequencerViewModel,
@@ -633,7 +639,7 @@ private fun PadSelectorSection(
 @Composable
 private fun StepGridSection(
     currentPattern: Pattern?,
-    pads: List<PadState>,
+    pads: List<SequencerPadInfo>,
     sequencerState: SequencerState,
     viewModel: SequencerViewModel,
     modifier: Modifier = Modifier
@@ -726,7 +732,7 @@ private fun SongModeContent(
  */
 @Composable
 private fun MixerContent(
-    pads: List<PadState>,
+    pads: List<SequencerPadInfo>,
     muteSoloState: MuteSoloState,
     viewModel: SequencerViewModel,
     modifier: Modifier = Modifier
@@ -873,39 +879,6 @@ private fun PatternInfoSection(
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * Transport state indicator for the top bar
- */
-@Composable
-private fun TransportStateIndicator(
-    sequencerState: SequencerState,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (sequencerState.isPlaying) {
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Playing",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp)
-            )
-        }
-        
-        if (sequencerState.isRecording) {
-            Icon(
-                imageVector = Icons.Default.FiberManualRecord,
-                contentDescription = "Recording",
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(16.dp)
-            )
         }
     }
 }

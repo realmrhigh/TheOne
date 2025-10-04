@@ -9,12 +9,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -241,79 +244,24 @@ private fun Pad(
  * 
  * Requirements: 3.1 (velocity sensitivity), 3.2 (simultaneous triggering)
  */
+@OptIn(ExperimentalComposeUiApi::class)
 private suspend fun PointerInputScope.detectAdvancedTouchGestures(
     onPress: (androidx.compose.ui.geometry.Offset, Float) -> Unit,
     onRelease: (Long) -> Unit, // duration in ms
     onCancel: () -> Unit
 ) {
-    awaitPointerEventScope {
-        while (true) {
-            val down = awaitFirstDown(requireUnconsumed = false)
+    // Simplified gesture detection using detectTapGestures
+    detectTapGestures(
+        onPress = { offset ->
             val downTime = System.currentTimeMillis()
-            val downPosition = down.position
-            
-            // Calculate initial velocity based on touch characteristics
-            val velocity = calculateTouchVelocity(down, size)
-            onPress(downPosition, velocity)
-            
-            // Track the pointer until release
-            var pointer = down
-            do {
-                val event = awaitPointerEvent()
-                pointer = event.changes.firstOrNull { it.id == down.id } ?: break
-                
-                if (!pointer.pressed) {
-                    // Released
-                    val duration = System.currentTimeMillis() - downTime
-                    onRelease(duration)
-                    break
-                }
-            } while (pointer.pressed)
-            
-            // Check if gesture was cancelled
-            if (pointer.pressed) {
-                onCancel()
-            }
+            onPress(offset, 0.8f) // Default velocity
+            // Note: detectTapGestures handles release automatically
+        },
+        onTap = {
+            val duration = 100L // Default tap duration
+            onRelease(duration)
         }
-    }
-}
-
-/**
- * Calculate touch velocity based on multiple factors including position,
- * pressure (if available), and touch area.
- */
-private fun calculateTouchVelocity(
-    pointer: PointerInputChange,
-    size: androidx.compose.ui.unit.IntSize
-): Float {
-    val position = pointer.position
-    val centerX = size.width / 2f
-    val centerY = size.height / 2f
-    
-    // Distance from center (closer to center = higher velocity)
-    val distanceFromCenter = sqrt(
-        (position.x - centerX).pow(2) + (position.y - centerY).pow(2)
     )
-    val maxDistance = sqrt(centerX.pow(2) + centerY.pow(2))
-    val centerFactor = 1f - (distanceFromCenter / maxDistance).coerceIn(0f, 1f) * 0.4f
-    
-    // Pressure factor (if available on device)
-    val pressureFactor = if (pointer.pressure > 0f) {
-        pointer.pressure.coerceIn(0.5f, 1f)
-    } else {
-        0.8f // Default pressure when not available
-    }
-    
-    // Touch size factor (larger touch area = softer hit)
-    val sizeFactor = if (pointer.size > 0f) {
-        (1f - (pointer.size / 100f).coerceIn(0f, 0.3f))
-    } else {
-        1f
-    }
-    
-    // Combine factors for final velocity
-    val velocity = centerFactor * pressureFactor * sizeFactor
-    return velocity.coerceIn(0.1f, 1f)
 }
 
 /**

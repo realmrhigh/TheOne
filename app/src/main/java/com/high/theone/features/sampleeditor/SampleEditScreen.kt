@@ -144,6 +144,32 @@ class MockAudioEngineControl : com.high.theone.audio.AudioEngineControl {
         TODO("Not yet implemented")
     }
 
+    override suspend fun scheduleStepTrigger(padIndex: Int, velocity: Float, timestamp: Long): Boolean = true
+
+    override suspend fun setSequencerTempo(bpm: Float) {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun getAudioLatencyMicros(): Long {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun setHighPrecisionMode(enabled: Boolean) {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun preloadSequencerSamples(padIndices: List<Int>): Boolean {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun clearScheduledEvents() {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun getTimingStatistics(): Map<String, Any> {
+        TODO("Not yet implemented")
+    }
+
     override suspend fun stopAllSamples() {}
 }
 

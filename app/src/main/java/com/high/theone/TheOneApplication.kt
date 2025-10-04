@@ -3,6 +3,13 @@ package com.high.theone
 import android.app.Application
 import com.high.theone.audio.AudioEngineControl // Import the interface
 import dagger.hilt.android.HiltAndroidApp
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+import android.content.Context
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,5 +48,16 @@ class TheOneApplication : Application() {
             }
         }
         // Optional: Any other application-level initialization can go here
+    }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object ApplicationModule {
+
+    @Provides
+    @Singleton
+    fun provideApplicationContext(@ApplicationContext context: Context): Context {
+        return context
     }
 }

@@ -33,7 +33,7 @@ class PatternCacheManager @Inject constructor(
     private val preloadThreshold = 5 // Preload patterns when cache size drops below this
     
     // Cache storage
-    private val patternCache = ConcurrentHashMap<String, CachedPattern>()
+    private val patternCache = ConcurrentHashMap<String, PatternCacheEntry>()
     private val metadataCache = ConcurrentHashMap<String, CachedMetadata>()
     private val accessTracker = ConcurrentHashMap<String, AtomicLong>()
     
@@ -281,7 +281,7 @@ class PatternCacheManager @Inject constructor(
             evictLeastRecentlyUsed()
         }
         
-        val cachedPattern = CachedPattern(
+        val cachedPattern = PatternCacheEntry(
             pattern = pattern,
             cachedAt = System.currentTimeMillis(),
             accessCount = 1
@@ -306,7 +306,7 @@ class PatternCacheManager @Inject constructor(
         updateCacheStats { it.copy(totalMetadataCached = metadataCache.size) }
     }
     
-    private fun isExpired(cachedPattern: CachedPattern): Boolean {
+    private fun isExpired(cachedPattern: PatternCacheEntry): Boolean {
         return System.currentTimeMillis() - cachedPattern.cachedAt > cacheExpirationMs
     }
     
@@ -439,7 +439,7 @@ class PatternCacheManager @Inject constructor(
 /**
  * Cached pattern with metadata.
  */
-private data class CachedPattern(
+private data class PatternCacheEntry(
     val pattern: Pattern,
     val cachedAt: Long,
     val accessCount: Int

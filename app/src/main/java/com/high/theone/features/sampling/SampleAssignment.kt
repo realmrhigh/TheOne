@@ -1,8 +1,6 @@
 package com.high.theone.features.sampling
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
@@ -265,23 +263,25 @@ private fun DraggableSampleItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .dragAndDropSource {
-                detectTapGestures(
-                    onLongPress = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onDragStart()
-                        startTransfer(
-                            DragAndDropTransferData(
-                                clipData = android.content.ClipData.newPlainText(
-                                    "sample",
-                                    sample.id.toString()
+            .dragAndDropSource(
+                block = {
+                    detectTapGestures(
+                        onLongPress = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onDragStart()
+                            startTransfer(
+                                DragAndDropTransferData(
+                                    clipData = android.content.ClipData.newPlainText(
+                                        "sample",
+                                        sample.id.toString()
+                                    )
                                 )
                             )
-                        )
-                    },
-                    onTap = { onTapAssign() }
-                )
-            },
+                        },
+                        onTap = { onTapAssign() }
+                    )
+                }
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )

@@ -61,11 +61,6 @@ class MidiDeviceManager @Inject constructor(
             
             updateAvailableDevices()
         }
-        
-        override fun onDeviceStatusChanged(status: MidiDeviceStatus) {
-            // Update device connection status
-            updateAvailableDevices()
-        }
     }
     
     /**

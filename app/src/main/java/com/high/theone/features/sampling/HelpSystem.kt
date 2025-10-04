@@ -532,7 +532,7 @@ private fun QuickHelpSection(
 /**
  * Predefined help content for common UI components.
  */
-object HelpContent {
+object PredefinedHelpContent {
     val recordButton = HelpContent(
         title = "Record Button",
         description = "Tap to start/stop recording audio from your microphone.",

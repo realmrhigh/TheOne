@@ -28,7 +28,7 @@ import com.high.theone.model.SequencerState
 @Composable
 fun TransportControls(
     sequencerState: SequencerState,
-    onTransportAction: (TransportAction) -> Unit,
+    onTransportAction: (TransportControlAction) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -47,7 +47,7 @@ fun TransportControls(
                 icon = if (sequencerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                 onClick = { 
                     onTransportAction(
-                        if (sequencerState.isPlaying) TransportAction.Pause else TransportAction.Play
+                        if (sequencerState.isPlaying) TransportControlAction.Pause else TransportControlAction.Play
                     ) 
                 },
                 isActive = sequencerState.isPlaying,
@@ -64,7 +64,7 @@ fun TransportControls(
             // Stop button
             TransportButton(
                 icon = Icons.Default.Stop,
-                onClick = { onTransportAction(TransportAction.Stop) },
+                onClick = { onTransportAction(TransportControlAction.Stop) },
                 isActive = false,
                 contentDescription = "Stop"
             )
@@ -72,7 +72,7 @@ fun TransportControls(
             // Record button with pulsing animation when recording
             RecordButton(
                 isRecording = sequencerState.isRecording,
-                onClick = { onTransportAction(TransportAction.ToggleRecord) }
+                onClick = { onTransportAction(TransportControlAction.ToggleRecord) }
             )
         }
     }
@@ -264,12 +264,12 @@ fun TransportStateIndicator(
 /**
  * Transport actions for sequencer control
  */
-sealed class TransportAction {
-    object Play : TransportAction()
-    object Pause : TransportAction()
-    object Stop : TransportAction()
-    object ToggleRecord : TransportAction()
-    data class SetTempo(val tempo: Float) : TransportAction()
-    data class SetSwing(val swing: Float) : TransportAction()
-    data class SetPatternLength(val length: Int) : TransportAction()
+sealed class TransportControlAction {
+    object Play : TransportControlAction()
+    object Pause : TransportControlAction()
+    object Stop : TransportControlAction()
+    object ToggleRecord : TransportControlAction()
+    data class SetTempo(val tempo: Float) : TransportControlAction()
+    data class SetSwing(val swing: Float) : TransportControlAction()
+    data class SetPatternLength(val length: Int) : TransportControlAction()
 }

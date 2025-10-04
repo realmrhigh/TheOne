@@ -39,7 +39,18 @@ class SequencerPerformanceOptimizer @Inject constructor(
     }
 
     // Performance metrics state
-    private val _performanceMetrics = MutableStateFlow(SequencerPerformanceMetrics())
+    private val _performanceMetrics = MutableStateFlow(SequencerPerformanceMetrics(
+        averageLatency = 0L,
+        maxLatency = 0L,
+        minLatency = 0L,
+        jitter = 0L,
+        missedTriggers = 0,
+        scheduledTriggers = 0,
+        cpuUsage = 0f,
+        memoryUsage = 0L,
+        isRealTimeMode = false,
+        bufferUnderruns = 0
+    ))
     val performanceMetrics: StateFlow<SequencerPerformanceMetrics> = _performanceMetrics.asStateFlow()
 
     // Optimization state
@@ -459,7 +470,7 @@ class SequencerPerformanceOptimizer @Inject constructor(
      * Clean up sample cache
      * Requirements: 10.6
      */
-    private fun cleanupSampleCache() {
+    private suspend fun cleanupSampleCache() {
         try {
             val currentTime = System.currentTimeMillis()
             val maxAge = 600_000L // 10 minutes
@@ -486,7 +497,7 @@ class SequencerPerformanceOptimizer @Inject constructor(
      * Release inactive voices
      * Requirements: 10.2, 10.5
      */
-    private fun releaseInactiveVoices() {
+    private suspend fun releaseInactiveVoices() {
         try {
             val currentTime = System.currentTimeMillis()
             val maxAge = 30_000L // 30 seconds

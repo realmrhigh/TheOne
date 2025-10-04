@@ -1,5 +1,6 @@
 package com.high.theone.features.sequencer
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -195,7 +196,7 @@ private fun GrooveTemplateCard(
                 )
                 
                 Text(
-                    text = "${(template.getSwingAmount() * 100).toInt()}%",
+                    text = "${(template.swingAmount * 100).toInt()}%",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -209,9 +210,9 @@ private fun GrooveTemplateCard(
             )
             
             // Visual representation of swing
-            if (template.getSwingAmount() > 0f) {
+            if (template.swingAmount > 0f) {
                 SwingVisualization(
-                    swingAmount = template.getSwingAmount(),
+                    swingAmount = template.swingAmount,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(20.dp)

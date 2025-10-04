@@ -1,6 +1,8 @@
 package com.high.theone.features.sequencer
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -246,11 +248,11 @@ private fun ConditionSection(
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            items(conditionTypes.size) { index ->
+            items(conditionTypes) { conditionType ->
                 FilterChip(
-                    onClick = { selectedConditionType = index },
-                    label = { Text(conditionTypes[index]) },
-                    selected = selectedConditionType == index
+                    onClick = { selectedConditionType = conditionTypes.indexOf(conditionType) },
+                    label = { Text(conditionType) },
+                    selected = selectedConditionType == conditionTypes.indexOf(conditionType)
                 )
             }
         }

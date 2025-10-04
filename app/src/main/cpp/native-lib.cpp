@@ -1362,8 +1362,9 @@ Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1getMidi
     }
     
     return hashMap;
-}//
- 🕐 ===== MIDI CLOCK SYNCHRONIZATION JNI FUNCTIONS ===== 🕐
+}
+
+// ===== MIDI CLOCK SYNCHRONIZATION JNI FUNCTIONS =====
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1setExternalClockEnabled(
