@@ -180,5 +180,7 @@ data class MidiPadStopEvent(
     val padIndex: Int,
     val midiNote: Int,
     val midiChannel: Int,
-    val timestamp: Long
+    val timestamp: Long,
+    val originalVelocity: Int? = null, // Original note-on velocity for sustained notes
+    val sustainDurationMs: Long? = null // How long the note was sustained
 )
