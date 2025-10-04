@@ -1232,3 +1232,167 @@ Java_com_high_theone_audio_AudioEngineImpl_native_1getTimingStatistics(
     
     return hashMap;
 }
+
+// 🎹 ===== MIDI PROCESSING JNI FUNCTIONS ===== 🎹
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1processMidiMessage(
+    JNIEnv* env, jobject /* thiz */, jint type, jint channel, jint data1, jint data2, jlong timestamp) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->processMidiMessage(
+        static_cast<uint8_t>(type),
+        static_cast<uint8_t>(channel),
+        static_cast<uint8_t>(data1),
+        static_cast<uint8_t>(data2),
+        static_cast<int64_t>(timestamp)
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1scheduleMidiEvent(
+    JNIEnv* env, jobject /* thiz */, jint type, jint channel, jint data1, jint data2, jlong timestamp) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->scheduleMidiEvent(
+        static_cast<uint8_t>(type),
+        static_cast<uint8_t>(channel),
+        static_cast<uint8_t>(data1),
+        static_cast<uint8_t>(data2),
+        static_cast<int64_t>(timestamp)
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1setMidiNoteMapping(
+    JNIEnv* env, jobject /* thiz */, jint midiNote, jint midiChannel, jint padIndex) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->setMidiNoteMapping(
+        static_cast<uint8_t>(midiNote),
+        static_cast<uint8_t>(midiChannel),
+        padIndex
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1removeMidiNoteMapping(
+    JNIEnv* env, jobject /* thiz */, jint midiNote, jint midiChannel) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->removeMidiNoteMapping(
+        static_cast<uint8_t>(midiNote),
+        static_cast<uint8_t>(midiChannel)
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1setMidiVelocityCurve(
+    JNIEnv* env, jobject /* thiz */, jint curveType, jfloat sensitivity) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->setMidiVelocityCurve(curveType, sensitivity);
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1applyMidiVelocityCurve(
+    JNIEnv* env, jobject /* thiz */, jint velocity) {
+    if (!audioEngineInstance) return 0.0f;
+    
+    return audioEngineInstance->applyMidiVelocityCurve(static_cast<uint8_t>(velocity));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1setMidiClockSyncEnabled(
+    JNIEnv* env, jobject /* thiz */, jboolean enabled) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->setMidiClockSyncEnabled(enabled == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1processMidiClockPulse(
+    JNIEnv* env, jobject /* thiz */, jlong timestamp, jfloat bpm) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->processMidiClockPulse(static_cast<int64_t>(timestamp), bpm);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1handleMidiTransport(
+    JNIEnv* env, jobject /* thiz */, jint transportType) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->handleMidiTransport(transportType);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1setMidiInputLatency(
+    JNIEnv* env, jobject /* thiz */, jlong latencyMicros) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->setMidiInputLatency(static_cast<int64_t>(latencyMicros));
+}
+
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1getMidiStatistics(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return nullptr;
+    
+    auto stats = audioEngineInstance->getMidiStatistics();
+    
+    // Create a HashMap to return the statistics
+    jclass hashMapClass = env->FindClass("java/util/HashMap");
+    jmethodID hashMapConstructor = env->GetMethodID(hashMapClass, "<init>", "()V");
+    jmethodID putMethod = env->GetMethodID(hashMapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    
+    jobject hashMap = env->NewObject(hashMapClass, hashMapConstructor);
+    
+    jclass longClass = env->FindClass("java/lang/Long");
+    jmethodID longConstructor = env->GetMethodID(longClass, "<init>", "(J)V");
+    
+    for (const auto& pair : stats) {
+        jstring key = env->NewStringUTF(pair.first.c_str());
+        jobject value = env->NewObject(longClass, longConstructor, static_cast<jlong>(pair.second));
+        
+        env->CallObjectMethod(hashMap, putMethod, key, value);
+        
+        env->DeleteLocalRef(key);
+        env->DeleteLocalRef(value);
+    }
+    
+    return hashMap;
+}//
+ 🕐 ===== MIDI CLOCK SYNCHRONIZATION JNI FUNCTIONS ===== 🕐
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1setExternalClockEnabled(
+    JNIEnv* env, jobject /* thiz */, jboolean useExternal) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->setExternalClockEnabled(useExternal == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1setClockSmoothingFactor(
+    JNIEnv* env, jobject /* thiz */, jfloat factor) {
+    if (!audioEngineInstance) return;
+    
+    audioEngineInstance->setClockSmoothingFactor(factor);
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1getCurrentBpm(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return 120.0f;
+    
+    return audioEngineInstance->getCurrentBpm();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1isClockStable(
+    JNIEnv* env, jobject /* thiz */) {
+    if (!audioEngineInstance) return JNI_FALSE;
+    
+    return audioEngineInstance->isClockStable() ? JNI_TRUE : JNI_FALSE;
+}

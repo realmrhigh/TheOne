@@ -36,6 +36,10 @@ fun SamplingScreen(
     onPreviewStop: () -> Unit,
     onPreviewSeek: (Float) -> Unit,
     onTrimChange: (SampleTrimSettings) -> Unit,
+    onPadTrigger: (Int, Float) -> Unit = { _, _ -> }, // Pad trigger callback
+    onPadLongPress: (Int) -> Unit = { _ -> }, // Pad configuration callback
+    onMidiPadTrigger: (MidiPadTriggerEvent) -> Unit = { _ -> }, // MIDI trigger callback
+    onMidiPadStop: (MidiPadStopEvent) -> Unit = { _ -> }, // MIDI stop callback
     modifier: Modifier = Modifier
 ) {
     var showPreparationScreen by remember { mutableStateOf(false) }
@@ -165,14 +169,10 @@ fun SamplingScreen(
                 
                 PadGrid(
                     pads = uiState.pads,
-                    onPadTap = { padIndex, velocity ->
-                        // TODO: Connect to ViewModel for pad triggering
-                        println("Pad $padIndex tapped with velocity $velocity")
-                    },
-                    onPadLongPress = { padIndex ->
-                        // TODO: Connect to ViewModel for pad configuration
-                        println("Pad $padIndex long pressed")
-                    },
+                    onPadTap = onPadTrigger,
+                    onPadLongPress = onPadLongPress,
+                    onMidiTrigger = onMidiPadTrigger,
+                    onMidiStop = onMidiPadStop,
                     enabled = uiState.isAudioEngineReady && !uiState.isBusy
                 )
             }

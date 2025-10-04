@@ -324,12 +324,6 @@ fun PadAssignmentIndicator(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-                    pad.hasAssignedSample -> pad.sampleName ?: "Assigned"
-                    else -> "Empty"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }

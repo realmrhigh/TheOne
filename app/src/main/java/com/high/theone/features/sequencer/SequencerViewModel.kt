@@ -1755,8 +1755,9 @@ data class PerformanceStatistics(
     val performanceMetrics: SequencerPerformanceMetrics,
     val optimizationState: OptimizationState,
     val recommendations: List<OptimizationRecommendation>
-)    //
- Enhanced State Management Methods
+)
+
+// Enhanced State Management Methods
     
     /**
      * Update sequencer settings
@@ -1866,37 +1867,7 @@ data class PerformanceStatistics(
             }
         }
     }
-    
-    override fun onCleared() {
-        super.onCleared()
-        
-        // Cleanup resources
-        viewModelScope.launch {
-            try {
-                // Stop any active playback
-                if (_sequencerState.value.isPlaying) {
-                    stopPattern()
-                }
-                
-                // Release all voices
-                sequencerVoiceManager.releaseAllVoices()
-                
-                // Clear caches
-                sequencerSampleCache.clearCache()
-                
-                // Shutdown components
-                performanceOptimizer.shutdown()
-                errorHandler.shutdown()
-                logger.shutdown()
-                
-                logger.logInfo("SequencerViewModel", "ViewModel cleanup completed")
-            } catch (e: Exception) {
-                // Log error but don't throw during cleanup
-                android.util.Log.e(TAG, "Error during ViewModel cleanup", e)
-            }
-        }
-    }
-}
+
 
 /**
  * Enhanced UI state for comprehensive state management

@@ -30,7 +30,8 @@ class SamplingViewModel @Inject constructor(
     private val sampleCacheManager: SampleCacheManager,
     private val voiceManager: VoiceManager,
     private val performanceMonitor: PerformanceMonitor,
-    private val debugManager: SamplingDebugManager
+    private val debugManager: SamplingDebugManager,
+    private val midiSamplingAdapter: MidiSamplingAdapter
 ) : ViewModel() {
 
     companion object {
@@ -56,6 +57,7 @@ class SamplingViewModel @Inject constructor(
         observeProjectChanges()
         loadAvailableSamples()
         startPerformanceMonitoring()
+        initializeMidiIntegration()
     }
 
     /**
@@ -167,6 +169,46 @@ class SamplingViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Initialize MIDI integration for pad triggering.
+     * Requirements: 1.1 (MIDI input), 1.3 (MIDI velocity), 5.2 (pad integration)
+     */
+    private fun initializeMidiIntegration() {
+        viewModelScope.launch {
+            try {
+                // Initialize the MIDI sampling adapter
+                midiSamplingAdapter.initialize()
+                
+                // Observe MIDI pad trigger events
+                midiSamplingAdapter.padTriggerEvents.collect { event ->
+                    handleMidiPadTrigger(event)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing MIDI integration", e)
+            }
+        }
+        
+        viewModelScope.launch {
+            try {
+                // Observe MIDI pad stop events
+                midiSamplingAdapter.padStopEvents.collect { event ->
+                    handleMidiPadStop(event)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error observing MIDI stop events", e)
+            }
+        }
+        
+        // Update MIDI adapter when pad configuration changes
+        viewModelScope.launch {
+            _uiState.collect { state ->
+                midiSamplingAdapter.updatePadConfiguration(state.pads)
+            }
+        }
+        
+        Log.d(TAG, "MIDI integration initialized")
     }
 
     /**
@@ -2027,10 +2069,174 @@ class SamplingViewModel @Inject constructor(
         }
     }
 
+    // MIDI Integration Methods
+    // Requirements: 1.1 (MIDI note mapping), 1.3 (MIDI velocity), 5.2 (pad integration)
+    
+    /**
+     * Handle MIDI pad trigger event from MIDI input
+     */
+    fun handleMidiPadTrigger(event: MidiPadTriggerEvent) {
+        viewModelScope.launch {
+            try {
+                val currentState = _uiState.value
+                val pad = currentState.getPad(event.padIndex)
+                
+                if (pad == null || !pad.canTriggerFromMidi) {
+                    Log.w(TAG, "Cannot trigger pad ${event.padIndex} from MIDI - not ready or no MIDI mapping")
+                    return@launch
+                }
+                
+                // Update pad state to show MIDI trigger
+                updatePadState(event.padIndex) { padState ->
+                    padState.copy(lastMidiTrigger = event.timestamp)
+                }
+                
+                // Trigger the pad with converted velocity
+                triggerPad(event.padIndex, event.velocity)
+                
+                Log.d(TAG, "MIDI triggered pad ${event.padIndex} (note ${event.midiNote}, velocity ${event.midiVelocity} -> ${event.velocity})")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling MIDI pad trigger", e)
+            }
+        }
+    }
+    
+    /**
+     * Handle MIDI pad stop event (for NOTE_ON_OFF playback mode)
+     */
+    fun handleMidiPadStop(event: MidiPadStopEvent) {
+        viewModelScope.launch {
+            try {
+                val currentState = _uiState.value
+                val pad = currentState.getPad(event.padIndex)
+                
+                if (pad == null || !pad.canTriggerFromMidi) {
+                    return@launch
+                }
+                
+                // Only stop if pad is in NOTE_ON_OFF mode
+                if (pad.playbackMode == PlaybackMode.NOTE_ON_OFF && pad.isPlaying) {
+                    releasePad(event.padIndex)
+                    Log.d(TAG, "MIDI stopped pad ${event.padIndex} (note ${event.midiNote})")
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling MIDI pad stop", e)
+            }
+        }
+    }
+    
+    /**
+     * Set MIDI note mapping for a pad
+     */
+    fun setPadMidiNote(padIndex: Int, midiNote: Int?, midiChannel: Int = 9) {
+        viewModelScope.launch {
+            try {
+                updatePadState(padIndex) { padState ->
+                    padState.copy(
+                        midiNote = midiNote,
+                        midiChannel = midiChannel
+                    )
+                }
+                
+                Log.d(TAG, "Set MIDI note $midiNote (channel $midiChannel) for pad $padIndex")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting pad MIDI note", e)
+            }
+        }
+    }
+    
+    /**
+     * Set MIDI velocity sensitivity for a pad
+     */
+    fun setPadMidiVelocitySensitivity(padIndex: Int, sensitivity: Float) {
+        viewModelScope.launch {
+            try {
+                val clampedSensitivity = sensitivity.coerceIn(0f, 2f)
+                
+                updatePadState(padIndex) { padState ->
+                    padState.copy(midiVelocitySensitivity = clampedSensitivity)
+                }
+                
+                Log.d(TAG, "Set MIDI velocity sensitivity $clampedSensitivity for pad $padIndex")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting pad MIDI velocity sensitivity", e)
+            }
+        }
+    }
+    
+    /**
+     * Auto-assign MIDI notes to all pads using standard drum mapping
+     */
+    fun autoAssignMidiNotes(channel: Int = 9) {
+        viewModelScope.launch {
+            try {
+                val currentState = _uiState.value
+                val updatedPads = MidiPadIntegration.autoAssignMidiNotes(currentState.pads, channel)
+                
+                _uiState.update { state ->
+                    state.copy(
+                        pads = updatedPads,
+                        isDirty = true
+                    )
+                }
+                
+                Log.d(TAG, "Auto-assigned MIDI notes to all pads on channel $channel")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error auto-assigning MIDI notes", e)
+            }
+        }
+    }
+    
+    /**
+     * Clear MIDI mapping for a pad
+     */
+    fun clearPadMidiMapping(padIndex: Int) {
+        setPadMidiNote(padIndex, null)
+    }
+    
+    /**
+     * Clear MIDI mapping for all pads
+     */
+    fun clearAllMidiMappings() {
+        viewModelScope.launch {
+            try {
+                val currentState = _uiState.value
+                val updatedPads = currentState.pads.map { pad ->
+                    pad.copy(
+                        midiNote = null,
+                        midiChannel = 0,
+                        acceptsAllChannels = false,
+                        lastMidiTrigger = 0L
+                    )
+                }
+                
+                _uiState.update { state ->
+                    state.copy(
+                        pads = updatedPads,
+                        isDirty = true
+                    )
+                }
+                
+                Log.d(TAG, "Cleared MIDI mappings for all pads")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error clearing MIDI mappings", e)
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopLevelMonitoring()
         stopDurationTracking()
+        
+        // Shutdown MIDI integration
+        midiSamplingAdapter.shutdown()
         
         // Clean up audio engine if needed
         viewModelScope.launch {

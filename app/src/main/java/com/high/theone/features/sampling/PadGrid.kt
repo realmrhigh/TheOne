@@ -28,9 +28,9 @@ import kotlin.math.*
 
 /**
  * A 4x4 grid of virtual drum pads for triggering samples.
- * Provides touch handling, visual feedback, and state management for pad interactions.
+ * Provides touch handling, visual feedback, state management, and MIDI input support.
  * 
- * Requirements: 2.1 (pad management), 6.1 (visual feedback), 6.2 (pad states)
+ * Requirements: 2.1 (pad management), 6.1 (visual feedback), 6.2 (pad states), 1.1 (MIDI input), 1.3 (MIDI velocity)
  */
 @Composable
 fun PadGrid(
@@ -38,7 +38,9 @@ fun PadGrid(
     onPadTap: (Int, Float) -> Unit, // padIndex, velocity
     onPadLongPress: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    onMidiTrigger: ((MidiPadTriggerEvent) -> Unit)? = null, // MIDI trigger handler
+    onMidiStop: ((MidiPadStopEvent) -> Unit)? = null // MIDI stop handler (for NOTE_ON_OFF mode)
 ) {
     // Ensure we have exactly 16 pads
     val padList = pads.take(16).let { currentPads ->

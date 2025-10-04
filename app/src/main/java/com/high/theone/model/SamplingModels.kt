@@ -42,9 +42,9 @@ enum class AudioFormat {
 
 /**
  * Represents the state of a virtual drum pad including sample assignment,
- * playback properties, and visual feedback state.
+ * playback properties, visual feedback state, and MIDI mapping configuration.
  * 
- * Requirements: 2.2 (sample assignment), 6.1 (visual feedback)
+ * Requirements: 2.2 (sample assignment), 6.1 (visual feedback), 1.1 (MIDI note mapping), 1.3 (MIDI velocity)
  */
 @Serializable
 data class PadState(
@@ -59,7 +59,13 @@ data class PadState(
     val isLoading: Boolean = false,
     val lastTriggerVelocity: Float = 0.0f, // 0.0 to 1.0
     val chokeGroup: Int? = null, // For mutually exclusive pads (hi-hat open/close)
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    // MIDI mapping properties
+    val midiNote: Int? = null, // MIDI note number (0-127) that triggers this pad
+    val midiChannel: Int = 0, // MIDI channel (0-15) for this pad
+    val midiVelocitySensitivity: Float = 1.0f, // How much MIDI velocity affects pad velocity (0.0-2.0)
+    val acceptsAllChannels: Boolean = false, // If true, responds to MIDI on any channel
+    val lastMidiTrigger: Long = 0L // Timestamp of last MIDI trigger for debugging
 ) {
     /**
      * Convenience property to check if pad can be triggered
@@ -68,10 +74,25 @@ data class PadState(
         get() = hasAssignedSample && !isLoading && isEnabled && sampleId != null
     
     /**
+     * Convenience property to check if pad can be triggered by MIDI
+     */
+    val canTriggerFromMidi: Boolean
+        get() = canTrigger && midiNote != null
+    
+    /**
      * Convenience property to get display name for the pad
      */
     val displayName: String
         get() = sampleName ?: "Pad ${index + 1}"
+    
+    /**
+     * Check if this pad should respond to a MIDI note message
+     */
+    fun respondsToMidiNote(note: Int, channel: Int): Boolean {
+        return canTriggerFromMidi && 
+               midiNote == note && 
+               (acceptsAllChannels || midiChannel == channel)
+    }
 }
 
 /**

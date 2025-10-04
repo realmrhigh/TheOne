@@ -1,8 +1,9 @@
 package com.high.theone.features.sequencer
 
 import android.util.Log
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import com.high.theone.audio.AudioEngineControl
 import com.high.theone.domain.PatternRepository
 import com.high.theone.model.*
@@ -13,6 +14,7 @@ import kotlinx.coroutines.delay
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Comprehensive error handling system for the sequencer.
@@ -21,11 +23,11 @@ import javax.inject.Inject
  * 
  * Requirements: 8.7, 10.4
  */
-@HiltViewModel
+@Singleton
 class SequencerErrorHandler @Inject constructor(
     private val audioEngine: AudioEngineControl,
     private val patternRepository: PatternRepository
-) : ViewModel() {
+) {
 
     companion object {
         private const val TAG = "SequencerErrorHandler"
@@ -47,6 +49,9 @@ class SequencerErrorHandler @Inject constructor(
     // Recovery state tracking
     private val recoveryAttempts = ConcurrentHashMap<String, Int>()
     private var lastAudioEngineCheck = 0L
+    
+    // Custom coroutine scope for error handler
+    private val errorHandlerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     init {
         initializeErrorHandling()
@@ -526,7 +531,7 @@ class SequencerErrorHandler @Inject constructor(
      * Requirements: 8.7, 10.4
      */
     private fun startHealthMonitoring() {
-        viewModelScope.launch {
+        errorHandlerScope.launch {
             while (true) {
                 try {
                     performHealthCheck()

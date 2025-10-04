@@ -200,6 +200,112 @@ public:
      */
     std::map<std::string, double> getTimingStatistics() const;
     
+    // 🎹 MIDI PROCESSING METHODS
+    
+    /**
+     * Process a MIDI message in the native audio thread
+     * @param type MIDI message type (0x80-0xFF)
+     * @param channel MIDI channel (0-15)
+     * @param data1 First data byte (0-127)
+     * @param data2 Second data byte (0-127)
+     * @param timestamp Timestamp in microseconds
+     */
+    void processMidiMessage(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2, int64_t timestamp);
+    
+    /**
+     * Schedule a MIDI event for sample-accurate timing
+     * @param type MIDI message type
+     * @param channel MIDI channel (0-15)
+     * @param data1 First data byte
+     * @param data2 Second data byte
+     * @param timestamp Target timestamp in microseconds
+     */
+    void scheduleMidiEvent(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2, int64_t timestamp);
+    
+    /**
+     * Set MIDI note to pad mapping
+     * @param midiNote MIDI note number (0-127)
+     * @param midiChannel MIDI channel (0-15)
+     * @param padIndex Target pad index (0-15)
+     */
+    void setMidiNoteMapping(uint8_t midiNote, uint8_t midiChannel, int padIndex);
+    
+    /**
+     * Remove MIDI note mapping
+     * @param midiNote MIDI note number (0-127)
+     * @param midiChannel MIDI channel (0-15)
+     */
+    void removeMidiNoteMapping(uint8_t midiNote, uint8_t midiChannel);
+    
+    /**
+     * Set MIDI velocity curve parameters
+     * @param curveType Curve type (0=linear, 1=exponential, 2=logarithmic, 3=s-curve)
+     * @param sensitivity Velocity sensitivity (0.1-2.0)
+     */
+    void setMidiVelocityCurve(int curveType, float sensitivity);
+    
+    /**
+     * Apply velocity curve to MIDI velocity
+     * @param velocity Raw MIDI velocity (0-127)
+     * @return Processed velocity (0.0-1.0)
+     */
+    float applyMidiVelocityCurve(uint8_t velocity);
+    
+    /**
+     * Enable/disable MIDI clock synchronization
+     * @param enabled True to enable external clock sync
+     */
+    void setMidiClockSyncEnabled(bool enabled);
+    
+    /**
+     * Process MIDI clock pulse
+     * @param timestamp Clock pulse timestamp in microseconds
+     * @param bpm Current BPM from clock analysis
+     */
+    void processMidiClockPulse(int64_t timestamp, float bpm);
+    
+    /**
+     * Handle MIDI transport messages
+     * @param transportType Transport message type (0=start, 1=stop, 2=continue)
+     */
+    void handleMidiTransport(int transportType);
+    
+    /**
+     * Set MIDI input latency compensation
+     * @param latencyMicros Latency compensation in microseconds
+     */
+    void setMidiInputLatency(int64_t latencyMicros);
+    
+    /**
+     * Get MIDI processing statistics
+     * @return Map of MIDI statistics
+     */
+    std::map<std::string, int64_t> getMidiStatistics() const;
+    
+    /**
+     * Enable/disable external clock source
+     * @param useExternal True to use external clock, false for internal
+     */
+    void setExternalClockEnabled(bool useExternal);
+    
+    /**
+     * Set clock smoothing factor for tempo detection
+     * @param factor Smoothing factor (0.0-1.0, lower = more smoothing)
+     */
+    void setClockSmoothingFactor(float factor);
+    
+    /**
+     * Get current detected BPM from external clock
+     * @return Detected BPM or internal BPM if no external clock
+     */
+    float getCurrentBpm() const;
+    
+    /**
+     * Check if external clock is stable and synchronized
+     * @return True if clock is stable
+     */
+    bool isClockStable() const;
+    
 private:
     AAssetManager* assetManager_ = nullptr;
     
@@ -281,11 +387,86 @@ private:
         int64_t minLatency = INT64_MAX;
         int bufferUnderruns = 0;
     } performanceMetrics_;
+    
+    // 🎹 MIDI PROCESSING MEMBERS
+    
+    // MIDI event queue for sample-accurate timing
+    struct MidiEvent {
+        uint8_t type;
+        uint8_t channel;
+        uint8_t data1;
+        uint8_t data2;
+        int64_t timestamp;
+        bool processed;
+        
+        MidiEvent(uint8_t t, uint8_t c, uint8_t d1, uint8_t d2, int64_t ts)
+            : type(t), channel(c), data1(d1), data2(d2), timestamp(ts), processed(false) {}
+    };
+    
+    std::vector<MidiEvent> midiEventQueue_;
+    mutable std::mutex midiEventQueueMutex_;
+    
+    // MIDI note mappings: (note << 4 | channel) -> padIndex
+    std::map<uint16_t, int> midiNoteMappings_;
+    mutable std::mutex midiNoteMappingsMutex_;
+    
+    // MIDI velocity curve settings
+    std::atomic<int> midiVelocityCurveType_ {0}; // 0=linear, 1=exp, 2=log, 3=s-curve
+    std::atomic<float> midiVelocitySensitivity_ {1.0f};
+    
+    // MIDI clock synchronization
+    std::atomic<bool> midiClockSyncEnabled_ {false};
+    std::atomic<int64_t> midiInputLatencyMicros_ {0};
+    std::atomic<float> externalClockBpm_ {120.0f};
+    
+    // Clock timing and tempo detection
+    struct ClockTiming {
+        int64_t lastClockTime = 0;
+        int64_t clockInterval = 0;
+        float detectedBpm = 120.0f;
+        int clockPulseCount = 0;
+        bool isStable = false;
+        std::vector<int64_t> recentIntervals;
+        
+        ClockTiming() {
+            recentIntervals.reserve(24); // Store last 24 intervals (1 beat at 24 PPQN)
+        }
+    } clockTiming_;
+    
+    mutable std::mutex clockTimingMutex_;
+    std::atomic<bool> useExternalClock_ {false};
+    std::atomic<float> clockSmoothingFactor_ {0.1f};
+    
+    // MIDI statistics
+    mutable std::mutex midiStatsMutex_;
+    struct MidiStatistics {
+        int64_t messagesProcessed = 0;
+        int64_t eventsScheduled = 0;
+        int64_t eventsDropped = 0;
+        int64_t clockPulsesReceived = 0;
+        int64_t totalProcessingTime = 0;
+        int64_t maxProcessingTime = 0;
+    } midiStats_;
 
 private:
     void RecalculateTickDurationInternal(); // No lock
     void RecalculateTickDuration();         // Locks, then calls internal
     void recordingThreadFunction();         // Recording thread function
+    
+    // MIDI processing helper methods
+    void processMidiMessageImmediate(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2);
+    void handleMidiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
+    void handleMidiNoteOff(uint8_t channel, uint8_t note, uint8_t velocity);
+    void handleMidiControlChange(uint8_t channel, uint8_t controller, uint8_t value);
+    void processScheduledMidiEvents();
+    void initializeDefaultMidiMappings();
+    
+    // Clock synchronization helper methods
+    void updateClockTiming(int64_t timestamp);
+    float calculateBpmFromInterval(int64_t interval);
+    void smoothClockTempo(float newBpm);
+    void resetClockTiming();
+    bool isClockTimingStable() const;
     
     // Random engine for layer triggering
     std::mt19937 randomEngine_ {std::random_device{}()};    // 🎛️ AVST Plugin Management
