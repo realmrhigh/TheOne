@@ -30,7 +30,7 @@ typealias MuteSoloState = TrackMuteSoloState
 @Composable
 fun SequencerScreen(
     navController: NavHostController,
-    viewModel: SequencerViewModel = hiltViewModel()
+    viewModel: SimpleSequencerViewModel = hiltViewModel()
 ) {
     val sequencerState by viewModel.sequencerState.collectAsState()
     val patterns by viewModel.patterns.collectAsState()
@@ -211,7 +211,7 @@ private fun PortraitSequencerLayout(
     pads: List<SequencerPadInfo>,
     muteSoloState: MuteSoloState,
     currentPattern: Pattern?,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     transportExpanded: Boolean,
     onTransportExpandedChange: (Boolean) -> Unit,
     patternExpanded: Boolean,
@@ -344,7 +344,7 @@ private fun LandscapeSequencerLayout(
     pads: List<SequencerPadInfo>,
     muteSoloState: MuteSoloState,
     currentPattern: Pattern?,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     transportExpanded: Boolean,
     onTransportExpandedChange: (Boolean) -> Unit,
     patternExpanded: Boolean,
@@ -551,7 +551,7 @@ private fun CollapsibleSection(
 private fun TransportControlsSection(
     sequencerState: SequencerState,
     currentPattern: Pattern?,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -592,7 +592,7 @@ private fun TransportControlsSection(
 private fun PatternManagementSection(
     patterns: List<Pattern>,
     sequencerState: SequencerState,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     onShowPatternCreationDialog: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -616,7 +616,7 @@ private fun PadSelectorSection(
     pads: List<SequencerPadInfo>,
     sequencerState: SequencerState,
     muteSoloState: MuteSoloState,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     modifier: Modifier = Modifier
 ) {
     PadSelector(
@@ -641,7 +641,7 @@ private fun StepGridSection(
     currentPattern: Pattern?,
     pads: List<SequencerPadInfo>,
     sequencerState: SequencerState,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -663,8 +663,12 @@ private fun StepGridSection(
                 pads = pads,
                 currentStep = sequencerState.currentStep,
                 selectedPads = sequencerState.selectedPads,
-                onStepToggle = viewModel::toggleStep,
-                onStepVelocityChange = viewModel::setStepVelocity,
+                onStepToggle = { padIndex, stepIndex -> 
+                    // Placeholder implementation
+                },
+                onStepVelocityChange = { padIndex, stepIndex, velocity -> 
+                    // Placeholder implementation
+                },
                 onPadSelect = viewModel::togglePadSelection,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -679,7 +683,7 @@ private fun StepGridSection(
 private fun SongModeContent(
     sequencerState: SequencerState,
     patterns: List<Pattern>,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -734,7 +738,7 @@ private fun SongModeContent(
 private fun MixerContent(
     pads: List<SequencerPadInfo>,
     muteSoloState: MuteSoloState,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -782,7 +786,7 @@ private fun MixerContent(
 @Composable
 private fun SequencerSettingsContent(
     sequencerState: SequencerState,
-    viewModel: SequencerViewModel,
+    viewModel: SimpleSequencerViewModel,
     modifier: Modifier = Modifier
 ) {
     Column(
