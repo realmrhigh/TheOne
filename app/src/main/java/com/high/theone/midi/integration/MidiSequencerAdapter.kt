@@ -477,6 +477,29 @@ class MidiSequencerAdapter @Inject constructor(
     }
     
     /**
+     * Set tempo from MIDI input
+     */
+    suspend fun setTempoFromMidi(bpm: Float) {
+        _midiSequencerState.update { 
+            it.copy(currentTempo = bpm)
+        }
+        
+        // Update timing engine if we're not synced to external clock
+        if (!_midiSequencerState.value.externalClockEnabled) {
+            timingEngine.setTempo(bpm)
+        }
+    }
+    
+    /**
+     * Handle transport message from MIDI
+     */
+    suspend fun handleTransportMessage(message: MidiTransportMessage) {
+        processMidiTransportMessage(message)
+    }
+    
+
+    
+    /**
      * Shutdown the adapter and clean up resources
      */
     fun shutdown() {

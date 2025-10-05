@@ -404,8 +404,8 @@ private fun MidiParameterMappingPreview(mapping: MidiParameterMapping) {
         )
     }
 }
-@
-OptIn(ExperimentalMaterial3Api::class)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MidiMappingEditorDialog(
     mapping: MidiMapping,
