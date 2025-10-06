@@ -276,12 +276,13 @@ I know music and audio very well, but not the instrumentation, programming, and 
 
 ------+
 
-Gemini has been the brains of the operation, Jules is the most efficient code robot and only writes professional code, and I am trying to soak up as much information as possible as I coordinate technology to create 
+Gemini, Jules, Kiro, Claude, GPT, Augment, Copilot, and Grok all worked on this project, and I am trying to soak up as much information as possible as I coordinate technology to create 
 something incredible.
 
-Our workflow goes like this: me and Gemini assess the previous code and determine next steps. Those steps are listed out with direct and defined objectives to be passed to Jules. Jules makes a plan, and that plan 
+Our workflow started like this: me and a bot assess the previous code and determine next steps. Those steps are listed out with direct and defined objectives to be passed to Jules. Jules makes a plan, and that plan 
 is screenshotted and sent to Gemini to be verified or amended; if amended, we repeat the plan and verification. Jules writes and publishes code to a new branch, that branch is opened in a new Gemini chat for 
 assessment and planning, and the development cycle repeats.
+now: using 
 
 MPC Android App: Technical Specification & Build Map
 I. Introduction
