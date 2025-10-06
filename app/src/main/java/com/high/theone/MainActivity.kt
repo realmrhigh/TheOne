@@ -39,6 +39,7 @@ import com.high.theone.features.drumtrack.DrumTrackViewModel
 import com.high.theone.features.drumtrack.ui.DrumPadScreen
 import com.high.theone.features.midi.ui.MidiSettingsScreen
 import com.high.theone.features.midi.ui.MidiMappingScreen
+import com.high.theone.features.midi.ui.MidiMappingViewModel
 import com.high.theone.features.midi.ui.MidiMonitorScreen
 import com.high.theone.features.sequencer.SequencerScreen
 import com.high.theone.features.sequencer.SequencerHelpScreen
@@ -129,7 +130,10 @@ class MainActivity : ComponentActivity() {
                             MidiSettingsScreen(onNavigateBack = { navController.popBackStack() })
                         }
                         composable("midi_mapping") {
-                            MidiMappingScreen(onNavigateBack = { navController.popBackStack() })
+                            MidiMappingScreen(
+                                onNavigateBack = { navController.popBackStack() },
+                                viewModel = hiltViewModel<MidiMappingViewModel>()
+                            )
                         }
                         composable("midi_monitor") {
                             MidiMonitorScreen(onNavigateBack = { navController.popBackStack() })

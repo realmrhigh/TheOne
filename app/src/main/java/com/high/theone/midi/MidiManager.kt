@@ -10,6 +10,7 @@ import com.high.theone.midi.output.MidiOutputGenerator
 import com.high.theone.midi.mapping.MidiMappingEngine
 import com.high.theone.midi.mapping.MidiLearnManager
 
+import com.high.theone.midi.integration.MidiAudioEngineControl
 import com.high.theone.midi.integration.MidiSequencerAdapter
 import com.high.theone.midi.repository.MidiConfigurationRepository
 import com.high.theone.midi.repository.MidiMappingRepository

@@ -227,6 +227,24 @@ class MidiMappingEngine @Inject constructor() {
                         mappingProfiles[updatedMapping.id] = updatedMapping
                     }
                 }
+                MidiConflictResolutionType.REPLACE_ALL -> {
+                    // Replace all conflicting mappings with the selected one
+                    resolution.selectedMapping?.let { selected ->
+                        val updatedMapping1 = removeConflictingMapping(conflict.mapping1, conflict.conflictingParameter1)
+                        val updatedMapping2 = removeConflictingMapping(conflict.mapping2, conflict.conflictingParameter2)
+                        val newMappings = updatedMapping1.mappings + selected
+                        val finalMapping = updatedMapping1.copy(mappings = newMappings)
+                        mappingProfiles[finalMapping.id] = finalMapping
+                        mappingProfiles[updatedMapping2.id] = updatedMapping2
+                    }
+                }
+                MidiConflictResolutionType.REMOVE_ALL -> {
+                    // Remove both conflicting mappings
+                    val updatedMapping1 = removeConflictingMapping(conflict.mapping1, conflict.conflictingParameter1)
+                    val updatedMapping2 = removeConflictingMapping(conflict.mapping2, conflict.conflictingParameter2)
+                    mappingProfiles[updatedMapping1.id] = updatedMapping1
+                    mappingProfiles[updatedMapping2.id] = updatedMapping2
+                }
             }
             
             updateActiveMappings()
@@ -394,6 +412,7 @@ enum class MidiConflictType {
  */
 data class MidiConflictResolution(
     val type: MidiConflictResolutionType,
+    val selectedMapping: MidiParameterMapping? = null,
     val newMidiController: Int? = null
 )
 
@@ -404,7 +423,9 @@ enum class MidiConflictResolutionType {
     KEEP_FIRST,
     KEEP_SECOND,
     DISABLE_BOTH,
-    REASSIGN
+    REASSIGN,
+    REPLACE_ALL,
+    REMOVE_ALL
 }
 
 /**

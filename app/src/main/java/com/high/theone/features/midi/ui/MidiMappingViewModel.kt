@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.high.theone.midi.mapping.MidiMappingEngine
 import com.high.theone.midi.mapping.MidiLearnManager
-import com.high.theone.midi.mapping.MidiLearnState
+import com.high.theone.midi.model.MidiLearnState
 import com.high.theone.midi.mapping.MidiMappingConflict
 import com.high.theone.midi.mapping.MidiConflictResolution
 import com.high.theone.midi.mapping.MidiConflictResolutionType
@@ -73,7 +73,8 @@ class MidiMappingViewModel @Inject constructor(
             try {
                 _uiState.value = _uiState.value.copy(isLoading = true)
                 
-                val profiles = mappingRepository.getAllMappings()
+                val result = mappingRepository.loadAllMappings()
+                val profiles = result.getOrDefault(emptyList())
                 val allProfiles = mappingEngine.getAllMappingProfiles() + profiles
                 
                 _uiState.value = _uiState.value.copy(

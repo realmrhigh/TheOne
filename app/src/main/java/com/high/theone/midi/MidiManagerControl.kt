@@ -48,33 +48,3 @@ interface MidiManagerControl {
     // Monitoring and Diagnostics
     suspend fun getMidiStatistics(): MidiStatistics
 }
-
-/**
- * Represents the overall state of the MIDI system
- */
-enum class MidiSystemState {
-    STOPPED,
-    INITIALIZING,
-    RUNNING,
-    ERROR,
-    SHUTTING_DOWN
-}
-
-/**
- * MIDI clock source options
- */
-enum class MidiClockSource {
-    INTERNAL,
-    EXTERNAL_AUTO,
-    EXTERNAL_DEVICE
-}
-
-/**
- * MIDI transport message types
- */
-enum class MidiTransportMessage {
-    START,
-    STOP,
-    CONTINUE,
-    SONG_POSITION
-}

@@ -10,7 +10,6 @@ import com.high.theone.midi.MidiManagerControl
 import com.high.theone.midi.device.MidiDeviceManager
 import com.high.theone.midi.device.MidiDeviceScanner
 import com.high.theone.midi.input.MidiInputProcessor
-import com.high.theone.midi.input.MidiMessageParser
 import com.high.theone.midi.input.MidiVelocityCurve
 import com.high.theone.midi.integration.MidiAudioEngineControl
 import com.high.theone.midi.integration.MidiAudioEngineAdapterImpl
@@ -58,9 +57,10 @@ abstract class MidiModule {
         @Provides
         @Singleton
         fun provideMidiDeviceScanner(
-            @ApplicationContext context: Context
+            @ApplicationContext context: Context,
+            midiDeviceManager: MidiDeviceManager
         ): MidiDeviceScanner {
-            return MidiDeviceScanner(context)
+            return MidiDeviceScanner(context, midiDeviceManager)
         }
 
 
@@ -88,8 +88,10 @@ abstract class MidiModule {
          */
         @Provides
         @Singleton
-        fun provideMidiClockGenerator(): MidiClockGenerator {
-            return MidiClockGenerator()
+        fun provideMidiClockGenerator(
+            outputGenerator: MidiOutputGenerator
+        ): MidiClockGenerator {
+            return MidiClockGenerator(outputGenerator)
         }
 
         /**
@@ -97,8 +99,11 @@ abstract class MidiModule {
          */
         @Provides
         @Singleton
-        fun provideMidiTransportController(): MidiTransportController {
-            return MidiTransportController()
+        fun provideMidiTransportController(
+            outputGenerator: MidiOutputGenerator,
+            clockGenerator: MidiClockGenerator
+        ): MidiTransportController {
+            return MidiTransportController(outputGenerator, clockGenerator)
         }
 
         /**

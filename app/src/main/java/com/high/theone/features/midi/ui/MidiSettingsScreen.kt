@@ -35,7 +35,7 @@ import com.high.theone.midi.model.MidiDeviceType
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MidiSettingsScreen(
-    navController: NavHostController,
+    onNavigateBack: () -> Unit,
     viewModel: MidiSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()

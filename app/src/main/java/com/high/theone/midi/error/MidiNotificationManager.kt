@@ -58,7 +58,7 @@ class MidiNotificationManager @Inject constructor(
         }
         
         val notification = NotificationCompat.Builder(this.context, CHANNEL_ID_MIDI_ERRORS)
-            .setSmallIcon(R.drawable.ic_midi_error) // You'll need to add this icon
+            .setSmallIcon(android.R.drawable.ic_dialog_alert) // Error icon
             .setContentTitle(title)
             .setContentText(result.message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(result.message))
@@ -85,7 +85,7 @@ class MidiNotificationManager @Inject constructor(
      */
     fun showDeviceReconnectedNotification(deviceId: String) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_MIDI_STATUS)
-            .setSmallIcon(R.drawable.ic_midi_connected) // You'll need to add this icon
+            .setSmallIcon(android.R.drawable.ic_dialog_info) // Connected icon
             .setContentTitle("MIDI Device Reconnected")
             .setContentText("Device $deviceId is now connected")
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -105,7 +105,7 @@ class MidiNotificationManager @Inject constructor(
      */
     fun showDeviceReconnectionFailedNotification(deviceId: String) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_MIDI_ERRORS)
-            .setSmallIcon(R.drawable.ic_midi_error)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("MIDI Device Reconnection Failed")
             .setContentText("Unable to reconnect to device $deviceId")
             .setStyle(NotificationCompat.BigTextStyle()
@@ -155,7 +155,7 @@ class MidiNotificationManager @Inject constructor(
      */
     fun showPermissionRequestNotification() {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_MIDI_ERRORS)
-            .setSmallIcon(R.drawable.ic_midi_permission) // You'll need to add this icon
+            .setSmallIcon(android.R.drawable.ic_lock_lock) // Permission icon
             .setContentTitle("MIDI Permission Required")
             .setContentText("Grant MIDI permission to use external controllers")
             .setStyle(NotificationCompat.BigTextStyle()
@@ -313,9 +313,9 @@ class MidiNotificationManager @Inject constructor(
     
     private fun getHealthIcon(health: MidiSystemHealth): Int {
         return when (health) {
-            MidiSystemHealth.HEALTHY -> R.drawable.ic_midi_healthy // You'll need to add this icon
-            MidiSystemHealth.DEGRADED -> R.drawable.ic_midi_warning // You'll need to add this icon
-            MidiSystemHealth.CRITICAL -> R.drawable.ic_midi_error
+            MidiSystemHealth.HEALTHY -> android.R.drawable.btn_star // Healthy icon
+            MidiSystemHealth.DEGRADED -> android.R.drawable.ic_dialog_alert // Warning icon
+            MidiSystemHealth.CRITICAL -> android.R.drawable.ic_delete // Error icon
         }
     }
 }

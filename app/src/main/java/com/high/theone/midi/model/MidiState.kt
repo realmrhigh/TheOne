@@ -14,17 +14,14 @@ data class MidiRuntimeState(
 )
 
 /**
- * MIDI learn target information
+ * Represents the overall state of the MIDI system
  */
-data class MidiLearnTarget(
-    val targetType: MidiTargetType,
-    val targetId: String,
-    val startTime: Long
-) {
-    init {
-        require(targetId.isNotBlank()) { "Target ID cannot be blank" }
-        require(startTime > 0) { "Start time must be positive" }
-    }
+enum class MidiSystemState {
+    STOPPED,
+    INITIALIZING,
+    RUNNING,
+    ERROR,
+    SHUTTING_DOWN
 }
 
 /**
@@ -40,5 +37,31 @@ data class MidiClockState(
     init {
         require(currentBpm >= 0) { "Current BPM cannot be negative" }
         require(lastClockTime >= 0) { "Last clock time cannot be negative" }
+    }
+}
+
+/**
+ * Represents the current state of MIDI learn mode
+ */
+sealed class MidiLearnState {
+    object Inactive : MidiLearnState()
+    data class Active(val target: MidiLearnTarget) : MidiLearnState()
+    data class Completed(val learnedMapping: MidiParameterMapping) : MidiLearnState()
+    object TimedOut : MidiLearnState()
+    object Cancelled : MidiLearnState()
+}
+
+/**
+ * Represents a MIDI learn target parameter
+ */
+data class MidiLearnTarget(
+    val targetType: MidiTargetType,
+    val targetId: String,
+    val allowedMessageTypes: Set<MidiMessageType>,
+    val startTime: Long
+) {
+    init {
+        require(targetId.isNotBlank()) { "Target ID cannot be blank" }
+        require(allowedMessageTypes.isNotEmpty()) { "Must allow at least one message type" }
     }
 }

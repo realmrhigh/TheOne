@@ -25,7 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.high.theone.midi.mapping.MidiLearnState
+import com.high.theone.midi.model.MidiLearnState
 import com.high.theone.midi.mapping.MidiMappingConflict
 import com.high.theone.midi.mapping.MidiConflictResolution
 import com.high.theone.midi.mapping.MidiConflictResolutionType
@@ -46,7 +46,7 @@ import com.high.theone.midi.model.*
 @Composable
 fun MidiMappingScreen(
     onNavigateBack: () -> Unit,
-    viewModel: MidiMappingViewModel = hiltViewModel()
+    viewModel: MidiMappingViewModel
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -117,7 +117,7 @@ fun MidiMappingScreen(
                         MidiMappingCard(
                             mapping = mapping,
                             isActive = uiState.currentProfile?.id == mapping.id,
-                            conflicts = uiState.mappingConflicts.filter { it.mappingId == mapping.id },
+                            conflicts = uiState.mappingConflicts.filter { it.mapping1.id == mapping.id || it.mapping2.id == mapping.id },
                             onEdit = { viewModel.onEditMapping(mapping) },
                             onDelete = { viewModel.onDeleteMapping(mapping.id) },
                             onActivate = { viewModel.onActivateMapping(mapping.id) },
@@ -179,9 +179,8 @@ private fun MidiLearnStatusCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = when (learnState) {
-                    MidiLearnState.WaitingForInput -> MaterialTheme.colorScheme.primaryContainer
-                    MidiLearnState.Learning -> MaterialTheme.colorScheme.secondaryContainer
-                    MidiLearnState.Completed -> MaterialTheme.colorScheme.tertiaryContainer
+                    is MidiLearnState.Active -> MaterialTheme.colorScheme.primaryContainer
+                    is MidiLearnState.Completed -> MaterialTheme.colorScheme.tertiaryContainer
                     else -> MaterialTheme.colorScheme.surface
                 }
             )
@@ -197,9 +196,8 @@ private fun MidiLearnStatusCard(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = when (learnState) {
-                                MidiLearnState.WaitingForInput -> "MIDI Learn Mode"
-                                MidiLearnState.Learning -> "Learning MIDI Input..."
-                                MidiLearnState.Completed -> "MIDI Learn Completed"
+                                is MidiLearnState.Active -> "MIDI Learn Mode"
+                                is MidiLearnState.Completed -> "MIDI Learn Completed"
                                 else -> ""
                             },
                             style = MaterialTheme.typography.titleMedium,
@@ -208,14 +206,14 @@ private fun MidiLearnStatusCard(
                         
                         learnProgress?.let { progress ->
                             Text(
-                                text = "Target: ${progress.targetType} - ${progress.targetId}",
+                                text = "Target: ${progress.target.targetType} - ${progress.target.targetId}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    if (learnState == MidiLearnState.WaitingForInput || learnState == MidiLearnState.Learning) {
+                    if (learnState is MidiLearnState.Active) {
                         Row {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
@@ -229,7 +227,7 @@ private fun MidiLearnStatusCard(
                     }
                 }
 
-                if (learnState == MidiLearnState.WaitingForInput) {
+                if (learnState is MidiLearnState.Active) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Move a control on your MIDI device to assign it to the selected parameter.",
@@ -865,11 +863,11 @@ private fun MidiConflictResolutionDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "The MIDI input ${conflict.midiInput} is mapped to multiple parameters:",
+                    text = "Multiple parameters are mapped to the same MIDI input:",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 
-                conflict.conflictingMappings.forEach { mapping ->
+                listOf(conflict.conflictingParameter1, conflict.conflictingParameter2).forEach { mapping ->
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer
@@ -897,7 +895,7 @@ private fun MidiConflictResolutionDialog(
                         onResolve(
                             MidiConflictResolution(
                                 type = MidiConflictResolutionType.REPLACE_ALL,
-                                selectedMapping = conflict.conflictingMappings.first()
+                                selectedMapping = conflict.conflictingParameter1
                             )
                         )
                     }
@@ -909,7 +907,7 @@ private fun MidiConflictResolutionDialog(
                         onResolve(
                             MidiConflictResolution(
                                 type = MidiConflictResolutionType.KEEP_FIRST,
-                                selectedMapping = conflict.conflictingMappings.first()
+                                selectedMapping = conflict.conflictingParameter1
                             )
                         )
                     }

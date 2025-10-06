@@ -63,7 +63,7 @@ class MidiMonitorViewModel @Inject constructor(
         // Limit message count based on settings
         val maxMessages = _settings.value.maxMessages
         if (currentMessages.size > maxMessages) {
-            currentMessages.removeRange(0, currentMessages.size - maxMessages)
+            currentMessages.subList(0, currentMessages.size - maxMessages).clear()
         }
         
         _midiMessages.value = currentMessages
