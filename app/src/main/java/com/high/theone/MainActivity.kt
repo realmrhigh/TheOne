@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -44,6 +45,7 @@ import com.high.theone.features.midi.ui.MidiMonitorScreen
 import com.high.theone.features.sequencer.SequencerScreen
 import com.high.theone.features.sequencer.SequencerHelpScreen
 import com.high.theone.features.sequencer.SequencerTutorialScreen
+import com.high.theone.features.compactui.CompactMainScreen
 import com.high.theone.midi.service.MidiPermissionManager
 import com.high.theone.ui.theme.TheOneTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -94,20 +96,44 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     
-                    NavHost(navController = navController, startDestination = "drum_pad_screen") {
+                    NavHost(navController = navController, startDestination = "compact_main") {
+                        // New compact main screen - primary entry point
+                        composable("compact_main") {
+                            CompactMainScreen(navController = navController)
+                        }
+                        
+                        // Legacy main screen for backward compatibility
                         composable("main_screen") {
                             MainScreen(navController = navController)
                         }
+                        
+                        // Individual feature screens - maintained for deep linking and fallback
                         composable("step_sequencer_screen") {
                             SequencerScreen(navController = navController)
                         }
+                        composable("drum_pad_screen") {
+                            DrumPadScreen(
+                                drumTrackViewModel = hiltViewModel<DrumTrackViewModel>(),
+                                navController = navController
+                            )
+                        }
+                        
+                        // Sequencer related screens
                         composable("sequencer_settings") {
-                            // Temporarily disabled - settings screen moved
+                            // Temporarily disabled - settings screen moved to compact UI
                             Box(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("Settings coming soon")
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Text("Settings moved to main screen")
+                                    Button(onClick = { navController.navigate("compact_main") }) {
+                                        Text("Go to Main Screen")
+                                    }
+                                }
                             }
                         }
                         composable("sequencer_help") {
@@ -116,16 +142,13 @@ class MainActivity : ComponentActivity() {
                         composable("sequencer_tutorial") {
                             SequencerTutorialScreen(navController = navController)
                         }
+                        
+                        // Debug screen
                         composable("debug_screen") {
                             DebugScreen(audioEngine = audioEngine)
                         }
-                        composable("drum_pad_screen") {
-                            DrumPadScreen(
-                                drumTrackViewModel = hiltViewModel<DrumTrackViewModel>(),
-                                navController = navController
-                            )
-                        }
-                        // MIDI screens
+                        
+                        // MIDI screens - maintained for deep linking
                         composable("midi_settings") {
                             MidiSettingsScreen(onNavigateBack = { navController.popBackStack() })
                         }
@@ -183,25 +206,39 @@ fun MainScreen(navController: NavHostController, modifier: Modifier = Modifier) 
         Text("Welcome to The One!", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(24.dp))
         
-        // Core features
-        Button(onClick = { navController.navigate("step_sequencer_screen") }) {
-            Text("Go to Step Sequencer")
+        // New compact main screen - primary option
+        Button(
+            onClick = { navController.navigate("compact_main") },
+            modifier = Modifier.fillMaxWidth(0.8f)
+        ) {
+            Text("Compact Main Screen (Recommended)")
         }
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Text("Individual Features:", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(16.dp))
+        
+        // Core features - individual screens
+        Button(onClick = { navController.navigate("step_sequencer_screen") }) {
+            Text("Step Sequencer")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { navController.navigate("drum_pad_screen") }) {
-            Text("Go to Drum Pads")
+            Text("Drum Pads")
         }
         Spacer(modifier = Modifier.height(16.dp))
         
         // MIDI features
+        Text("MIDI Features:", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { navController.navigate("midi_settings") }) {
             Text("MIDI Settings")
         }
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { navController.navigate("midi_mapping") }) {
             Text("MIDI Mapping")
         }
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { navController.navigate("midi_monitor") }) {
             Text("MIDI Monitor")
         }
@@ -209,7 +246,7 @@ fun MainScreen(navController: NavHostController, modifier: Modifier = Modifier) 
         
         // Debug
         Button(onClick = { navController.navigate("debug_screen") }) {
-            Text("Go to Debug Screen")
+            Text("Debug Screen")
         }
     }
 }

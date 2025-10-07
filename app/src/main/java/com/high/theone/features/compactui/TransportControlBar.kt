@@ -16,8 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -25,6 +24,10 @@ import androidx.compose.ui.unit.sp
 import com.high.theone.model.TransportState
 import com.high.theone.model.MidiSyncStatus
 import com.high.theone.model.AudioLevels
+import com.high.theone.features.compactui.accessibility.*
+import com.high.theone.features.compactui.animations.MicroInteractions
+import com.high.theone.features.compactui.animations.VisualFeedbackSystem
+import com.high.theone.features.compactui.animations.LoadingStates
 
 /**
  * Transport control bar component with play/stop/record buttons, BPM controls, and status indicators
@@ -159,25 +162,33 @@ private fun TransportButton(
         label = "button_color"
     )
     
-    FilledIconButton(
+    MicroInteractions.AnimatedIconButton(
         onClick = onClick,
         modifier = modifier
-            .size(40.dp)
-            .semantics { this.contentDescription = contentDescription },
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = if (isActive) {
+            .ensureMinimumTouchTarget()
+            .semantics { 
+                this.contentDescription = contentDescription
+                role = Role.Button
+            }
+    ) {
+        Surface(
+            color = if (isActive) {
                 activeColor.copy(alpha = 0.12f)
             } else {
                 MaterialTheme.colorScheme.surfaceVariant
             },
-            contentColor = animatedColor
-        )
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp)
-        )
+            shape = CircleShape,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = animatedColor,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
     }
 }
 
@@ -197,13 +208,18 @@ private fun BpmControls(
         horizontalArrangement = Arrangement.Center
     ) {
         // Decrease BPM button
-        IconButton(
+        MicroInteractions.AnimatedIconButton(
             onClick = { onBpmChange((bpm - 1).coerceAtLeast(60)) },
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier
+                .ensureMinimumTouchTarget()
+                .semantics { 
+                    contentDescription = "Decrease tempo, current $bpm BPM"
+                    role = Role.Button
+                }
         ) {
             Icon(
                 imageVector = Icons.Default.Remove,
-                contentDescription = "Decrease BPM",
+                contentDescription = null,
                 modifier = Modifier.size(16.dp)
             )
         }
@@ -212,7 +228,10 @@ private fun BpmControls(
         Card(
             modifier = Modifier
                 .padding(horizontal = 4.dp)
-                .semantics { contentDescription = "BPM: $bpm" },
+                .semantics { 
+                    contentDescription = "Tempo: $bpm beats per minute"
+                    role = Role.Image
+                },
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             )
@@ -238,13 +257,18 @@ private fun BpmControls(
         }
         
         // Increase BPM button
-        IconButton(
+        MicroInteractions.AnimatedIconButton(
             onClick = { onBpmChange((bpm + 1).coerceAtMost(200)) },
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier
+                .ensureMinimumTouchTarget()
+                .semantics { 
+                    contentDescription = "Increase tempo, current $bpm BPM"
+                    role = Role.Button
+                }
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
-                contentDescription = "Increase BPM",
+                contentDescription = null,
                 modifier = Modifier.size(16.dp)
             )
         }
@@ -276,8 +300,10 @@ private fun StatusIndicators(
         )
         
         // MIDI sync status indicator
-        MidiSyncIndicator(
-            status = midiSyncStatus,
+        LoadingStates.MidiConnectionIndicator(
+            isConnecting = midiSyncStatus == MidiSyncStatus.SYNCING,
+            isConnected = midiSyncStatus == MidiSyncStatus.SYNCED || midiSyncStatus == MidiSyncStatus.CONNECTED,
+            deviceName = if (midiSyncStatus == MidiSyncStatus.SYNCED) "MIDI" else "",
             modifier = Modifier.padding(end = 8.dp)
         )
         
@@ -340,7 +366,17 @@ private fun MidiSyncIndicator(
         tint = color.copy(alpha = alpha),
         modifier = modifier
             .size(20.dp)
-            .semantics { contentDescription = description }
+            .semantics { 
+                this.contentDescription = description
+                role = Role.Image
+                stateDescription = when (status) {
+                    MidiSyncStatus.SYNCING -> "Syncing"
+                    MidiSyncStatus.SYNCED -> "Synced"
+                    MidiSyncStatus.CONNECTED -> "Connected"
+                    MidiSyncStatus.ERROR -> "Error"
+                    else -> "Disconnected"
+                }
+            }
     )
 }
 
@@ -380,29 +416,39 @@ private fun AudioLevelIndicator(
     
     Row(
         modifier = modifier
-            .semantics { 
-                contentDescription = "Audio Levels - Master: ${(animatedMasterLevel * 100).toInt()}%, Input: ${(animatedInputLevel * 100).toInt()}%"
-            },
+            .audioLevelSemantics(
+                "Master and Input",
+                maxOf(animatedMasterLevel, animatedInputLevel),
+                levels.clipIndicator
+            ),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Master level meter
-        AudioLevelMeter(
-            level = animatedMasterLevel,
-            peakLevel = animatedPeakLevel,
-            isClipping = levels.clipIndicator,
-            label = "M",
-            modifier = Modifier.size(width = 8.dp, height = 24.dp)
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "M",
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 8.sp
+            )
+            VisualFeedbackSystem.AudioLevelMeter(
+                level = animatedMasterLevel,
+                modifier = Modifier.size(width = 8.dp, height = 20.dp)
+            )
+        }
         
         // Input level meter
-        AudioLevelMeter(
-            level = animatedInputLevel,
-            peakLevel = 0f, // Input doesn't show peak hold
-            isClipping = false,
-            label = "I",
-            modifier = Modifier.size(width = 8.dp, height = 24.dp)
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "I",
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 8.sp
+            )
+            VisualFeedbackSystem.AudioLevelMeter(
+                level = animatedInputLevel,
+                modifier = Modifier.size(width = 8.dp, height = 20.dp)
+            )
+        }
         
         // Clip indicator
         if (levels.clipIndicator) {
@@ -502,7 +548,13 @@ private fun BatteryStatusIndicator(
         modifier = modifier
             .size(16.dp)
             .semantics { 
-                contentDescription = "Battery: ${(batteryLevel * 100).toInt()}%${if (isCharging) " (Charging)" else ""}"
+                this.contentDescription = "Battery: ${(batteryLevel * 100).toInt()}%${if (isCharging) " (Charging)" else ""}"
+                role = Role.Image
+                stateDescription = when {
+                    isCharging -> "Charging"
+                    batteryLevel > 0.2f -> "Normal"
+                    else -> "Low battery"
+                }
             }
     )
 }
@@ -542,6 +594,12 @@ private fun PerformanceStatusIndicator(
             .background(performanceColor.copy(alpha = 0.2f))
             .semantics { 
                 contentDescription = "Performance: CPU ${(cpuUsage * 100).toInt()}%${if (memoryPressure) ", Memory Pressure" else ""}"
+                role = Role.Image
+                stateDescription = when {
+                    memoryPressure || cpuUsage > 0.8f -> "High usage"
+                    cpuUsage > 0.6f -> "Medium usage"
+                    else -> "Normal"
+                }
             },
         contentAlignment = Alignment.Center
     ) {

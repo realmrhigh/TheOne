@@ -15,6 +15,10 @@ data class PadSettings(
     val id: String,
     var name: String = "Default Pad", // Added from edit version for Program Name
 
+    // Sample assignment
+    var sampleId: String? = null,
+    var sampleName: String? = null,
+
     // --- Layering ---
     val layers: MutableList<SampleLayer> = mutableListOf(), // Using consolidated SampleLayer
     var layerTriggerRule: LayerTriggerRule = LayerTriggerRule.VELOCITY,

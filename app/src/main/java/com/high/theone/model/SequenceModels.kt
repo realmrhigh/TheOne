@@ -156,6 +156,8 @@ data class SequencerState(
     val metronomeEnabled: Boolean = false,
     val quantization: Quantization = Quantization.SIXTEENTH,
     val selectedPads: Set<Int> = emptySet(), // Currently visible/selected pad indices
+    val mutedPads: Set<Int> = emptySet(),
+    val soloedPads: Set<Int> = emptySet(),
     val recordingMode: RecordingMode = RecordingMode.REPLACE
 ) {
     /**

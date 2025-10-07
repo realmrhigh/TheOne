@@ -1,6 +1,7 @@
 package com.high.theone.features.sampling
 
 import android.util.Log
+import com.high.theone.model.PerformanceMode
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,9 @@ class PerformanceMonitor @Inject constructor() {
 
     private val _performanceMetrics = MutableStateFlow(PerformanceMetrics())
     val performanceMetrics: StateFlow<PerformanceMetrics> = _performanceMetrics.asStateFlow()
+
+    private val _performanceMode = MutableStateFlow(PerformanceMode.BALANCED)
+    val performanceMode: StateFlow<PerformanceMode> = _performanceMode.asStateFlow()
 
     private val frameTimeHistory = ConcurrentLinkedQueue<Float>()
     private val audioLatencyHistory = ConcurrentLinkedQueue<Float>()
@@ -86,6 +90,20 @@ class PerformanceMonitor @Inject constructor() {
     }
 
     /**
+     * Set the performance mode.
+     */
+    fun setPerformanceMode(mode: PerformanceMode) {
+        _performanceMode.value = mode
+    }
+
+    /**
+     * Update audio latency.
+     */
+    fun updateAudioLatency(latency: Float) {
+        recordAudioLatency(latency)
+    }
+
+    /**
      * Stop performance monitoring.
      */
     fun stopMonitoring() {
@@ -106,6 +124,14 @@ class PerformanceMonitor @Inject constructor() {
         while (frameTimeHistory.size > METRICS_HISTORY_SIZE) {
             frameTimeHistory.poll()
         }
+    }
+
+    /**
+     * Record a UI frame time for monitoring (current time).
+     */
+    fun recordFrameTime() {
+        // For simplicity, record 16.67ms (60 FPS)
+        recordFrameTime(16.67f)
     }
 
     /**
