@@ -44,9 +44,18 @@ class CompactMainViewModel(
     )
     val screenConfiguration: StateFlow<ScreenConfiguration> = _screenConfiguration.asStateFlow()
     
-    // Transport state
+    // Transport state - BPM comes from preferences
     private val _transportState = MutableStateFlow(TransportState())
-    val transportState: StateFlow<TransportState> = _transportState.asStateFlow()
+    val transportState: StateFlow<TransportState> = combine(
+        _transportState,
+        preferenceManager.bpm
+    ) { transportState, bpm ->
+        transportState.copy(bpm = bpm)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = TransportState()
+    )
     
     // Layout state
     private val _layoutState = MutableStateFlow(
@@ -284,8 +293,10 @@ class CompactMainViewModel(
     
     fun onBpmChange(newBpm: Int) {
         if (newBpm in 60..200) {
-            // Update local transport state
-            _transportState.value = _transportState.value.copy(bpm = newBpm)
+            // Save to preferences
+            viewModelScope.launch {
+                preferenceManager.saveBpm(newBpm)
+            }
             
             // Delegate to sequencer
             sequencerViewModel.handleTransportAction(TransportControlAction.SetTempo(newBpm.toFloat()))

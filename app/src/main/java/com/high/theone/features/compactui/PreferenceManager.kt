@@ -33,6 +33,7 @@ class PreferenceManager @Inject constructor(
         private val PERFORMANCE_MODE_KEY = stringPreferencesKey("performance_mode")
         private val PANEL_POSITIONS_KEY = stringPreferencesKey("panel_positions")
         private val COLLAPSED_SECTIONS_KEY = stringSetPreferencesKey("collapsed_sections")
+        private val BPM_KEY = intPreferencesKey("bpm")
     }
     
     private val json = Json { 
@@ -151,6 +152,13 @@ class PreferenceManager @Inject constructor(
             }?.filterNotNull()?.toSet() ?: emptySet()
         }
         .catch { emit(emptySet()) }
+    
+    /**
+     * BPM (tempo) setting
+     */
+    val bpm: Flow<Int> = context.dataStore.data
+        .map { preferences -> preferences[BPM_KEY] ?: 120 }
+        .catch { emit(120) }
     
     /**
      * Save layout customization
@@ -280,6 +288,7 @@ class PreferenceManager @Inject constructor(
         saveFeatureVisibility(FeatureVisibilityPreferences())
         savePanelPositions(getDefaultPanelPositions())
         saveCollapsedSections(emptySet())
+        saveBpm(120) // Reset to default BPM
         setActivePreset(null)
     }
     
@@ -326,6 +335,15 @@ class PreferenceManager @Inject constructor(
                 createdAt = 0L
             )
         )
+    }
+    
+    /**
+     * Save BPM setting
+     */
+    suspend fun saveBpm(bpm: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[BPM_KEY] = bpm
+        }
     }
     
     /**

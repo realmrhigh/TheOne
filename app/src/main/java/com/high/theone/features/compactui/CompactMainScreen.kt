@@ -1,6 +1,9 @@
 package com.high.theone.features.compactui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -145,7 +148,7 @@ fun CompactMainScreen(
         }
     }
     
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         if (!compactUIState.isInitialized) {
             // Loading state
             CompactMainScreenLoadingState()
@@ -169,84 +172,54 @@ fun CompactMainScreen(
                         viewModel.onRecord()
                         viewModel.recordFrameTime()
                     },
-                    onBpmChange = { bpm -> 
-                        viewModel.onBpmChange(bpm)
+                    onSettingsClick = {
+                        navController.navigate("project_settings")
                         viewModel.recordFrameTime()
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
                 
-                // Main responsive layout container
-                ResponsiveMainLayout(
-                    layoutState = layoutState,
-                    drumPadContent = {
-                        CompactDrumPadContent(
-                            drumPadState = drumPadState,
-                            midiState = midiState,
-                            screenConfiguration = screenConfiguration,
-                            onPadTap = { padId, velocity ->
-                                viewModel.onPadTriggered(padId)
-                                viewModel.recordFrameTime()
-                            },
-                            onPadLongPress = { padId ->
-                                // Show pad configuration panel
-                                viewModel.showPanel(PanelType.SAMPLING)
-                                viewModel.recordFrameTime()
-                            }
-                        )
-                    },
-                    sequencerContent = {
-                        InlineSequencerContent(
-                            sequencerState = sequencerState,
-                            drumPadState = drumPadState,
-                            onStepToggle = { padId, stepIndex ->
-                                viewModel.toggleStep(padId, stepIndex)
-                                viewModel.recordFrameTime()
-                            },
-                            onStepLongPress = { padId, stepIndex ->
-                                // Show step editor in bottom sheet
-                                viewModel.showPanel(PanelType.SAMPLE_EDITOR)
-                                viewModel.recordFrameTime()
-                            },
-                            onPatternSelect = { patternId ->
-                                viewModel.selectPattern(patternId)
-                                viewModel.recordFrameTime()
-                            },
-                            onTrackMute = { padId ->
-                                viewModel.togglePadMute(padId)
-                                viewModel.recordFrameTime()
-                            },
-                            onTrackSolo = { padId ->
-                                viewModel.togglePadSolo(padId)
-                                viewModel.recordFrameTime()
-                            }
-                        )
-                    },
-                    utilityContent = {
-                        UtilityPanelContent(
-                            midiState = midiState,
-                            performanceMetrics = performanceMetrics,
-                            onShowMidiPanel = {
-                                viewModel.showPanel(PanelType.MIDI)
-                                viewModel.recordFrameTime()
-                            },
-                            onShowMixerPanel = {
-                                viewModel.showPanel(PanelType.MIXER)
-                                viewModel.recordFrameTime()
-                            },
-                            onShowSettingsPanel = {
-                                viewModel.showPanel(PanelType.SETTINGS)
-                                viewModel.recordFrameTime()
-                            }
-                        )
-                    },
-                    onLayoutModeChange = { layoutMode ->
-                        // Handle layout mode changes if needed
+                // Drum pads - directly under transport controls, filling width
+                CompactDrumPadContent(
+                    drumPadState = drumPadState,
+                    midiState = midiState,
+                    screenConfiguration = screenConfiguration,
+                    onPadTap = { padId, velocity ->
+                        viewModel.onPadTriggered(padId)
                         viewModel.recordFrameTime()
                     },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f)
+                    onPadLongPress = { padId ->
+                        // Show pad configuration panel
+                        viewModel.showPanel(PanelType.SAMPLING)
+                        viewModel.recordFrameTime()
+                    }
+                )
+                
+                // Sequencer and other content below
+                InlineSequencerContent(
+                    sequencerState = sequencerState,
+                    drumPadState = drumPadState,
+                    onStepToggle = { padId, stepIndex ->
+                        viewModel.toggleStep(padId, stepIndex)
+                        viewModel.recordFrameTime()
+                    },
+                    onStepLongPress = { padId, stepIndex ->
+                        // Show step editor in bottom sheet
+                        viewModel.showPanel(PanelType.SAMPLE_EDITOR)
+                        viewModel.recordFrameTime()
+                    },
+                    onPatternSelect = { patternId ->
+                        viewModel.selectPattern(patternId)
+                        viewModel.recordFrameTime()
+                    },
+                    onTrackMute = { padId ->
+                        viewModel.togglePadMute(padId)
+                        viewModel.recordFrameTime()
+                    },
+                    onTrackSolo = { padId ->
+                        viewModel.togglePadSolo(padId)
+                        viewModel.recordFrameTime()
+                    }
                 )
             }
             

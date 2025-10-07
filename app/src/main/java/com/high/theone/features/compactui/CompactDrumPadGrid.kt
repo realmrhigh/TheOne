@@ -60,10 +60,13 @@ fun CompactDrumPadGrid(
     onMidiStop: ((MidiPadStopEvent) -> Unit)? = null,
     midiHighlightedPads: Set<Int> = emptySet() // Pads currently highlighted by MIDI input
 ) {
-    // Calculate adaptive pad size based on screen configuration
-    val requestedPadSize = calculateAdaptivePadSize(screenConfiguration)
-    val padSize = getAccessibleTouchTargetSize(requestedPadSize)
-    val padSpacing = (padSize * 0.1f).coerceAtLeast(4.dp)
+    // Calculate square pad size that fills the width
+    val density = LocalDensity.current
+    val screenWidth = screenConfiguration.screenWidth
+    val availableWidth = with(density) { screenWidth.toPx() } - 32f // Account for padding
+    val padSizePx = availableWidth / 4f
+    val padSize = with(density) { padSizePx.toDp() }
+    val padSpacing = 4.dp // Fixed small spacing
     
     // Ensure we have exactly 16 pads
     val padList = pads.take(16).let { currentPads ->
@@ -84,7 +87,7 @@ fun CompactDrumPadGrid(
         for (row in 0 until 4) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(padSpacing)
+                horizontalArrangement = Arrangement.spacedBy(padSpacing, Alignment.CenterHorizontally)
             ) {
                 for (col in 0 until 4) {
                     val padIndex = row * 4 + col
@@ -100,7 +103,7 @@ fun CompactDrumPadGrid(
                         showSampleName = showSampleNames,
                         showWaveformPreview = showWaveformPreviews,
                         isMidiHighlighted = isMidiHighlighted,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.size(padSize)
                     )
                 }
             }

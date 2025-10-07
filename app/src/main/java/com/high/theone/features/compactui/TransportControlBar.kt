@@ -40,7 +40,7 @@ fun TransportControlBar(
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onRecord: () -> Unit,
-    onBpmChange: (Int) -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -67,17 +67,11 @@ fun TransportControlBar(
                 modifier = Modifier.weight(1f)
             )
             
-            // BPM display and controls
-            BpmControls(
-                bpm = transportState.bpm,
-                onBpmChange = onBpmChange,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-            
             // Status indicators
             StatusIndicators(
                 midiSyncStatus = transportState.midiSyncStatus,
                 audioLevels = transportState.audioLevels,
+                onSettingsClick = onSettingsClick,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -282,6 +276,7 @@ private fun BpmControls(
 private fun StatusIndicators(
     midiSyncStatus: MidiSyncStatus,
     audioLevels: AudioLevels,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -311,6 +306,23 @@ private fun StatusIndicators(
         AudioLevelIndicator(
             levels = audioLevels
         )
+        
+        // Settings button
+        MicroInteractions.AnimatedIconButton(
+            onClick = onSettingsClick,
+            modifier = Modifier
+                .ensureMinimumTouchTarget()
+                .semantics { 
+                    contentDescription = "Open project settings"
+                    role = Role.Button
+                }
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 
@@ -640,7 +652,7 @@ private fun TransportControlBarPreview() {
             onPlayPause = {},
             onStop = {},
             onRecord = {},
-            onBpmChange = {}
+            onSettingsClick = {}
         )
     }
 }
@@ -665,7 +677,7 @@ private fun TransportControlBarRecordingPreview() {
             onPlayPause = {},
             onStop = {},
             onRecord = {},
-            onBpmChange = {}
+            onSettingsClick = {}
         )
     }
 }
@@ -691,7 +703,7 @@ private fun TransportControlBarCompactPreview() {
                 onPlayPause = {},
                 onStop = {},
                 onRecord = {},
-                onBpmChange = {}
+                onSettingsClick = {}
             )
         }
     }

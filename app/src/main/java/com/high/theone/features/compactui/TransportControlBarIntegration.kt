@@ -22,7 +22,7 @@ fun TransportControlBarIntegration(
         onPlayPause = viewModel::onPlayPause,
         onStop = viewModel::onStop,
         onRecord = viewModel::onRecord,
-        onBpmChange = viewModel::onBpmChange,
+        onSettingsClick = { /* Navigate to settings */ },
         modifier = modifier
     )
 }

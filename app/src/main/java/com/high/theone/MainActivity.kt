@@ -46,6 +46,7 @@ import com.high.theone.features.sequencer.SequencerScreen
 import com.high.theone.features.sequencer.SequencerHelpScreen
 import com.high.theone.features.sequencer.SequencerTutorialScreen
 import com.high.theone.features.compactui.CompactMainScreen
+import com.high.theone.features.compactui.ProjectSettingsScreen
 import com.high.theone.midi.service.MidiPermissionManager
 import com.high.theone.ui.theme.TheOneTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -160,6 +161,9 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("midi_monitor") {
                             MidiMonitorScreen(onNavigateBack = { navController.popBackStack() })
+                        }
+                        composable("project_settings") {
+                            ProjectSettingsScreen(navController = navController)
                         }
                     }
                 }
