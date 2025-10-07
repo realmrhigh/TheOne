@@ -41,6 +41,9 @@ class DrumTrackViewModel @Inject constructor(
     private val _activePadId = MutableStateFlow<String?>(null)
     val activePadId: StateFlow<String?> = _activePadId.asStateFlow()
 
+    private val _samplesLoaded = MutableStateFlow(false)
+    val samplesLoaded: StateFlow<Boolean> = _samplesLoaded.asStateFlow()
+
     init {
         // Initialize pads with default drum samples from trap_808_king kit
         val defaultSamples = listOf(
@@ -58,7 +61,7 @@ class DrumTrackViewModel @Inject constructor(
         
         val initialPads = (0 until NUM_PADS).associate { index ->
             val padId = "Pad$index"
-            val samplePath = if (index < defaultSamples.size) defaultSamples[index] else "test.wav"
+            val samplePath = if (index < defaultSamples.size) defaultSamples[index] else "asset://test.wav"
             val padName = when (index) {
                 0 -> "Kick"
                 1 -> "Snare" 
@@ -91,35 +94,59 @@ class DrumTrackViewModel @Inject constructor(
             )
         }
         _padSettingsMap.value = initialPads
-          // Load initial samples into audio engine
+        
+        // Load initial samples into audio engine
         loadInitialSamples()
     }
     
     private fun loadInitialSamples() {
         viewModelScope.launch {
             try {
-                // Initialize the audio engine first
+                println("DrumTrack: Starting sample loading...")
+                
+                // Initialize the audio engine first and wait for it to complete
                 val initialized = audioEngine.initialize(44100, 256, true)
                 if (!initialized) {
-                    println("Warning: Audio engine initialization failed")
+                    println("DrumTrack: ⚠️ Audio engine initialization failed")
                     return@launch
                 }
                 
-                // Load each pad's sample
+                println("DrumTrack: ✓ Audio engine initialized successfully")
+                
+                // Small delay to ensure AssetManager is fully set up
+                kotlinx.coroutines.delay(100)
+                
+                var successCount = 0
+                var failCount = 0
+                
+                // Load each pad's sample sequentially
                 _padSettingsMap.value.forEach { (padId, padSettings) ->
                     // Load the first layer's sample for each pad
                     if (padSettings.layers.isNotEmpty()) {
                         val samplePath = padSettings.layers.first().sample.filePath
                         if (samplePath.isNotEmpty()) {
-                            val success = audioEngine.loadSampleToMemory(padId, samplePath)
-                            println("Loading sample $padId ($samplePath): ${if (success) "SUCCESS" else "FAILED"}")
+                            try {
+                                val success = audioEngine.loadSampleToMemory(padId, samplePath)
+                                if (success) {
+                                    successCount++
+                                    println("DrumTrack: ✓ Loaded $padId (${padSettings.name}) from $samplePath")
+                                } else {
+                                    failCount++
+                                    println("DrumTrack: ✗ Failed to load $padId (${padSettings.name}) from $samplePath")
+                                }
+                            } catch (e: Exception) {
+                                failCount++
+                                println("DrumTrack: ✗ Exception loading $padId: ${e.message}")
+                            }
                         }
                     }
                 }
-                println("Drum pad sample loading completed")
+                
+                _samplesLoaded.value = true
+                println("DrumTrack: Sample loading completed - Success: $successCount, Failed: $failCount")
             } catch (e: Exception) {
                 // Log error but don't crash
-                println("Failed to load initial drum samples: ${e.message}")
+                println("DrumTrack: ✗ Failed to load initial drum samples: ${e.message}")
                 e.printStackTrace()
             }
         }
@@ -129,10 +156,19 @@ class DrumTrackViewModel @Inject constructor(
         _activePadId.value = padId
         
         // Trigger audio playback
-        viewModelScope.launch {            try {
+        viewModelScope.launch {
+            try {
                 val padSettings = _padSettingsMap.value[padId]
                 if (padSettings != null && padSettings.layers.isNotEmpty()) {
+                    // Check if samples are loaded
+                    if (!_samplesLoaded.value) {
+                        println("DrumTrack: ⚠️ Samples not yet loaded, skipping pad trigger")
+                        _activePadId.value = null
+                        return@launch
+                    }
+                    
                     // Use the simple triggerSample method for immediate playback
+                    println("DrumTrack: Triggering pad $padId (${padSettings.name})")
                     audioEngine.triggerSample(padId, padSettings.volume, padSettings.pan)
                     
                     // Emit event for sequencer if needed
@@ -143,9 +179,12 @@ class DrumTrackViewModel @Inject constructor(
                     if (_activePadId.value == padId) {
                         _activePadId.value = null
                     }
+                } else {
+                    println("DrumTrack: ⚠️ Pad settings not found for $padId")
+                    _activePadId.value = null
                 }
             } catch (e: Exception) {
-                println("Failed to trigger pad $padId: ${e.message}")
+                println("DrumTrack: ✗ Failed to trigger pad $padId: ${e.message}")
                 _activePadId.value = null
             }
         }
