@@ -58,7 +58,6 @@ fun CompactMainScreen(
     val midiSettingsViewModel: MidiSettingsViewModel = hiltViewModel()
     val midiMappingViewModel: MidiMappingViewModel = hiltViewModel()
     val midiMonitorViewModel: MidiMonitorViewModel = hiltViewModel()
-    val performanceOptimizer: CompactUIPerformanceOptimizer = hiltViewModel()
     
     // Get Hilt dependencies through EntryPoint
     val context = LocalContext.current
@@ -70,6 +69,7 @@ fun CompactMainScreen(
     }
     val performanceMonitor = remember { entryPoint.performanceMonitor() }
     val preferenceManager = remember { entryPoint.preferenceManager() }
+    val performanceOptimizer = remember { entryPoint.performanceOptimizer() }
     
     // Create CompactMainViewModel manually with all dependencies
     val viewModel = remember {

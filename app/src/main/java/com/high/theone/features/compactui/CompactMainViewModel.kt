@@ -148,7 +148,7 @@ class CompactMainViewModel(
     )
     
     // Combined compact UI state
-    val compactUIState: StateFlow<CompactUIState> = MutableStateFlow(
+    private val _compactUIState = MutableStateFlow(
         CompactUIState(
             layoutState = LayoutState(
                 configuration = ScreenConfiguration(
@@ -158,9 +158,11 @@ class CompactMainViewModel(
                     densityDpi = 420,
                     isTablet = false
                 )
-            )
+            ),
+            isInitialized = false
         )
-    ).asStateFlow()
+    )
+    val compactUIState: StateFlow<CompactUIState> = _compactUIState.asStateFlow()
     
     init {
         // Initialize performance monitoring
@@ -168,6 +170,13 @@ class CompactMainViewModel(
         
         // Initialize panel states
         initializePanelStates()
+        
+        // Mark as initialized after initial setup
+        viewModelScope.launch {
+            // Give a moment for all ViewModels to initialize
+            kotlinx.coroutines.delay(100)
+            _compactUIState.value = _compactUIState.value.copy(isInitialized = true)
+        }
         
         // Monitor performance mode changes
         viewModelScope.launch {

@@ -11,4 +11,5 @@ import dagger.hilt.components.SingletonComponent
 interface CompactMainScreenEntryPoint {
     fun performanceMonitor(): PerformanceMonitor
     fun preferenceManager(): PreferenceManager
+    fun performanceOptimizer(): CompactUIPerformanceOptimizer
 }
