@@ -45,8 +45,8 @@ import com.high.theone.features.midi.ui.MidiMonitorScreen
 import com.high.theone.features.sequencer.SequencerScreen
 import com.high.theone.features.sequencer.SequencerHelpScreen
 import com.high.theone.features.sequencer.SequencerTutorialScreen
-import com.high.theone.features.compactui.CompactMainScreen
-import com.high.theone.features.compactui.ProjectSettingsScreen
+// import com.high.theone.features.compactui.CompactMainScreen
+// import com.high.theone.features.compactui.ProjectSettingsScreen
 import com.high.theone.midi.service.MidiPermissionManager
 import com.high.theone.ui.theme.TheOneTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -97,10 +97,16 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     
-                    NavHost(navController = navController, startDestination = "compact_main") {
-                        // New compact main screen - primary entry point
+                    NavHost(navController = navController, startDestination = "main_screen") {
+                        // New compact main screen - primary entry point (temporarily disabled due to dependency issues)
                         composable("compact_main") {
-                            CompactMainScreen(navController = navController)
+                            // CompactMainScreen(navController = navController)
+                            // Temporarily redirect to main screen
+                            LaunchedEffect(Unit) {
+                                navController.navigate("main_screen") {
+                                    popUpTo("compact_main") { inclusive = true }
+                                }
+                            }
                         }
                         
                         // Legacy main screen for backward compatibility
@@ -163,7 +169,9 @@ class MainActivity : ComponentActivity() {
                             MidiMonitorScreen(onNavigateBack = { navController.popBackStack() })
                         }
                         composable("project_settings") {
-                            ProjectSettingsScreen(navController = navController)
+                            // ProjectSettingsScreen(navController = navController)
+                            // Temporarily disabled
+                            Text("Project Settings - Coming Soon", modifier = Modifier.fillMaxSize().padding(16.dp))
                         }
                     }
                 }

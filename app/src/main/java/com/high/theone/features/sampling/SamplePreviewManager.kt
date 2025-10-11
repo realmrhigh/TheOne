@@ -275,13 +275,13 @@ class SamplePreviewManager @Inject constructor(
                 )
                 
                 when (saveResult) {
-                    is com.high.theone.domain.Result.Success -> {
+                    is com.high.theone.domain.Result.Success<*> -> {
                         Log.d(TAG, "Sample saved successfully: ${saveResult.value}")
-                        onComplete(Result.success(saveResult.value))
+                        onComplete(Result.success(saveResult.value as String))
                     }
-                    is com.high.theone.domain.Result.Failure -> {
-                        Log.e(TAG, "Failed to save sample: ${saveResult.error.message}")
-                        onComplete(Result.failure(Exception(saveResult.error.message)))
+                    is com.high.theone.domain.Result.Failure<*> -> {
+                        Log.e(TAG, "Failed to save sample: ${saveResult.error}")
+                        onComplete(Result.failure(Exception(saveResult.error.toString())))
                     }
                 }
                 

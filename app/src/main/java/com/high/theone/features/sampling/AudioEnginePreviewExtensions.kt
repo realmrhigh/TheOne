@@ -239,7 +239,7 @@ suspend fun com.high.theone.domain.SampleRepository.saveSampleWithTrimming(
     originalFilePath: String,
     metadata: com.high.theone.model.SampleMetadata,
     trimSettings: com.high.theone.model.SampleTrimSettings
-): com.high.theone.domain.Result<String> {
+): com.high.theone.domain.Result<String, com.high.theone.domain.Error> {
     return try {
         // In a real implementation, this would:
         // 1. Apply trimming to the audio file
@@ -264,7 +264,7 @@ suspend fun com.high.theone.domain.SampleRepository.saveSampleWithTrimming(
     } catch (e: Exception) {
         Log.e("SampleRepository", "Error saving trimmed sample", e)
         com.high.theone.domain.Result.Failure(
-            com.high.theone.domain.DomainError.UnknownError("Failed to save sample: ${e.message}")
+            com.high.theone.domain.Error.fromThrowable(e)
         )
     }
 }

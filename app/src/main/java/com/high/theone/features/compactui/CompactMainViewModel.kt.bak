@@ -42,16 +42,13 @@ import javax.inject.Inject
 
 /**
  * Main ViewModel for the compact UI system
- * Combines and manages state from all UI components including DrumTrack, Sequencer, MIDI, and Sampling
+ * Manages UI state and coordinates between different components
+ * Note: Individual feature ViewModels (SamplingViewModel, DrumTrackViewModel, etc.) 
+ * should be created directly in composables using hiltViewModel() to avoid injection issues
  */
-class CompactMainViewModel(
+@HiltViewModel
+class CompactMainViewModel @Inject constructor(
     private val performanceMonitor: PerformanceMonitor,
-    private val samplingViewModel: SamplingViewModel,
-    private val drumTrackViewModel: DrumTrackViewModel,
-    private val sequencerViewModel: SimpleSequencerViewModel,
-    private val midiSettingsViewModel: MidiSettingsViewModel,
-    private val midiMappingViewModel: MidiMappingViewModel,
-    private val midiMonitorViewModel: MidiMonitorViewModel,
     private val preferenceManager: PreferenceManager,
     private val errorHandlingSystem: ErrorHandlingSystem,
     private val permissionManager: PermissionManager,

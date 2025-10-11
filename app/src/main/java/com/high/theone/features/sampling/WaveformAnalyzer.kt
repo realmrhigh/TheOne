@@ -9,6 +9,8 @@ import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.*
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Waveform analyzer for generating visual waveform data from audio samples.
@@ -16,7 +18,8 @@ import kotlin.math.*
  * 
  * Requirements: 4.1 (waveform visualization for recorded samples)
  */
-class WaveformAnalyzer {
+@Singleton
+class WaveformAnalyzer @Inject constructor() {
     
     companion object {
         private const val DEFAULT_WAVEFORM_SAMPLES = 1000 // Number of points for UI display
