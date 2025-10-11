@@ -4,6 +4,10 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -330,6 +334,244 @@ object MicroInteractions {
                 },
             content = content
         )
+    }
+    
+    /**
+     * Enhanced recording button with advanced haptic feedback and animations
+     */
+    @OptIn(ExperimentalAnimationApi::class)
+    @Composable
+    fun RecordingButton(
+        isRecording: Boolean,
+        isInitializing: Boolean,
+        canRecord: Boolean,
+        onStartRecording: () -> Unit,
+        onStopRecording: () -> Unit,
+        modifier: Modifier = Modifier
+    ) {
+        val haptic = LocalHapticFeedback.current
+        var isPressed by remember { mutableStateOf(false) }
+        
+        // Enhanced haptic feedback for recording state changes
+        LaunchedEffect(isRecording) {
+            if (isRecording) {
+                // Triple pulse pattern for recording start
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                delay(80)
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                delay(80)
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            }
+        }
+        
+        // Haptic feedback for initialization
+        LaunchedEffect(isInitializing) {
+            if (isInitializing) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            }
+        }
+        
+        FloatingActionButton(
+            onClick = {
+                if (isRecording) {
+                    // Double pulse for recording stop
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onStopRecording()
+                } else if (canRecord && !isInitializing) {
+                    // Single strong pulse for recording start
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onStartRecording()
+                } else if (!canRecord) {
+                    // Error haptic pattern
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+            },
+            modifier = modifier
+                .recordingButtonAnimation(
+                    isRecording = isRecording,
+                    isPressed = isPressed,
+                    isInitializing = isInitializing
+                )
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed = true
+                            if (canRecord || isRecording) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                            tryAwaitRelease()
+                            isPressed = false
+                        }
+                    )
+                },
+            containerColor = when {
+                isInitializing -> MaterialTheme.colorScheme.tertiary
+                isRecording -> MaterialTheme.colorScheme.error
+                !canRecord -> MaterialTheme.colorScheme.outline
+                else -> MaterialTheme.colorScheme.primary
+            },
+            contentColor = when {
+                isInitializing -> MaterialTheme.colorScheme.onTertiary
+                isRecording -> MaterialTheme.colorScheme.onError
+                !canRecord -> MaterialTheme.colorScheme.onSurface
+                else -> MaterialTheme.colorScheme.onPrimary
+            }
+        ) {
+            AnimatedContent(
+                targetState = when {
+                    isInitializing -> "initializing"
+                    isRecording -> "recording"
+                    else -> "ready"
+                },
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(AnimationSystem.FAST_ANIMATION)) with
+                    fadeOut(animationSpec = tween(AnimationSystem.FAST_ANIMATION))
+                },
+                label = "recording_button_content"
+            ) { state ->
+                when (state) {
+                    "initializing" -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = MaterialTheme.colorScheme.onTertiary,
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    "recording" -> {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = "Stop Recording",
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    else -> {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Start Recording",
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Pad button with velocity-sensitive haptic feedback
+     */
+    @Composable
+    fun VelocitySensitivePadButton(
+        onClick: (Float) -> Unit,
+        onLongPress: () -> Unit = {},
+        hasAssignedSample: Boolean,
+        isPlaying: Boolean,
+        modifier: Modifier = Modifier,
+        content: @Composable () -> Unit
+    ) {
+        val haptic = LocalHapticFeedback.current
+        var isPressed by remember { mutableStateOf(false) }
+        var pressStartTime by remember { mutableStateOf(0L) }
+        
+        val scale by animateFloatAsState(
+            targetValue = if (isPressed) 0.95f else if (isPlaying) 1.05f else 1f,
+            animationSpec = AnimationSystem.QuickSpring,
+            label = "pad_scale"
+        )
+        
+        val elevation by animateDpAsState(
+            targetValue = if (isPressed) 2.dp else if (isPlaying) 8.dp else 4.dp,
+            animationSpec = tween(AnimationSystem.FAST_ANIMATION),
+            label = "pad_elevation"
+        )
+        
+        Card(
+            onClick = {
+                val pressDuration = System.currentTimeMillis() - pressStartTime
+                val velocity = (pressDuration / 200f).coerceIn(0.1f, 1f)
+                
+                // Velocity-sensitive haptic feedback
+                when {
+                    !hasAssignedSample -> {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    velocity > 0.8f -> {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    velocity > 0.5f -> {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    else -> {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                }
+                
+                onClick(velocity)
+            },
+            elevation = CardDefaults.cardElevation(defaultElevation = elevation),
+            modifier = modifier
+                .scale(scale)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed = true
+                            pressStartTime = System.currentTimeMillis()
+                            tryAwaitRelease()
+                            isPressed = false
+                        },
+                        onLongPress = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onLongPress()
+                        }
+                    )
+                },
+            content = { content() }
+        )
+    }
+    
+    /**
+     * Sample assignment confirmation button with success feedback
+     */
+    @Composable
+    fun SampleAssignmentButton(
+        padIndex: Int,
+        isSelected: Boolean,
+        onAssign: (Int) -> Unit,
+        modifier: Modifier = Modifier
+    ) {
+        val haptic = LocalHapticFeedback.current
+        var showSuccess by remember { mutableStateOf(false) }
+        
+        LaunchedEffect(showSuccess) {
+            if (showSuccess) {
+                // Success haptic pattern
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                delay(100)
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                delay(1500)
+                showSuccess = false
+            }
+        }
+        
+        AnimatedButton(
+            onClick = {
+                onAssign(padIndex)
+                showSuccess = true
+            },
+            modifier = modifier,
+            hapticEnabled = false // We handle haptics manually
+        ) {
+            if (showSuccess) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Assigned",
+                    tint = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Assigned!")
+            } else {
+                Text("Pad ${padIndex + 1}")
+            }
+        }
     }
 }
 

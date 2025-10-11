@@ -6,6 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.high.theone.model.*
 import com.high.theone.model.PerformanceMode
 import com.high.theone.features.sampling.PerformanceMonitor
+import com.high.theone.features.sampling.SamplingViewModel
+import com.high.theone.features.compactui.performance.RecordingPerformanceMonitor
+import com.high.theone.features.compactui.performance.RecordingMemoryManager
+import com.high.theone.features.compactui.performance.RecordingFrameRateMonitor
+import com.high.theone.features.compactui.performance.RecordingPerformanceState
+import com.high.theone.features.compactui.performance.PerformanceWarning
+import com.high.theone.features.compactui.performance.OptimizationSuggestion
+import com.high.theone.features.compactui.performance.OptimizationSuggestionType
 import com.high.theone.features.drumtrack.DrumTrackViewModel
 import com.high.theone.features.sequencer.SimpleSequencerViewModel
 import com.high.theone.features.midi.ui.MidiSettingsViewModel
@@ -13,23 +21,45 @@ import com.high.theone.features.midi.ui.MidiMappingViewModel
 import com.high.theone.features.midi.ui.MidiMonitorViewModel
 import com.high.theone.features.sequencer.TransportControlAction
 import com.high.theone.midi.model.MidiTargetType
+import com.high.theone.features.compactui.error.ErrorHandlingSystem
+import com.high.theone.features.compactui.error.PermissionManager
+import com.high.theone.features.compactui.error.AudioEngineRecovery
+import com.high.theone.features.compactui.error.StorageManager
+import com.high.theone.features.compactui.error.PermissionState
+import com.high.theone.features.compactui.error.RecoveryState
+import com.high.theone.features.compactui.error.StorageInfo
+import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import javax.inject.Inject
 
 /**
  * Main ViewModel for the compact UI system
- * Combines and manages state from all UI components including DrumTrack, Sequencer, and MIDI
+ * Combines and manages state from all UI components including DrumTrack, Sequencer, MIDI, and Sampling
  */
 class CompactMainViewModel(
     private val performanceMonitor: PerformanceMonitor,
+    private val samplingViewModel: SamplingViewModel,
     private val drumTrackViewModel: DrumTrackViewModel,
     private val sequencerViewModel: SimpleSequencerViewModel,
     private val midiSettingsViewModel: MidiSettingsViewModel,
     private val midiMappingViewModel: MidiMappingViewModel,
     private val midiMonitorViewModel: MidiMonitorViewModel,
-    private val preferenceManager: PreferenceManager
+    private val preferenceManager: PreferenceManager,
+    private val errorHandlingSystem: ErrorHandlingSystem,
+    private val permissionManager: PermissionManager,
+    private val audioEngineRecovery: AudioEngineRecovery,
+    private val storageManager: StorageManager,
+    private val recordingPerformanceMonitor: RecordingPerformanceMonitor,
+    private val recordingMemoryManager: RecordingMemoryManager,
+    private val recordingFrameRateMonitor: RecordingFrameRateMonitor
 ) : ViewModel() {
     
     // Screen configuration state
@@ -156,6 +186,39 @@ class CompactMainViewModel(
         initialValue = MidiState()
     )
     
+    // Recording state from SamplingViewModel with pad assignment integration
+    private val _lastRecordedSampleId = MutableStateFlow<String?>(null)
+    private val _isAssignmentMode = MutableStateFlow(false)
+    
+    // Expose sampling state for use in functions
+    val samplingState: StateFlow<com.high.theone.model.SamplingUiState> = samplingViewModel.uiState
+    
+    val recordingState: StateFlow<IntegratedRecordingState> = MutableStateFlow(IntegratedRecordingState()).asStateFlow()
+    
+    // Recording panel visibility state
+    private val _isRecordingPanelVisible = MutableStateFlow(false)
+    val isRecordingPanelVisible: StateFlow<Boolean> = _isRecordingPanelVisible.asStateFlow()
+    
+    // Error handling state flows
+    val currentError: StateFlow<RecordingError?> = errorHandlingSystem.currentError
+    val isRecovering: StateFlow<Boolean> = errorHandlingSystem.isRecovering
+    val retryAttempts: StateFlow<Int> = errorHandlingSystem.retryAttempts
+    
+    // Permission management state flows
+    val permissionState: StateFlow<PermissionState> = permissionManager.permissionState
+    val shouldShowRationale: StateFlow<Boolean> = permissionManager.shouldShowRationale
+    val permissionDeniedPermanently: StateFlow<Boolean> = permissionManager.permissionDeniedPermanently
+    
+    // Audio engine recovery state flows
+    val recoveryState: StateFlow<RecoveryState> = audioEngineRecovery.recoveryState
+    val recoveryProgress: StateFlow<Float> = audioEngineRecovery.recoveryProgress
+    val lastRecoveryError: StateFlow<String?> = audioEngineRecovery.lastRecoveryError
+    
+    // Storage management state flows
+    val storageInfo: StateFlow<StorageInfo> = storageManager.storageInfo
+    val cleanupProgress: StateFlow<Float> = storageManager.cleanupProgress
+    val isCleaningUp: StateFlow<Boolean> = storageManager.isCleaningUp
+    
     // Combined compact UI state
     private val _compactUIState = MutableStateFlow(
         CompactUIState(
@@ -177,15 +240,25 @@ class CompactMainViewModel(
         // Initialize performance monitoring
         performanceMonitor.startMonitoring()
         
+        // Initialize recording performance monitoring
+        recordingMemoryManager.startMemoryManagement(viewModelScope)
+        
         // Initialize panel states
         initializePanelStates()
         
         // Mark as initialized after initial setup
-        viewModelScope.launch {
-            // Give a moment for all ViewModels to initialize
-            kotlinx.coroutines.delay(100)
-            _compactUIState.value = _compactUIState.value.copy(isInitialized = true)
-        }
+    // Storage management state flows
+    val storageInfo: StateFlow<StorageInfo> = storageManager.storageInfo
+    val cleanupProgress: StateFlow<Float> = storageManager.cleanupProgress
+    val isCleaningUp: StateFlow<Boolean> = storageManager.isCleaningUp
+    
+    // Recording performance monitoring state flows
+    val recordingPerformanceState: StateFlow<RecordingPerformanceState> = recordingPerformanceMonitor.recordingPerformanceState
+    val performanceWarnings: StateFlow<List<PerformanceWarning>> = recordingPerformanceMonitor.performanceWarnings
+    val optimizationSuggestions: StateFlow<List<OptimizationSuggestion>> = recordingPerformanceMonitor.optimizationSuggestions
+    val recordingMemoryState = recordingMemoryManager.memoryState
+    val frameRateState = recordingFrameRateMonitor.frameRateState
+    val frameRateOptimizationTriggers = recordingFrameRateMonitor.optimizationTriggers
         
         // Monitor performance mode changes
         viewModelScope.launch {
@@ -232,6 +305,43 @@ class CompactMainViewModel(
                 _layoutState.value = currentLayout.copy(collapsedSections = collapsedSections)
             }
         }
+        
+        // Handle recording lifecycle events
+        viewModelScope.launch {
+            samplingViewModel.uiState.collect { samplingState ->
+                handleRecordingLifecycleEvents(samplingState)
+            }
+        }
+        
+        // Monitor recording performance and apply automatic optimizations
+        // viewModelScope.launch {
+        //     recordingPerformanceState.collect { performanceState ->
+        //         handleRecordingPerformanceChanges(performanceState)
+        //     }
+        // }
+        
+        // Monitor frame rate optimization triggers
+        // viewModelScope.launch {
+        //     frameRateOptimizationTriggers.collect { triggers ->
+        //         handleFrameRateOptimizationTriggers(triggers)
+        //     }
+        // }
+        
+        // Initialize error handling systems
+        initializeErrorHandling()
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        
+        // Stop all performance monitoring
+        performanceMonitor.stopMonitoring()
+        recordingPerformanceMonitor.stopRecordingMonitoring()
+        recordingFrameRateMonitor.stopRecordingFrameRateMonitoring()
+        recordingMemoryManager.stopMemoryManagement()
+        
+        // Note: Individual ViewModels will handle their own cleanup
+        // when their lifecycle ends, so we don't need to explicitly clean them up here
     }
     
     /**
@@ -534,14 +644,202 @@ class CompactMainViewModel(
     }
     
     /**
+     * Recording actions - delegates to SamplingViewModel with error handling
+     */
+    fun startRecording() {
+        startRecordingWithErrorHandling()
+        
+        // Start recording performance monitoring
+        recordingPerformanceMonitor.startRecordingMonitoring(viewModelScope)
+        recordingFrameRateMonitor.startRecordingFrameRateMonitoring(viewModelScope)
+    }
+    
+    /**
+     * Start recording with comprehensive error handling
+     */
+    private fun startRecordingWithErrorHandling() {
+        viewModelScope.launch {
+            try {
+                // Check permissions first
+                val permissionState = permissionManager.permissionState.value
+                if (permissionState != PermissionState.GRANTED) {
+                    errorHandlingSystem.handleRecordingError(
+                        RuntimeException("Microphone permission not granted")
+                    )
+                    return@launch
+                }
+                
+                // Check storage space
+                val storageInfo = storageManager.storageInfo.value
+                if (storageInfo.availableSpaceMB < 50L) { // 50MB minimum
+                    errorHandlingSystem.handleRecordingError(
+                        RuntimeException("Insufficient storage space")
+                    )
+                    return@launch
+                }
+                
+                // All checks passed, start recording
+                samplingViewModel.startRecording()
+                recordFrameTime()
+                
+                // Keep panel visible for a moment to allow user to see completion
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(1500) // 1.5 seconds
+                    val currentSamplingState = samplingViewModel.uiState.value
+                    if (!currentSamplingState.recordingState.isRecording && !_isAssignmentMode.value) {
+                        hideRecordingPanel()
+                    }
+                }
+                
+            } catch (e: Exception) {
+                Log.e("CompactMainViewModel", "Error starting recording", e)
+                errorHandlingSystem.handleRecordingError(e)
+            }
+        }
+    }
+    
+    fun stopRecording() {
+        samplingViewModel.stopRecording()
+        
+        // Stop recording performance monitoring
+        recordingPerformanceMonitor.stopRecordingMonitoring()
+        recordingFrameRateMonitor.stopRecordingFrameRateMonitoring()
+        
+        recordFrameTime()
+    }
+    
+    fun showRecordingPanel() {
+        _isRecordingPanelVisible.value = true
+        showPanel(PanelType.SAMPLING)
+        recordFrameTime()
+    }
+    
+    fun hideRecordingPanel() {
+        _isRecordingPanelVisible.value = false
+        hidePanel(PanelType.SAMPLING)
+        recordFrameTime()
+    }
+    
+    fun assignRecordedSampleToPad(padId: String) {
+        val currentRecordingState = recordingState.value
+        val recordedSampleId = currentRecordingState.recordedSampleId
+        
+        if (recordedSampleId != null) {
+            // Delegate to SamplingViewModel for sample assignment
+            samplingViewModel.assignSampleToPad(padId.toInt(), recordedSampleId)
+            
+            // Clear assignment mode and recorded sample ID
+            _isAssignmentMode.value = false
+            _lastRecordedSampleId.value = null
+            
+            // Hide recording panel after assignment
+            hideRecordingPanel()
+        }
+        recordFrameTime()
+    }
+    
+    fun enterAssignmentMode() {
+        _isAssignmentMode.value = true
+        recordFrameTime()
+    }
+    
+    fun exitAssignmentMode() {
+        _isAssignmentMode.value = false
+        recordFrameTime()
+    }
+    
+    fun discardRecording() {
+        // Clear any recording error and hide panel
+        samplingViewModel.clearError()
+        
+        // Clear assignment mode and recorded sample ID
+        _isAssignmentMode.value = false
+        _lastRecordedSampleId.value = null
+        
+        hideRecordingPanel()
+        recordFrameTime()
+    }
+    
+    /**
      * Performance monitoring actions
      */
     fun recordFrameTime() {
         performanceMonitor.recordFrameTime()
+        
+        // Also record in recording-specific monitors if recording is active
+        if (samplingViewModel.uiState.value.recordingState.isRecording) {
+            recordingPerformanceMonitor.recordRecordingFrameTime(16.67f) // Assume 60fps target
+            recordingFrameRateMonitor.recordFrameEnd()
+        }
     }
     
     fun updateAudioLatency(latency: Float) {
         performanceMonitor.updateAudioLatency(latency)
+        
+        // Also update recording performance monitor
+        recordingPerformanceMonitor.recordRecordingAudioLatency(latency)
+    }
+    
+    /**
+     * Recording performance monitoring actions
+     */
+    fun updateRecordingBufferMemory(memoryBytes: Long) {
+        recordingPerformanceMonitor.updateRecordingBufferMemory(memoryBytes)
+        recordingMemoryManager.updateBufferUsage("current_recording")
+    }
+    
+    fun applyPerformanceOptimization(optimizationType: OptimizationSuggestionType) {
+        when (optimizationType) {
+            OptimizationSuggestionType.REDUCE_VISUAL_EFFECTS -> {
+                // Apply visual effects reduction
+                val currentPreferences = uiPreferences.value
+                val optimizedPreferences = currentPreferences.copy(
+                    performanceMode = PerformanceMode.BATTERY_SAVER
+                )
+                updateUIPreferences(optimizedPreferences)
+            }
+            OptimizationSuggestionType.MEMORY_CLEANUP -> {
+                // Force memory cleanup
+                recordingMemoryManager.forceCleanup()
+                recordingPerformanceMonitor.forceRecordingMemoryCleanup()
+            }
+            OptimizationSuggestionType.AUDIO_OPTIMIZATION -> {
+                // Audio optimization would typically involve native audio engine changes
+                // For now, we'll just log the request
+                Log.d("CompactMainViewModel", "Audio optimization requested")
+            }
+            OptimizationSuggestionType.SIMPLIFY_UI -> {
+                // Simplify UI by hiding non-essential panels
+                hidePanel(PanelType.MIXER)
+                hidePanel(PanelType.SETTINGS)
+                
+                val currentLayout = layoutCustomization.value
+                val simplifiedLayout = currentLayout.copy(
+                    enableAnimations = false,
+                    compactMode = true
+                )
+                updateLayoutCustomization(simplifiedLayout)
+            }
+        }
+        
+        recordFrameTime()
+    }
+    
+    fun dismissPerformanceWarning(warningType: com.high.theone.features.compactui.performance.PerformanceWarningType) {
+        // Performance warnings are automatically managed by the monitoring system
+        // This method could be used to temporarily suppress specific warning types
+        Log.d("CompactMainViewModel", "Performance warning dismissed: $warningType")
+    }
+    
+    fun getRecordingPerformanceRecommendations(): List<String> {
+        return recordingPerformanceMonitor.getRecordingPerformanceRecommendations()
+    }
+    
+    fun forcePerformanceOptimization() {
+        // Apply all available optimizations
+        recordingPerformanceMonitor.applyAutomaticOptimizations()
+        recordingMemoryManager.forceCleanup()
+        optimizePerformance()
     }
     
     /**
@@ -642,11 +940,280 @@ class CompactMainViewModel(
         }
     }
     
-    override fun onCleared() {
-        super.onCleared()
-        performanceMonitor.stopMonitoring()
+    /**
+     * Handle recording lifecycle events from SamplingViewModel
+     */
+    private fun handleRecordingLifecycleEvents(samplingState: com.high.theone.model.SamplingUiState) {
+        val currentRecordingState = recordingState.value
         
-        // Note: Individual ViewModels will handle their own cleanup
-        // when their lifecycle ends, so we don't need to explicitly clean them up here
+        // Auto-show recording panel when recording starts
+        if (samplingState.recordingState.isRecording && !_isRecordingPanelVisible.value) {
+            showRecordingPanel()
+        }
+        
+        // Handle recording completion - detect new sample and enter assignment mode
+        if (!samplingState.recordingState.isRecording && 
+            !samplingState.recordingState.isProcessing && 
+            samplingState.recordingState.error == null &&
+            samplingState.availableSamples.isNotEmpty()) {
+            
+            // Check if we just finished recording by comparing sample count
+            val lastRecordedSample = samplingState.availableSamples.lastOrNull()
+            if (lastRecordedSample != null && 
+                _lastRecordedSampleId.value != lastRecordedSample.id.toString()) {
+                
+                // Set the recorded sample ID and enter assignment mode
+                _lastRecordedSampleId.value = lastRecordedSample.id.toString()
+                _isAssignmentMode.value = true
+                
+                // Ensure recording panel is visible for assignment
+                if (!_isRecordingPanelVisible.value) {
+                    showRecordingPanel()
+                }
+            }
+        }
+        
+        // Handle recording errors
+        if (samplingState.recordingState.error != null) {
+            // Show recording panel to display error
+            if (!_isRecordingPanelVisible.value) {
+                showRecordingPanel()
+            }
+            
+            // Clear assignment mode on error
+            _isAssignmentMode.value = false
+            _lastRecordedSampleId.value = null
+        }
+        
+        // Auto-hide panel if recording is stopped, no error, and not in assignment mode
+        if (!samplingState.recordingState.isRecording && 
+            !samplingState.recordingState.isProcessing && 
+            samplingState.recordingState.error == null &&
+            !_isAssignmentMode.value &&
+            _isRecordingPanelVisible.value) {
+            
+            // Auto-hide after successful recording completion
+            hideRecordingPanel()
+        }
+        
+        // Handle recording errors
+        if (samplingState.recordingState.error != null) {
+            handleRecordingError(samplingState.recordingState.error)
+        }
     }
+    
+    /**
+     * Initialize error handling systems and monitoring
+     */
+    private fun initializeErrorHandling() {
+        // Initialize storage monitoring
+        storageManager.updateStorageInfo()
+        
+        // Check initial permission state
+        permissionManager.checkMicrophonePermission()
+        
+        // Monitor storage space periodically
+        viewModelScope.launch {
+            while (true) {
+                delay(30000) // Check every 30 seconds
+                storageManager.updateStorageInfo()
+            }
+        }
+        
+        // Monitor for audio engine health
+        viewModelScope.launch {
+            while (true) {
+                delay(10000) // Check every 10 seconds
+                if (!audioEngineRecovery.checkAudioEngineHealth()) {
+                    // Audio engine is unhealthy, but don't auto-recover unless there's an active error
+                    // This prevents unnecessary recovery attempts during normal operation
+                }
+            }
+        }
+    }
+    
+    /**
+     * Handle recording errors with appropriate recovery actions
+     */
+    private fun handleRecordingError(errorMessage: String) {
+        viewModelScope.launch {
+            try {
+                val error = when {
+                    errorMessage.contains("permission", ignoreCase = true) -> {
+                        errorHandlingSystem.handleSpecificError(RecordingErrorType.PERMISSION_DENIED, errorMessage)
+                    }
+                    errorMessage.contains("audio", ignoreCase = true) -> {
+                        errorHandlingSystem.handleSpecificError(RecordingErrorType.AUDIO_ENGINE_FAILURE, errorMessage)
+                    }
+                    errorMessage.contains("storage", ignoreCase = true) -> {
+                        errorHandlingSystem.handleSpecificError(RecordingErrorType.STORAGE_FAILURE, errorMessage)
+                    }
+                    errorMessage.contains("microphone", ignoreCase = true) -> {
+                        errorHandlingSystem.handleSpecificError(RecordingErrorType.MICROPHONE_UNAVAILABLE, errorMessage)
+                    }
+                    else -> {
+                        errorHandlingSystem.handleSpecificError(RecordingErrorType.SYSTEM_OVERLOAD, errorMessage)
+                    }
+                }
+                
+                // Show recording panel to display error
+                if (!_isRecordingPanelVisible.value) {
+                    showRecordingPanel()
+                }
+                
+            } catch (e: Exception) {
+                Log.e("CompactMainViewModel", "Error handling recording error", e)
+            }
+        }
+    }
+    
+    /**
+     * Error handling and recovery actions
+     */
+    
+    /**
+     * Execute recovery action based on error type
+     */
+    fun executeRecoveryAction(recoveryAction: RecordingRecoveryAction) {
+        viewModelScope.launch {
+            errorHandlingSystem.setRecovering(true)
+            
+            try {
+                when (recoveryAction) {
+                    RecordingRecoveryAction.REQUEST_PERMISSION -> {
+                        // Permission request should be handled by the UI layer
+                        // This just updates the permission state
+                        permissionManager.checkMicrophonePermission()
+                    }
+                    
+                    RecordingRecoveryAction.RETRY_RECORDING -> {
+                        if (errorHandlingSystem.canRetry()) {
+                            errorHandlingSystem.incrementRetryAttempts()
+                            delay(1000) // Brief delay before retry
+                            
+                            // Clear the error and try recording again
+                            errorHandlingSystem.clearError()
+                            samplingViewModel.clearError()
+                            
+                            // Check prerequisites before retry
+                            if (permissionManager.checkMicrophonePermission() == PermissionState.GRANTED &&
+                                storageManager.hasEnoughSpaceForRecording()) {
+                                startRecording()
+                            }
+                        }
+                    }
+                    
+                    RecordingRecoveryAction.RESTART_AUDIO_ENGINE -> {
+                        val success = audioEngineRecovery.recoverAudioEngine()
+                        if (success) {
+                            errorHandlingSystem.clearError()
+                            samplingViewModel.clearError()
+                        }
+                    }
+                    
+                    RecordingRecoveryAction.FREE_STORAGE_SPACE -> {
+                        val result = storageManager.cleanupStorage()
+                        if (result.success) {
+                            errorHandlingSystem.clearError()
+                            samplingViewModel.clearError()
+                        }
+                    }
+                    
+                    RecordingRecoveryAction.REDUCE_QUALITY -> {
+                        // This would need to be implemented in the audio engine
+                        // For now, just clear the error and suggest the user try again
+                        errorHandlingSystem.clearError()
+                        samplingViewModel.clearError()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("CompactMainViewModel", "Error during recovery action", e)
+            } finally {
+                errorHandlingSystem.setRecovering(false)
+            }
+        }
+    }
+    
+    /**
+     * Clear current error state
+     */
+    fun clearError() {
+        errorHandlingSystem.clearError()
+        samplingViewModel.clearError()
+    }
+    
+    /**
+     * Update permission state after permission request result
+     */
+    fun updatePermissionState(granted: Boolean, shouldShowRationale: Boolean) {
+        permissionManager.updatePermissionState(granted, shouldShowRationale)
+        
+        if (granted) {
+            // Permission granted, clear any permission-related errors
+            val currentError = errorHandlingSystem.currentError.value
+            if (currentError?.type == RecordingErrorType.PERMISSION_DENIED) {
+                errorHandlingSystem.clearError()
+                samplingViewModel.clearError()
+            }
+        }
+    }
+    
+    /**
+     * Open app settings for manual permission grant
+     */
+    fun openAppSettings() {
+        permissionManager.openAppSettings()
+    }
+    
+    /**
+     * Get permission explanation text
+     */
+    fun getPermissionExplanation(): String {
+        return permissionManager.getPermissionExplanation()
+    }
+    
+    /**
+     * Get permission recovery instructions
+     */
+    fun getPermissionRecoveryInstructions(): List<String> {
+        return permissionManager.getRecoveryInstructions()
+    }
+    
+    /**
+     * Get storage recommendations
+     */
+    fun getStorageRecommendations(): List<String> {
+        return storageManager.getStorageRecommendations()
+    }
+    
+    /**
+     * Get storage status message
+     */
+    fun getStorageStatusMessage(): String {
+        return storageManager.getStorageStatusMessage()
+    }
+    
+    /**
+     * Get recovery status message
+     */
+    fun getRecoveryStatusMessage(): String {
+        return audioEngineRecovery.getRecoveryStatusMessage()
+    }
+    
+    /**
+     * Get recovery instructions
+     */
+    fun getRecoveryInstructions(): List<String> {
+        return audioEngineRecovery.getRecoveryInstructions()
+    }
+    
+    /**
+     * Cleanup storage manually
+     */
+    fun cleanupStorage() {
+        viewModelScope.launch {
+            storageManager.cleanupStorage()
+        }
+    }
+    
 }

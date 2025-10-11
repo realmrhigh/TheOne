@@ -5,15 +5,20 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -174,7 +179,7 @@ object LoadingStates {
                     )
                     .padding(12.dp)
             ) {
-                SpinningLoadingIndicator(
+                LoadingStates.SpinningLoadingIndicator(
                     size = 16.dp,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -261,7 +266,7 @@ object LoadingStates {
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
             if (isConnecting) {
-                SpinningLoadingIndicator(
+                LoadingStates.SpinningLoadingIndicator(
                     size = 12.dp,
                     color = textColor,
                     strokeWidth = 1.5.dp
@@ -321,7 +326,7 @@ object LoadingStates {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        SpinningLoadingIndicator(
+                        LoadingStates.SpinningLoadingIndicator(
                             size = 20.dp,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -404,4 +409,409 @@ object LoadingStates {
 
 enum class ProjectOperation {
     SAVING, LOADING, EXPORTING
+}
+
+/**
+ * Enhanced recording initialization loading state with haptic feedback and improved animations
+ */
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+fun RecordingInitializationLoader(
+    isInitializing: Boolean,
+    initializationStep: RecordingInitStep = RecordingInitStep.AUDIO_ENGINE,
+    progress: Float = 0f,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+    
+    // Haptic feedback when initialization starts
+    LaunchedEffect(isInitializing) {
+        if (isInitializing) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+    
+    // Haptic feedback when step changes
+    LaunchedEffect(initializationStep) {
+        if (isInitializing) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+    
+    AnimatedVisibility(
+        visible = isInitializing,
+        enter = slideInVertically(
+            animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION, easing = AnimationSystem.FastOutSlowIn),
+            initialOffsetY = { it / 2 }
+        ) + fadeIn(animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION)) +
+        scaleIn(
+            animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION, easing = AnimationSystem.FastOutSlowIn),
+            initialScale = 0.9f
+        ),
+        exit = slideOutVertically(
+            animationSpec = tween(AnimationSystem.FAST_ANIMATION, easing = AnimationSystem.FastOutLinearIn),
+            targetOffsetY = { -it / 2 }
+        ) + fadeOut(animationSpec = tween(AnimationSystem.FAST_ANIMATION)) +
+        scaleOut(
+            animationSpec = tween(AnimationSystem.FAST_ANIMATION),
+            targetScale = 1.1f
+        ),
+        modifier = modifier
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                // Enhanced animated microphone icon with glow effect
+                val infiniteTransition = rememberInfiniteTransition(label = "mic_animation")
+                
+                val micScale by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.15f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1000, easing = EaseInOut),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "mic_scale"
+                )
+                
+                val micRotation by infiniteTransition.animateFloat(
+                    initialValue = -8f,
+                    targetValue = 8f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1500, easing = EaseInOut),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "mic_rotation"
+                )
+                
+                val glowAlpha by infiniteTransition.animateFloat(
+                    initialValue = 0.4f,
+                    targetValue = 0.8f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(800, easing = EaseInOut),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "glow_alpha"
+                )
+                
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(80.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha * 0.3f),
+                            CircleShape
+                        )
+                        .graphicsLayer {
+                            shadowElevation = (4 + glowAlpha * 6).dp.toPx()
+                        }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Initializing Recording",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .scale(micScale)
+                            .graphicsLayer { rotationZ = micRotation }
+                    )
+                }
+                
+                // Initialization step text with animated transitions
+                AnimatedContent(
+                    targetState = initializationStep,
+                    transitionSpec = {
+                        slideInVertically(
+                            animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION),
+                            initialOffsetY = { it / 4 }
+                        ) + fadeIn(animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION)) with
+                        slideOutVertically(
+                            animationSpec = tween(AnimationSystem.FAST_ANIMATION),
+                            targetOffsetY = { -it / 4 }
+                        ) + fadeOut(animationSpec = tween(AnimationSystem.FAST_ANIMATION))
+                    },
+                    label = "initialization_step"
+                ) { step ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Initializing Recording",
+                            style = MaterialTheme.typography.titleLarge,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        
+                        Text(
+                            text = when (step) {
+                                RecordingInitStep.AUDIO_ENGINE -> "Starting audio engine..."
+                                RecordingInitStep.MICROPHONE -> "Configuring microphone..."
+                                RecordingInitStep.PERMISSIONS -> "Checking permissions..."
+                                RecordingInitStep.BUFFER_SETUP -> "Setting up audio buffers..."
+                                RecordingInitStep.READY -> "Ready to record!"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                
+                // Enhanced progress indicator
+                if (progress > 0f) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AnimatedProgressIndicator(
+                            progress = progress,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            backgroundColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        )
+                        
+                        Text(
+                            text = "${(progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                // Enhanced animated dots with staggered animation
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    repeat(4) { index ->
+                        val dotScale by infiniteTransition.animateFloat(
+                            initialValue = 0.6f,
+                            targetValue = 1.2f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(
+                                    durationMillis = 800,
+                                    delayMillis = index * 150
+                                ),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "dot_scale_$index"
+                        )
+                        
+                        val dotAlpha by infiniteTransition.animateFloat(
+                            initialValue = 0.4f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(
+                                    durationMillis = 800,
+                                    delayMillis = index * 150
+                                ),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "dot_alpha_$index"
+                        )
+                        
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .scale(dotScale)
+                                .graphicsLayer { alpha = dotAlpha }
+                                .background(
+                                    MaterialTheme.colorScheme.primary,
+                                    CircleShape
+                                )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Sample assignment loading state with pad highlighting
+ */
+@Composable
+fun SampleAssignmentLoader(
+    isAssigning: Boolean,
+    targetPadIndex: Int?,
+    sampleName: String = "",
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = isAssigning,
+        enter = scaleIn(
+            animationSpec = AnimationSystem.BounceSpring,
+            initialScale = 0.8f
+        ) + fadeIn(animationSpec = tween(AnimationSystem.FAST_ANIMATION)),
+        exit = scaleOut(
+            animationSpec = tween(AnimationSystem.FAST_ANIMATION),
+            targetScale = 1.2f
+        ) + fadeOut(animationSpec = tween(AnimationSystem.FAST_ANIMATION)),
+        modifier = modifier
+    ) {
+        Card(
+            modifier = Modifier.padding(12.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Animated assignment icon
+                val infiniteTransition = rememberInfiniteTransition(label = "assignment_animation")
+                
+                val iconRotation by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "icon_rotation"
+                )
+                
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .graphicsLayer { rotationZ = iconRotation }
+                        .background(
+                            MaterialTheme.colorScheme.primary,
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "→",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+                
+                Column {
+                    Text(
+                        text = "Assigning Sample",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    
+                    if (targetPadIndex != null) {
+                        Text(
+                            text = "to Pad ${targetPadIndex + 1}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
+                    
+                    if (sampleName.isNotEmpty()) {
+                        Text(
+                            text = sampleName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Recording processing indicator for post-recording operations
+ */
+@Composable
+fun RecordingProcessingIndicator(
+    isProcessing: Boolean,
+    operation: RecordingProcessingOperation,
+    progress: Float = 0f,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = isProcessing,
+        enter = slideInHorizontally(
+            animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION),
+            initialOffsetX = { it }
+        ) + fadeIn(animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION)),
+        exit = slideOutHorizontally(
+            animationSpec = tween(AnimationSystem.FAST_ANIMATION),
+            targetOffsetX = { it }
+        ) + fadeOut(animationSpec = tween(AnimationSystem.FAST_ANIMATION)),
+        modifier = modifier
+    ) {
+        Card(
+            modifier = Modifier.padding(8.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                LoadingStates.SpinningLoadingIndicator(
+                    size = 16.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                Column {
+                    Text(
+                        text = when (operation) {
+                            RecordingProcessingOperation.SAVING -> "Saving Recording"
+                            RecordingProcessingOperation.PROCESSING -> "Processing Audio"
+                            RecordingProcessingOperation.ANALYZING -> "Analyzing Waveform"
+                            RecordingProcessingOperation.OPTIMIZING -> "Optimizing Quality"
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    
+                    if (progress > 0f) {
+                        Text(
+                            text = "${(progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            
+            if (progress > 0f) {
+                AnimatedProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                )
+            }
+        }
+    }
+}
+
+enum class RecordingInitStep {
+    AUDIO_ENGINE,
+    MICROPHONE,
+    PERMISSIONS,
+    BUFFER_SETUP,
+    READY
+}
+
+enum class RecordingProcessingOperation {
+    SAVING,
+    PROCESSING,
+    ANALYZING,
+    OPTIMIZING
 }

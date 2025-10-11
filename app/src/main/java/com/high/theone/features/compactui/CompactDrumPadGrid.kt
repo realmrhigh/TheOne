@@ -7,6 +7,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.*
@@ -27,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
 import com.high.theone.features.compactui.animations.VisualFeedbackSystem
 import com.high.theone.features.compactui.animations.MicroInteractions
@@ -152,7 +155,7 @@ private fun calculateAdaptivePadSize(screenConfiguration: ScreenConfiguration): 
  * Individual compact pad component with enhanced visual feedback and overlays.
  * 
  * Requirements: 2.1 (pad triggering), 2.2 (sample indicators), 2.4 (velocity feedback),
- *              2.5 (MIDI highlighting), 7.1 (visual feedback)
+ *              2.5 (MIDI highlighting), 7.1 (visual feedback), 4.2 (visual confirmation)
  */
 @Composable
 private fun CompactPad(
@@ -168,8 +171,18 @@ private fun CompactPad(
 ) {
     var isPressed by remember { mutableStateOf(false) }
     var pressVelocity by remember { mutableStateOf(0f) }
+    var showAssignmentConfirmation by remember { mutableStateOf(false) }
     
     val hapticFeedback = LocalHapticFeedback.current
+    
+    // Detect when a new sample is assigned to show confirmation animation
+    LaunchedEffect(padState.sampleId) {
+        if (padState.hasAssignedSample && padState.sampleId != null) {
+            showAssignmentConfirmation = true
+            delay(2000) // Show confirmation for 2 seconds
+            showAssignmentConfirmation = false
+        }
+    }
     
     // Use enhanced pad press animation from animation system
     val padPressModifier = Modifier.padPressAnimation(
@@ -332,6 +345,13 @@ private fun CompactPad(
             VelocityIndicator(
                 velocity = pressVelocity,
                 modifier = Modifier.align(Alignment.TopEnd)
+            )
+        }
+        
+        // Sample assignment confirmation overlay
+        if (showAssignmentConfirmation) {
+            SampleAssignmentConfirmation(
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
@@ -521,6 +541,62 @@ private fun getCompactPadColors(
  */
 private fun lerp(start: Float, stop: Float, fraction: Float): Float {
     return start + fraction * (stop - start)
+}
+
+/**
+ * Sample assignment confirmation overlay with animation
+ * 
+ * Requirements: 4.2 (visual confirmation when sample is assigned to pad)
+ */
+@Composable
+private fun SampleAssignmentConfirmation(
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "assignment_confirmation")
+    
+    // Pulsing scale animation
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "confirmation_scale"
+    )
+    
+    // Fade in/out animation
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(300, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "confirmation_alpha"
+    )
+    
+    Box(
+        modifier = modifier
+            .scale(scale)
+            .background(
+                MaterialTheme.colorScheme.primary.copy(alpha = alpha * 0.3f),
+                RoundedCornerShape(8.dp)
+            )
+            .border(
+                width = 2.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+                shape = RoundedCornerShape(8.dp)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = "Sample Assigned",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
+    }
 }
 
 /**

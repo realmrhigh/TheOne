@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.high.theone.model.TransportState
 import com.high.theone.model.MidiSyncStatus
 import com.high.theone.model.AudioLevels
+import com.high.theone.model.IntegratedRecordingState
 import com.high.theone.features.compactui.accessibility.*
 import com.high.theone.features.compactui.animations.MicroInteractions
 import com.high.theone.features.compactui.animations.VisualFeedbackSystem
@@ -41,6 +42,9 @@ fun TransportControlBar(
     onStop: () -> Unit,
     onRecord: () -> Unit,
     onSettingsClick: () -> Unit,
+    onRecordingToggle: () -> Unit = {},
+    isRecordingPanelVisible: Boolean = false,
+    recordingState: IntegratedRecordingState? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -64,6 +68,9 @@ fun TransportControlBar(
                 onPlayPause = onPlayPause,
                 onStop = onStop,
                 onRecord = onRecord,
+                onRecordingToggle = onRecordingToggle,
+                isRecordingPanelVisible = isRecordingPanelVisible,
+                recordingState = recordingState,
                 modifier = Modifier.weight(1f)
             )
             
@@ -88,6 +95,9 @@ private fun TransportButtons(
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onRecord: () -> Unit,
+    onRecordingToggle: () -> Unit,
+    isRecordingPanelVisible: Boolean,
+    recordingState: IntegratedRecordingState?,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -124,6 +134,16 @@ private fun TransportButtons(
             onClick = onRecord,
             contentDescription = if (isRecording) "Stop Recording" else "Record",
             activeColor = MaterialTheme.colorScheme.error
+        )
+        
+        Spacer(modifier = Modifier.width(8.dp))
+        
+        // Recording button with enhanced visual feedback
+        RecordingButton(
+            isRecordingPanelVisible = isRecordingPanelVisible,
+            recordingState = recordingState,
+            onClick = onRecordingToggle,
+            contentDescription = "Recording Controls"
         )
     }
 }
@@ -264,6 +284,97 @@ private fun BpmControls(
                 imageVector = Icons.Default.Add,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Enhanced recording button with comprehensive visual feedback and animations
+ */
+@Composable
+private fun RecordingButton(
+    isRecordingPanelVisible: Boolean,
+    recordingState: IntegratedRecordingState?,
+    onClick: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    val isRecording = recordingState?.isRecording ?: false
+    val isProcessing = recordingState?.isProcessing ?: false
+    val canStartRecording = recordingState?.canStartRecording ?: true
+    val isInitializing = isProcessing && !isRecording
+    val hasError = recordingState?.error != null
+    
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        // Main recording button with enhanced animations
+        MicroInteractions.RecordingButton(
+            isRecording = isRecording,
+            isInitializing = isInitializing,
+            canRecord = canStartRecording,
+            onStartRecording = onClick,
+            onStopRecording = onClick,
+            modifier = Modifier
+                .size(40.dp)
+                .ensureMinimumTouchTarget()
+                .semantics { 
+                    this.contentDescription = contentDescription
+                    role = Role.Button
+                }
+        )
+        
+        // Recording status indicator overlay with enhanced positioning
+        if (isRecordingPanelVisible || isRecording || isInitializing || hasError) {
+            VisualFeedbackSystem.RecordingStatusIndicator(
+                isRecording = isRecording,
+                isInitializing = isInitializing,
+                hasError = hasError,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 6.dp, y = (-6).dp)
+                    .size(12.dp)
+            )
+        }
+        
+        // Panel visibility indicator
+        if (isRecordingPanelVisible) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 4.dp, y = 4.dp)
+                    .size(8.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primary,
+                        CircleShape
+                    )
+            )
+        }
+        
+        // Error indicator with pulsing animation
+        if (hasError) {
+            val infiniteTransition = rememberInfiniteTransition(label = "error_pulse")
+            val errorAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.6f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(500, easing = EaseInOut),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "error_alpha"
+            )
+            
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(x = (-4).dp, y = 4.dp)
+                    .size(10.dp)
+                    .background(
+                        MaterialTheme.colorScheme.error.copy(alpha = errorAlpha),
+                        CircleShape
+                    )
             )
         }
     }
@@ -652,6 +763,8 @@ private fun TransportControlBarPreview() {
             onPlayPause = {},
             onStop = {},
             onRecord = {},
+            onRecordingToggle = {},
+            isRecordingPanelVisible = false,
             onSettingsClick = {}
         )
     }
@@ -677,6 +790,8 @@ private fun TransportControlBarRecordingPreview() {
             onPlayPause = {},
             onStop = {},
             onRecord = {},
+            onRecordingToggle = {},
+            isRecordingPanelVisible = true,
             onSettingsClick = {}
         )
     }
@@ -703,6 +818,8 @@ private fun TransportControlBarCompactPreview() {
                 onPlayPause = {},
                 onStop = {},
                 onRecord = {},
+                onRecordingToggle = {},
+                isRecordingPanelVisible = false,
                 onSettingsClick = {}
             )
         }

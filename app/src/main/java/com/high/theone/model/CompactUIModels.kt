@@ -303,6 +303,67 @@ data class LayoutPreset(
 )
 
 /**
+ * Integrated recording state that combines SamplingViewModel state with UI state
+ */
+@Stable
+data class IntegratedRecordingState(
+    val isRecording: Boolean = false,
+    val isProcessing: Boolean = false,
+    val durationMs: Long = 0L,
+    val peakLevel: Float = 0f,
+    val averageLevel: Float = 0f,
+    val recordedSampleId: String? = null,
+    val availablePadsForAssignment: List<String> = emptyList(),
+    val isAssignmentMode: Boolean = false,
+    val error: RecordingError? = null,
+    val canStartRecording: Boolean = true
+) {
+    /**
+     * Convenience property to get formatted duration string
+     */
+    val formattedDuration: String
+        get() {
+            val totalSeconds = durationMs / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            return String.format("%02d:%02d", minutes, seconds)
+        }
+}
+
+/**
+ * Recording error information with recovery options
+ */
+@Stable
+data class RecordingError(
+    val type: RecordingErrorType,
+    val message: String,
+    val isRecoverable: Boolean,
+    val recoveryAction: RecordingRecoveryAction?
+)
+
+/**
+ * Types of recording errors
+ */
+enum class RecordingErrorType {
+    PERMISSION_DENIED,
+    AUDIO_ENGINE_FAILURE,
+    STORAGE_FAILURE,
+    MICROPHONE_UNAVAILABLE,
+    SYSTEM_OVERLOAD
+}
+
+/**
+ * Recovery actions for recording errors
+ */
+enum class RecordingRecoveryAction {
+    REQUEST_PERMISSION,
+    RETRY_RECORDING,
+    RESTART_AUDIO_ENGINE,
+    FREE_STORAGE_SPACE,
+    REDUCE_QUALITY
+}
+
+/**
  * Serializer for Compose Dp values
  */
 object DpSerializer : KSerializer<Dp> {

@@ -309,6 +309,229 @@ object VisualFeedbackSystem {
                 .background(color, RoundedCornerShape(4.dp))
         )
     }
+    
+    /**
+     * Recording status indicator with animated states
+     */
+    @Composable
+    fun RecordingStatusIndicator(
+        isRecording: Boolean,
+        isInitializing: Boolean,
+        hasError: Boolean,
+        modifier: Modifier = Modifier
+    ) {
+        val color by animateColorAsState(
+            targetValue = when {
+                hasError -> MaterialTheme.colorScheme.error
+                isRecording -> MaterialTheme.colorScheme.error
+                isInitializing -> MaterialTheme.colorScheme.tertiary
+                else -> MaterialTheme.colorScheme.outline
+            },
+            animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION),
+            label = "status_color"
+        )
+        
+        val pulseAlpha by animateFloatAsState(
+            targetValue = if (isRecording) 0.6f else 1f,
+            animationSpec = if (isRecording) {
+                infiniteRepeatable(
+                    animation = tween(800, easing = EaseInOut),
+                    repeatMode = RepeatMode.Reverse
+                )
+            } else {
+                tween(AnimationSystem.FAST_ANIMATION)
+            },
+            label = "pulse_alpha"
+        )
+        
+        val scale by animateFloatAsState(
+            targetValue = if (isRecording) 1.2f else 1f,
+            animationSpec = if (isRecording) {
+                infiniteRepeatable(
+                    animation = tween(1000, easing = EaseInOut),
+                    repeatMode = RepeatMode.Reverse
+                )
+            } else {
+                AnimationSystem.SmoothSpring
+            },
+            label = "status_scale"
+        )
+        
+        Box(
+            modifier = modifier
+                .size(12.dp)
+                .scale(scale)
+                .graphicsLayer { alpha = pulseAlpha }
+                .background(color, CircleShape)
+        )
+    }
+    
+    /**
+     * Sample assignment visual feedback
+     */
+    @Composable
+    fun SampleAssignmentFeedback(
+        isAssigning: Boolean,
+        isSuccess: Boolean,
+        padIndex: Int?,
+        modifier: Modifier = Modifier,
+        onAnimationComplete: () -> Unit = {}
+    ) {
+        LaunchedEffect(isSuccess) {
+            if (isSuccess) {
+                delay(1500)
+                onAnimationComplete()
+            }
+        }
+        
+        AnimatedVisibility(
+            visible = isAssigning || isSuccess,
+            enter = scaleIn(
+                animationSpec = AnimationSystem.BounceSpring,
+                initialScale = 0.5f
+            ) + fadeIn(
+                animationSpec = tween(AnimationSystem.FAST_ANIMATION)
+            ),
+            exit = scaleOut(
+                animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION),
+                targetScale = 1.2f
+            ) + fadeOut(
+                animationSpec = tween(AnimationSystem.MEDIUM_ANIMATION)
+            ),
+            modifier = modifier
+        ) {
+            Card(
+                modifier = Modifier.padding(8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSuccess) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (isAssigning && !isSuccess) {
+                        LoadingStates.SpinningLoadingIndicator(
+                            size = 16.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else if (isSuccess) {
+                        Text(
+                            text = "✓",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    Text(
+                        text = when {
+                            isSuccess && padIndex != null -> "Assigned to Pad ${padIndex + 1}"
+                            isAssigning -> "Assigning sample..."
+                            else -> "Ready to assign"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isSuccess) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Recording level meter with enhanced visual feedback
+     */
+    @Composable
+    fun EnhancedRecordingLevelMeter(
+        peakLevel: Float,
+        averageLevel: Float,
+        isRecording: Boolean,
+        modifier: Modifier = Modifier
+    ) {
+        val animatedPeak by animateFloatAsState(
+            targetValue = peakLevel.coerceIn(0f, 1f),
+            animationSpec = tween(
+                durationMillis = 50,
+                easing = LinearEasing
+            ),
+            label = "peak_level"
+        )
+        
+        val animatedAverage by animateFloatAsState(
+            targetValue = averageLevel.coerceIn(0f, 1f),
+            animationSpec = tween(
+                durationMillis = 100,
+                easing = LinearEasing
+            ),
+            label = "average_level"
+        )
+        
+        val glowIntensity by animateFloatAsState(
+            targetValue = if (isRecording && peakLevel > 0.8f) 1f else 0f,
+            animationSpec = tween(AnimationSystem.FAST_ANIMATION),
+            label = "glow_intensity"
+        )
+        
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            // Average level background
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(animatedAverage)
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                        RoundedCornerShape(4.dp)
+                    )
+            )
+            
+            // Peak level foreground
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(animatedPeak)
+                    .background(
+                        when {
+                            animatedPeak > 0.9f -> MaterialTheme.colorScheme.error
+                            animatedPeak > 0.7f -> Color(0xFFFF9800)
+                            else -> MaterialTheme.colorScheme.primary
+                        },
+                        RoundedCornerShape(4.dp)
+                    )
+                    .graphicsLayer {
+                        if (glowIntensity > 0f) {
+                            shadowElevation = (glowIntensity * 4).dp.toPx()
+                        }
+                    }
+            )
+            
+            // Clipping indicator
+            if (animatedPeak > 0.95f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            MaterialTheme.colorScheme.error.copy(alpha = 0.3f),
+                            RoundedCornerShape(4.dp)
+                        )
+                )
+            }
+        }
+    }
 }
 
 /**
