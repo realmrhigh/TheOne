@@ -258,6 +258,9 @@ class CompactMainViewModel @Inject constructor(
         
         // Initialize error handling systems
         initializeErrorHandling()
+
+        // Mark UI as ready — all synchronous init is complete
+        _compactUIState.value = _compactUIState.value.copy(isInitialized = true)
     }
     
     override fun onCleared() {

@@ -365,47 +365,85 @@ void AudioEngine::processMetronome(float* outputBuffer, int32_t numFrames, int32
 
 // 🎹 MASTER PROCESSING & LIMITING
 void AudioEngine::applyMasterProcessing(float* outputBuffer, int32_t numFrames, int32_t channelCount, float masterVolume) {
+    float peakL = 0.0f;
+    float peakR = 0.0f;
+
     for (int32_t frame = 0; frame < numFrames; ++frame) {
         for (int32_t channel = 0; channel < channelCount; ++channel) {
             int32_t index = frame * channelCount + channel;
-            
+
             // Apply master volume
             outputBuffer[index] *= masterVolume;
-            
+
             // Soft limiting to prevent clipping
             if (outputBuffer[index] > 0.95f) {
                 outputBuffer[index] = 0.95f;
             } else if (outputBuffer[index] < -0.95f) {
-                outputBuffer[index] = -0.95f;            }
+                outputBuffer[index] = -0.95f;
+            }
+
+            // Track peaks per channel
+            float absVal = std::abs(outputBuffer[index]);
+            if (channelCount == 2) {
+                if (channel == 0 && absVal > peakL) peakL = absVal;
+                if (channel == 1 && absVal > peakR) peakR = absVal;
+            } else {
+                if (absVal > peakL) peakL = absVal;
+                peakR = peakL;
+            }
         }
     }
+
+    // Decay existing peaks and update with new block peak (simple peak-hold with decay)
+    const float kDecay = 0.95f;
+    float prevL = outputPeakL_.load();
+    float prevR = outputPeakR_.load();
+    outputPeakL_.store(peakL > prevL * kDecay ? peakL : prevL * kDecay);
+    outputPeakR_.store(peakR > prevR * kDecay ? peakR : prevR * kDecay);
 }
 
 void AudioEngine::setSampleEnvelope(const std::string& sampleId, const EnvelopeSettingsCpp& envelope) {
-    // TODO: Implement envelope assignment logic
+    std::lock_guard<std::mutex> lock(sampleMutex_);
+    auto it = sampleMap_.find(sampleId);
+    if (it == sampleMap_.end()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME,
+            "setSampleEnvelope: sample not found: %s", sampleId.c_str());
+        return;
+    }
+    it->second->defaultEnvelope  = envelope;
+    it->second->hasCustomEnvelope = true;
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME,
+        "setSampleEnvelope: %s — atk=%.1fms dec=%.1fms sus=%.2f rel=%.1fms",
+        sampleId.c_str(), envelope.attackMs, envelope.decayMs,
+        envelope.sustainLevel, envelope.releaseMs);
 }
 
 // 🔥 EPIC SAMPLE TRIGGERING IMPLEMENTATION
 void AudioEngine::triggerSample(const std::string& sampleKey, float volume, float pan) {
     std::lock_guard<std::mutex> sampleLock(sampleMutex_);
-    
-    // Check if sample exists
+
     auto it = sampleMap_.find(sampleKey);
     if (it == sampleMap_.end()) {
         __android_log_print(ANDROID_LOG_WARN, APP_NAME, "triggerSample: Sample not found: %s", sampleKey.c_str());
         return;
     }
-    
-    // Create new active sound
+
     ActiveSound newSound(sampleKey, volume, pan);
-    
-    // Add to active sounds
+
+    // Apply custom envelope if one has been set for this sample
+    if (it->second->hasCustomEnvelope) {
+        uint32_t sr = audioStreamSampleRate_.load();
+        if (sr == 0) sr = 44100;
+        newSound.envelope.configure(it->second->defaultEnvelope, static_cast<float>(sr), 1.0f);
+        newSound.envelope.triggerOn(1.0f);
+    }
+
     {
         std::lock_guard<std::mutex> activeLock(activeSoundsMutex_);
         activeSounds_.emplace_back(std::move(newSound));
     }
-    
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🎵 Sample triggered: %s (vol: %.2f, pan: %.2f)", 
+
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "🎵 Sample triggered: %s (vol: %.2f, pan: %.2f)",
                        sampleKey.c_str(), volume, pan);
 }
 
@@ -521,7 +559,18 @@ void AudioEngine::loadTestSample(const std::string& sampleKey) {
 }
 
 void AudioEngine::setSampleLFO(const std::string& sampleId, const LfoSettingsCpp& lfo) {
-    // TODO: Implement LFO assignment logic
+    std::lock_guard<std::mutex> lock(sampleMutex_);
+    auto it = sampleMap_.find(sampleId);
+    if (it == sampleMap_.end()) {
+        __android_log_print(ANDROID_LOG_WARN, APP_NAME,
+            "setSampleLFO: sample not found: %s", sampleId.c_str());
+        return;
+    }
+    it->second->defaultLfo  = lfo;
+    it->second->hasCustomLfo = true;
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME,
+        "setSampleLFO: %s — rate=%.2fHz depth=%.2f enabled=%d",
+        sampleId.c_str(), lfo.rateHz, lfo.depth, lfo.isEnabled);
 }
 
 // 🎯 CONVENIENCE FUNCTIONS FOR TESTING

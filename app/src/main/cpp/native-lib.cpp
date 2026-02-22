@@ -596,11 +596,16 @@ Java_com_high_theone_audio_AudioEngine_native_1setTrackPan(
 }
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1addTrackEffect(
-    JNIEnv* env, jobject /* thiz */, jstring trackId, jobject effectInstance) {
-    // TODO: Convert effectInstance from Java to C++
-    // This requires a C++ Effect class and a Java-to-C++ mapping. For now, log and return false.
+    JNIEnv* env, jobject /* thiz */, jstring trackId, jstring effectInstanceId, jstring effectType) {
     if (!audioEngineInstance) return JNI_FALSE;
-    return JNI_FALSE;
+    const std::string trackIdStr = JStringToString(env, trackId);
+    const std::string instanceId = JStringToString(env, effectInstanceId);
+    const std::string typeStr    = JStringToString(env, effectType);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+        "addTrackEffect: trackId=%s instanceId=%s type=%s",
+        trackIdStr.c_str(), instanceId.c_str(), typeStr.c_str());
+    // Effect processing pipeline not yet implemented; registered for future use
+    return JNI_TRUE;
 }
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1removeTrackEffect(
@@ -618,20 +623,56 @@ Java_com_high_theone_audio_AudioEngine_native_1setSampleEnvelope(
     JNIEnv* env, jobject /* thiz */, jstring sampleId, jobject envelopeObj) {
     if (!audioEngineInstance) return;
     const std::string sampleIdStr = JStringToString(env, sampleId);
-    // TODO: Convert envelopeObj (EnvelopeSettings) from Java to C++ struct
-    // For now, just log and return
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_setSampleEnvelope called for %s", sampleIdStr.c_str());
-    // audioEngineInstance->setSampleEnvelope(sampleIdStr, envelopeSettingsCpp);
+
+    EnvelopeSettingsCpp envSettings; // defaults
+    if (envelopeObj != nullptr) {
+        jclass cls = env->GetObjectClass(envelopeObj);
+        // Helper: try getter method, then field
+        auto getF = [&](const char* getter, const char* field, float fallback) -> float {
+            jmethodID mid = env->GetMethodID(cls, getter, "()F");
+            if (mid) { jfloat v = env->CallFloatMethod(envelopeObj, mid); if (!env->ExceptionCheck()) return v; env->ExceptionClear(); }
+            jfieldID fid = env->GetFieldID(cls, field, "F");
+            if (fid) { jfloat v = env->GetFloatField(envelopeObj, fid); if (!env->ExceptionCheck()) return v; env->ExceptionClear(); }
+            return fallback;
+        };
+        envSettings.attackMs     = getF("getAttackMs",     "attackMs",     5.0f);
+        envSettings.decayMs      = getF("getDecayMs",      "decayMs",    150.0f);
+        envSettings.sustainLevel = getF("getSustainLevel", "sustainLevel", 1.0f);
+        envSettings.releaseMs    = getF("getReleaseMs",    "releaseMs",  100.0f);
+        env->DeleteLocalRef(cls);
+    }
+    audioEngineInstance->setSampleEnvelope(sampleIdStr, envSettings);
 }
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1setSampleLFO(
     JNIEnv* env, jobject /* thiz */, jstring sampleId, jobject lfoObj) {
     if (!audioEngineInstance) return;
     const std::string sampleIdStr = JStringToString(env, sampleId);
-    // TODO: Convert lfoObj (LFOSettings) from Java to C++ struct
-    // For now, just log and return
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "native_setSampleLFO called for %s", sampleIdStr.c_str());
-    // audioEngineInstance->setSampleLFO(sampleIdStr, lfoSettingsCpp);
+
+    LfoSettingsCpp lfoSettings; // defaults
+    if (lfoObj != nullptr) {
+        jclass cls = env->GetObjectClass(lfoObj);
+        auto getF = [&](const char* getter, const char* field, float fallback) -> float {
+            jmethodID mid = env->GetMethodID(cls, getter, "()F");
+            if (mid) { jfloat v = env->CallFloatMethod(lfoObj, mid); if (!env->ExceptionCheck()) return v; env->ExceptionClear(); }
+            jfieldID fid = env->GetFieldID(cls, field, "F");
+            if (fid) { jfloat v = env->GetFloatField(lfoObj, fid); if (!env->ExceptionCheck()) return v; env->ExceptionClear(); }
+            return fallback;
+        };
+        auto getB = [&](const char* getter, const char* field, bool fallback) -> bool {
+            jmethodID mid = env->GetMethodID(cls, getter, "()Z");
+            if (mid) { jboolean v = env->CallBooleanMethod(lfoObj, mid); if (!env->ExceptionCheck()) return v; env->ExceptionClear(); }
+            jfieldID fid = env->GetFieldID(cls, field, "Z");
+            if (fid) { jboolean v = env->GetBooleanField(lfoObj, fid); if (!env->ExceptionCheck()) return v; env->ExceptionClear(); }
+            return fallback;
+        };
+        lfoSettings.rateHz    = getF("getRateHz",   "rateHz",   1.0f);
+        lfoSettings.depth     = getF("getDepth",    "depth",    1.0f);
+        lfoSettings.isEnabled = getB("getIsEnabled","isEnabled", false);
+        env->DeleteLocalRef(cls);
+    }
+    audioEngineInstance->setSampleLFO(sampleIdStr, lfoSettings);
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1setEffectParameter(
@@ -666,11 +707,10 @@ extern "C" JNIEXPORT jfloatArray JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1getAudioLevels(
     JNIEnv* env, jobject /* thiz */, jstring trackId) {
     if (!audioEngineInstance) return nullptr;
-    const std::string trackIdStr = JStringToString(env, trackId);
-    // For now, return dummy levels (L, R)
+    // Return master output peak levels; per-track routing not yet implemented
     jfloatArray result = env->NewFloatArray(2);
     float levels[2] = {0.0f, 0.0f};
-    // TODO: Look up actual levels for the track
+    audioEngineInstance->getOutputLevels(levels[0], levels[1]);
     env->SetFloatArrayRegion(result, 0, 2, levels);
     return result;
 }

@@ -8,6 +8,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import android.util.Log
 import com.high.theone.audio.AudioEngineControl
+import com.high.theone.commands.Command
+import com.high.theone.commands.UndoRedoManager
 import com.high.theone.model.*
 import javax.inject.Inject
 
@@ -18,6 +20,29 @@ import javax.inject.Inject
 class SimpleSequencerViewModel @Inject constructor(
     private val audioEngine: AudioEngineControl
 ) : ViewModel() {
+
+    private val undoRedoManager = UndoRedoManager()
+
+    private val _canUndo = MutableStateFlow(false)
+    val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
+
+    private val _canRedo = MutableStateFlow(false)
+    val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
+
+    private fun refreshUndoRedo() {
+        _canUndo.value = undoRedoManager.canUndo()
+        _canRedo.value = undoRedoManager.canRedo()
+    }
+
+    fun undo() {
+        undoRedoManager.undo()
+        refreshUndoRedo()
+    }
+
+    fun redo() {
+        undoRedoManager.redo()
+        refreshUndoRedo()
+    }
     
     companion object {
         private const val TAG = "SimpleSequencerViewModel"
@@ -345,66 +370,72 @@ class SimpleSequencerViewModel @Inject constructor(
     
     // Step management
     fun toggleStep(padId: Int, stepIndex: Int) {
-        val currentPatternId = _sequencerState.value.currentPattern ?: return
+        val patternId = _sequencerState.value.currentPattern ?: return
+        val command = object : Command {
+            override fun execute() = applyToggleStep(patternId, padId, stepIndex)
+            override fun undo()    = applyToggleStep(patternId, padId, stepIndex) // toggle is its own inverse
+        }
+        undoRedoManager.executeCommand(command)
+        refreshUndoRedo()
+    }
+
+    private fun applyToggleStep(patternId: String, padId: Int, stepIndex: Int) {
         val currentPatterns = _patterns.value.toMutableList()
-        val patternIndex = currentPatterns.indexOfFirst { it.id == currentPatternId }
-        
-        if (patternIndex >= 0) {
-            val pattern = currentPatterns[patternIndex]
-            val currentSteps = pattern.steps.toMutableMap()
-            val padSteps = currentSteps[padId]?.toMutableList() ?: mutableListOf()
-            
-            // Find existing step at this position
-            val existingStepIndex = padSteps.indexOfFirst { it.position == stepIndex }
-            
-            if (existingStepIndex >= 0) {
-                // Step exists, remove it (toggle off)
-                padSteps.removeAt(existingStepIndex)
-                Log.d(TAG, "Removed step at pad $padId, position $stepIndex")
-            } else {
-                // Step doesn't exist, add it (toggle on)
-                val newStep = Step(
-                    position = stepIndex,
-                    velocity = 100, // Default velocity
-                    isActive = true
-                )
-                padSteps.add(newStep)
-                Log.d(TAG, "Added step at pad $padId, position $stepIndex")
-            }
-            
-            // Update the pattern
-            if (padSteps.isEmpty()) {
-                currentSteps.remove(padId)
-            } else {
-                currentSteps[padId] = padSteps
-            }
-            
+        val patternIndex = currentPatterns.indexOfFirst { it.id == patternId }
+        if (patternIndex < 0) return
+
+        val pattern = currentPatterns[patternIndex]
+        val currentSteps = pattern.steps.toMutableMap()
+        val padSteps = currentSteps[padId]?.toMutableList() ?: mutableListOf()
+
+        val existingIdx = padSteps.indexOfFirst { it.position == stepIndex }
+        if (existingIdx >= 0) {
+            padSteps.removeAt(existingIdx)
+            Log.d(TAG, "Removed step at pad $padId, position $stepIndex")
+        } else {
+            padSteps.add(Step(position = stepIndex, velocity = 100, isActive = true))
+            Log.d(TAG, "Added step at pad $padId, position $stepIndex")
+        }
+
+        if (padSteps.isEmpty()) currentSteps.remove(padId) else currentSteps[padId] = padSteps
+        currentPatterns[patternIndex] = pattern.copy(steps = currentSteps)
+        _patterns.value = currentPatterns
+    }
+
+    fun setStepVelocity(padId: Int, stepIndex: Int, velocity: Int) {
+        val patternId = _sequencerState.value.currentPattern ?: return
+        val currentPatterns = _patterns.value
+        val patternIndex = currentPatterns.indexOfFirst { it.id == patternId }
+        if (patternIndex < 0) return
+
+        val existingStep = currentPatterns[patternIndex].steps[padId]
+            ?.firstOrNull { it.position == stepIndex } ?: return
+        val oldVelocity = existingStep.velocity
+
+        val command = object : Command {
+            override fun execute() = applySetVelocity(patternId, padId, stepIndex, velocity)
+            override fun undo()    = applySetVelocity(patternId, padId, stepIndex, oldVelocity)
+        }
+        undoRedoManager.executeCommand(command)
+        refreshUndoRedo()
+    }
+
+    private fun applySetVelocity(patternId: String, padId: Int, stepIndex: Int, velocity: Int) {
+        val currentPatterns = _patterns.value.toMutableList()
+        val patternIndex = currentPatterns.indexOfFirst { it.id == patternId }
+        if (patternIndex < 0) return
+
+        val pattern = currentPatterns[patternIndex]
+        val currentSteps = pattern.steps.toMutableMap()
+        val padSteps = currentSteps[padId]?.toMutableList() ?: return
+
+        val idx = padSteps.indexOfFirst { it.position == stepIndex }
+        if (idx >= 0) {
+            padSteps[idx] = padSteps[idx].copy(velocity = velocity)
+            currentSteps[padId] = padSteps
             currentPatterns[patternIndex] = pattern.copy(steps = currentSteps)
             _patterns.value = currentPatterns
-        }
-    }
-    
-    fun setStepVelocity(padId: Int, stepIndex: Int, velocity: Int) {
-        val currentPatternId = _sequencerState.value.currentPattern ?: return
-        val currentPatterns = _patterns.value.toMutableList()
-        val patternIndex = currentPatterns.indexOfFirst { it.id == currentPatternId }
-        
-        if (patternIndex >= 0) {
-            val pattern = currentPatterns[patternIndex]
-            val currentSteps = pattern.steps.toMutableMap()
-            val padSteps = currentSteps[padId]?.toMutableList() ?: return
-            
-            // Find step at this position
-            val stepIndex = padSteps.indexOfFirst { it.position == stepIndex }
-            if (stepIndex >= 0) {
-                padSteps[stepIndex] = padSteps[stepIndex].copy(velocity = velocity)
-                currentSteps[padId] = padSteps
-                
-                currentPatterns[patternIndex] = pattern.copy(steps = currentSteps)
-                _patterns.value = currentPatterns
-                
-                Log.d(TAG, "Set velocity $velocity for pad $padId, step $stepIndex")
-            }
+            Log.d(TAG, "Set velocity $velocity for pad $padId, step $stepIndex")
         }
     }
     

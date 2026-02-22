@@ -451,7 +451,7 @@ class AudioEngineImpl @Inject constructor(
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Adding track effect: $trackId, effect=${effectInstance.type}")
-                val result = native_addTrackEffect(trackId, effectInstance.type, effectInstance.type)
+                val result = native_addTrackEffect(trackId, effectInstance.id, effectInstance.type)
                 Log.d(TAG, "Add track effect result: $result")
                 result
             } catch (e: Exception) {

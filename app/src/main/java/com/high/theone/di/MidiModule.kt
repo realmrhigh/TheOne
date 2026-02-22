@@ -46,10 +46,21 @@ abstract class MidiModule {
         @Provides
         @Singleton
         fun provideMidiManager(
-            @ApplicationContext context: Context
-        ): MidiManager {
-            return MidiManager(context)
-        }
+            @ApplicationContext context: Context,
+            deviceManager: MidiDeviceManager,
+            inputProcessor: MidiInputProcessor,
+            outputGenerator: MidiOutputGenerator,
+            mappingEngine: MidiMappingEngine,
+            learnManager: MidiLearnManager,
+            audioEngineAdapter: MidiAudioEngineControl,
+            sequencerAdapter: MidiSequencerAdapter,
+            configurationRepository: MidiConfigurationRepository,
+            mappingRepository: MidiMappingRepository
+        ): MidiManager = MidiManager(
+            context, deviceManager, inputProcessor, outputGenerator,
+            mappingEngine, learnManager, audioEngineAdapter, sequencerAdapter,
+            configurationRepository, mappingRepository
+        )
 
         /**
          * Provides MIDI device scanner for device discovery
