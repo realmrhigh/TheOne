@@ -68,13 +68,15 @@ struct SampleDataCpp {
 // 🔥 ACTIVE SOUND FOR PLAYBACK
 struct ActiveSound {
     std::string sampleKey;           // Which sample to play
+    std::string noteInstanceId;      // Unique instance ID for stopNote() lookups
+    std::string trackId;             // Track this sound belongs to
     float currentSampleIndex;        // Current playback position (float for pitch shifting)
     float playbackSpeed;             // Speed multiplier (1.0 = normal, 2.0 = double speed)
     float volume;                    // Volume multiplier
     float pan;                       // Pan position (-1.0 = left, 1.0 = right, 0.0 = center)
     EnvelopeGenerator envelope;      // Amplitude envelope
     bool isActive;                   // Whether this sound is still playing
-    
+
     ActiveSound(const std::string& key, float vol = 1.0f, float panPos = 0.0f)
         : sampleKey(key), currentSampleIndex(0.0f), playbackSpeed(1.0f),
           volume(vol), pan(panPos), isActive(true) {

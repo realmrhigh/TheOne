@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.high.theone.model.*
 import com.high.theone.model.PerformanceMode
 import com.high.theone.features.sampling.PerformanceMonitor
-import com.high.theone.features.sampling.SamplingViewModel
 import com.high.theone.features.compactui.performance.RecordingPerformanceMonitor
 import com.high.theone.features.compactui.performance.RecordingMemoryManager
 import com.high.theone.features.compactui.performance.RecordingFrameRateMonitor
@@ -14,12 +13,6 @@ import com.high.theone.features.compactui.performance.RecordingPerformanceState
 import com.high.theone.features.compactui.performance.PerformanceWarning
 import com.high.theone.features.compactui.performance.OptimizationSuggestion
 import com.high.theone.features.compactui.performance.OptimizationSuggestionType
-import com.high.theone.features.drumtrack.DrumTrackViewModel
-import com.high.theone.features.sequencer.SimpleSequencerViewModel
-import com.high.theone.features.midi.ui.MidiSettingsViewModel
-import com.high.theone.features.midi.ui.MidiMappingViewModel
-import com.high.theone.features.midi.ui.MidiMonitorViewModel
-import com.high.theone.features.sequencer.TransportControlAction
 import com.high.theone.midi.model.MidiTargetType
 import com.high.theone.features.compactui.error.ErrorHandlingSystem
 import com.high.theone.features.compactui.error.PermissionManager
@@ -142,53 +135,25 @@ class CompactMainViewModel @Inject constructor(
             initialValue = emptyMap()
         )
     
-    // Drum pad state from DrumTrackViewModel
-    val drumPadState: StateFlow<DrumPadState> = combine(
-        drumTrackViewModel.padSettingsMap,
-        drumTrackViewModel.isPlaying,
-        drumTrackViewModel.isRecording,
-        drumTrackViewModel.activePadId
-    ) { padSettings, isPlaying, isRecording, activePadId ->
-        DrumPadState(
-            padSettings = padSettings,
-            isPlaying = isPlaying,
-            isRecording = isRecording,
-            activePadId = activePadId
-        )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = DrumPadState()
-    )
-    
-    // Sequencer state from SimpleSequencerViewModel
-    val sequencerState: StateFlow<SequencerState> = sequencerViewModel.sequencerState
-    
-    // MIDI state from MIDI ViewModels
-    val midiState: StateFlow<MidiState> = combine(
-        midiSettingsViewModel.uiState,
-        midiMappingViewModel.uiState,
-        midiMonitorViewModel.uiState
-    ) { settingsState, mappingState, monitorState ->
-        MidiState(
-            isEnabled = settingsState.midiEnabled,
-            connectedDevices = midiSettingsViewModel.connectedDevices.value.size,
-            activeMappings = mappingState.activeMappings.size,
-            isMonitoring = monitorState.isMonitoring,
-            statistics = monitorState.statistics
-        )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = MidiState()
-    )
-    
-    // Recording state from SamplingViewModel with pad assignment integration
+    // Drum pad state - updated externally by composables via their own DrumTrackViewModel
+    private val _drumPadState = MutableStateFlow(DrumPadState())
+    val drumPadState: StateFlow<DrumPadState> = _drumPadState.asStateFlow()
+
+    // Sequencer state - updated externally by composables via their own SimpleSequencerViewModel
+    private val _sequencerState = MutableStateFlow(SequencerState())
+    val sequencerState: StateFlow<SequencerState> = _sequencerState.asStateFlow()
+
+    // MIDI state - updated externally by composables via their own MIDI ViewModels
+    private val _midiState = MutableStateFlow(MidiState())
+    val midiState: StateFlow<MidiState> = _midiState.asStateFlow()
+
+    // Recording state with pad assignment integration
     private val _lastRecordedSampleId = MutableStateFlow<String?>(null)
     private val _isAssignmentMode = MutableStateFlow(false)
-    
-    // Expose sampling state for use in functions
-    val samplingState: StateFlow<com.high.theone.model.SamplingUiState> = samplingViewModel.uiState
+
+    // Sampling state - updated externally by composables via their own SamplingViewModel
+    private val _samplingState = MutableStateFlow(com.high.theone.model.SamplingUiState())
+    val samplingState: StateFlow<com.high.theone.model.SamplingUiState> = _samplingState.asStateFlow()
     
     val recordingState: StateFlow<IntegratedRecordingState> = MutableStateFlow(IntegratedRecordingState()).asStateFlow()
     
@@ -243,39 +208,10 @@ class CompactMainViewModel @Inject constructor(
         // Initialize panel states
         initializePanelStates()
         
-        // Mark as initialized after initial setup
-    // Storage management state flows
-    val storageInfo: StateFlow<StorageInfo> = storageManager.storageInfo
-    val cleanupProgress: StateFlow<Float> = storageManager.cleanupProgress
-    val isCleaningUp: StateFlow<Boolean> = storageManager.isCleaningUp
-    
-    // Recording performance monitoring state flows
-    val recordingPerformanceState: StateFlow<RecordingPerformanceState> = recordingPerformanceMonitor.recordingPerformanceState
-    val performanceWarnings: StateFlow<List<PerformanceWarning>> = recordingPerformanceMonitor.performanceWarnings
-    val optimizationSuggestions: StateFlow<List<OptimizationSuggestion>> = recordingPerformanceMonitor.optimizationSuggestions
-    val recordingMemoryState = recordingMemoryManager.memoryState
-    val frameRateState = recordingFrameRateMonitor.frameRateState
-    val frameRateOptimizationTriggers = recordingFrameRateMonitor.optimizationTriggers
-        
         // Monitor performance mode changes
         viewModelScope.launch {
             performanceMonitor.performanceMode.collect { mode ->
                 handlePerformanceModeChange(mode)
-            }
-        }
-        
-        // Sync transport state with sequencer state
-        viewModelScope.launch {
-            sequencerViewModel.sequencerState.collect { sequencerState ->
-                val currentTransport = _transportState.value
-                if (currentTransport.isPlaying != sequencerState.isPlaying ||
-                    currentTransport.isRecording != sequencerState.isRecording) {
-                    _transportState.value = currentTransport.copy(
-                        isPlaying = sequencerState.isPlaying,
-                        isRecording = sequencerState.isRecording,
-                        currentPosition = sequencerState.currentStep.toLong()
-                    )
-                }
             }
         }
         
@@ -303,12 +239,8 @@ class CompactMainViewModel @Inject constructor(
             }
         }
         
-        // Handle recording lifecycle events
-        viewModelScope.launch {
-            samplingViewModel.uiState.collect { samplingState ->
-                handleRecordingLifecycleEvents(samplingState)
-            }
-        }
+        // Recording lifecycle events are handled externally by composables
+        // which call updateSamplingState() when their SamplingViewModel state changes
         
         // Monitor recording performance and apply automatic optimizations
         // viewModelScope.launch {
@@ -359,12 +291,7 @@ class CompactMainViewModel @Inject constructor(
         // Update local transport state
         _transportState.value = current.copy(isPlaying = newPlayingState)
         
-        // Delegate to sequencer
-        if (newPlayingState) {
-            sequencerViewModel.handleTransportAction(TransportControlAction.Play)
-        } else {
-            sequencerViewModel.handleTransportAction(TransportControlAction.Pause)
-        }
+        // Composables delegate directly to their own SimpleSequencerViewModel
         
         // Record performance metrics
         recordFrameTime()
@@ -377,13 +304,10 @@ class CompactMainViewModel @Inject constructor(
             currentPosition = 0
         )
         
-        // Delegate to sequencer
-        sequencerViewModel.handleTransportAction(TransportControlAction.Stop)
-        
-        // Record performance metrics
+        // Composables delegate directly to their own SimpleSequencerViewModel
         recordFrameTime()
     }
-    
+
     fun onRecord() {
         val current = _transportState.value
         val newRecordingState = !current.isRecording
@@ -391,13 +315,10 @@ class CompactMainViewModel @Inject constructor(
         // Update local transport state
         _transportState.value = current.copy(isRecording = newRecordingState)
         
-        // Delegate to sequencer
-        sequencerViewModel.handleTransportAction(TransportControlAction.ToggleRecord)
-        
-        // Record performance metrics
+        // Composables delegate directly to their own SimpleSequencerViewModel
         recordFrameTime()
     }
-    
+
     fun onBpmChange(newBpm: Int) {
         if (newBpm in 60..200) {
             // Save to preferences
@@ -405,8 +326,7 @@ class CompactMainViewModel @Inject constructor(
                 preferenceManager.saveBpm(newBpm)
             }
             
-            // Delegate to sequencer
-            sequencerViewModel.handleTransportAction(TransportControlAction.SetTempo(newBpm.toFloat()))
+            // Composables delegate directly to their own SimpleSequencerViewModel
             
             // Record performance metrics
             recordFrameTime()
@@ -575,12 +495,12 @@ class CompactMainViewModel @Inject constructor(
      * Drum pad actions - delegates to DrumTrackViewModel
      */
     fun onPadTriggered(padId: String) {
-        drumTrackViewModel.onPadTriggered(padId)
+        // Composables call their own DrumTrackViewModel directly
         recordFrameTime()
     }
-    
+
     fun updatePadSettings(padSettings: com.high.theone.features.drumtrack.model.PadSettings) {
-        drumTrackViewModel.updatePadSettings(padSettings)
+        // Composables call their own DrumTrackViewModel directly
         recordFrameTime()
     }
     
@@ -588,27 +508,27 @@ class CompactMainViewModel @Inject constructor(
      * Sequencer actions - delegates to SimpleSequencerViewModel
      */
     fun toggleStep(padId: Int, stepIndex: Int) {
-        sequencerViewModel.toggleStep(padId, stepIndex)
+        // Composables call their own SimpleSequencerViewModel directly
         recordFrameTime()
     }
-    
+
     fun setStepVelocity(padId: Int, stepIndex: Int, velocity: Int) {
-        sequencerViewModel.setStepVelocity(padId, stepIndex, velocity)
+        // Composables call their own SimpleSequencerViewModel directly
         recordFrameTime()
     }
-    
+
     fun selectPattern(patternId: String) {
-        sequencerViewModel.selectPattern(patternId)
+        // Composables call their own SimpleSequencerViewModel directly
         recordFrameTime()
     }
-    
+
     fun togglePadMute(padId: Int) {
-        sequencerViewModel.togglePadMute(padId)
+        // Composables call their own SimpleSequencerViewModel directly
         recordFrameTime()
     }
-    
+
     fun togglePadSolo(padId: Int) {
-        sequencerViewModel.togglePadSolo(padId)
+        // Composables call their own SimpleSequencerViewModel directly
         recordFrameTime()
     }
     
@@ -616,27 +536,27 @@ class CompactMainViewModel @Inject constructor(
      * MIDI actions - delegates to MIDI ViewModels
      */
     fun connectMidiDevice(deviceId: String) {
-        midiSettingsViewModel.connectDevice(deviceId)
+        // Composables call their own MidiSettingsViewModel directly
         recordFrameTime()
     }
-    
+
     fun disconnectMidiDevice(deviceId: String) {
-        midiSettingsViewModel.disconnectDevice(deviceId)
+        // Composables call their own MidiSettingsViewModel directly
         recordFrameTime()
     }
-    
+
     fun startMidiLearn(targetType: MidiTargetType, targetId: String) {
-        midiMappingViewModel.onStartMidiLearn(targetType, targetId)
+        // Composables call their own MidiMappingViewModel directly
         recordFrameTime()
     }
-    
+
     fun stopMidiLearn() {
-        midiMappingViewModel.onStopMidiLearn()
+        // Composables call their own MidiMappingViewModel directly
         recordFrameTime()
     }
-    
+
     fun toggleMidiMonitoring() {
-        midiMonitorViewModel.onToggleMonitoring()
+        // Composables call their own MidiMonitorViewModel directly
         recordFrameTime()
     }
     
@@ -675,18 +595,8 @@ class CompactMainViewModel @Inject constructor(
                     return@launch
                 }
                 
-                // All checks passed, start recording
-                samplingViewModel.startRecording()
+                // All checks passed - composable must call its own SamplingViewModel.startRecording()
                 recordFrameTime()
-                
-                // Keep panel visible for a moment to allow user to see completion
-                viewModelScope.launch {
-                    kotlinx.coroutines.delay(1500) // 1.5 seconds
-                    val currentSamplingState = samplingViewModel.uiState.value
-                    if (!currentSamplingState.recordingState.isRecording && !_isAssignmentMode.value) {
-                        hideRecordingPanel()
-                    }
-                }
                 
             } catch (e: Exception) {
                 Log.e("CompactMainViewModel", "Error starting recording", e)
@@ -696,8 +606,8 @@ class CompactMainViewModel @Inject constructor(
     }
     
     fun stopRecording() {
-        samplingViewModel.stopRecording()
-        
+        // Composables call their own SamplingViewModel.stopRecording() directly
+
         // Stop recording performance monitoring
         recordingPerformanceMonitor.stopRecordingMonitoring()
         recordingFrameRateMonitor.stopRecordingFrameRateMonitoring()
@@ -722,9 +632,8 @@ class CompactMainViewModel @Inject constructor(
         val recordedSampleId = currentRecordingState.recordedSampleId
         
         if (recordedSampleId != null) {
-            // Delegate to SamplingViewModel for sample assignment
-            samplingViewModel.assignSampleToPad(padId.toInt(), recordedSampleId)
-            
+            // Composables call their own SamplingViewModel.assignSampleToPad() directly
+
             // Clear assignment mode and recorded sample ID
             _isAssignmentMode.value = false
             _lastRecordedSampleId.value = null
@@ -746,8 +655,7 @@ class CompactMainViewModel @Inject constructor(
     }
     
     fun discardRecording() {
-        // Clear any recording error and hide panel
-        samplingViewModel.clearError()
+        // Composables call their own SamplingViewModel.clearError() directly
         
         // Clear assignment mode and recorded sample ID
         _isAssignmentMode.value = false
@@ -764,7 +672,7 @@ class CompactMainViewModel @Inject constructor(
         performanceMonitor.recordFrameTime()
         
         // Also record in recording-specific monitors if recording is active
-        if (samplingViewModel.uiState.value.recordingState.isRecording) {
+        if (_samplingState.value.recordingState.isRecording) {
             recordingPerformanceMonitor.recordRecordingFrameTime(16.67f) // Assume 60fps target
             recordingFrameRateMonitor.recordFrameEnd()
         }
@@ -1090,7 +998,7 @@ class CompactMainViewModel @Inject constructor(
                             
                             // Clear the error and try recording again
                             errorHandlingSystem.clearError()
-                            samplingViewModel.clearError()
+                            // Composables call their own SamplingViewModel.clearError() directly
                             
                             // Check prerequisites before retry
                             if (permissionManager.checkMicrophonePermission() == PermissionState.GRANTED &&
@@ -1104,7 +1012,7 @@ class CompactMainViewModel @Inject constructor(
                         val success = audioEngineRecovery.recoverAudioEngine()
                         if (success) {
                             errorHandlingSystem.clearError()
-                            samplingViewModel.clearError()
+                            // Composables call their own SamplingViewModel.clearError() directly
                         }
                     }
                     
@@ -1112,7 +1020,7 @@ class CompactMainViewModel @Inject constructor(
                         val result = storageManager.cleanupStorage()
                         if (result.success) {
                             errorHandlingSystem.clearError()
-                            samplingViewModel.clearError()
+                            // Composables call their own SamplingViewModel.clearError() directly
                         }
                     }
                     
@@ -1120,7 +1028,7 @@ class CompactMainViewModel @Inject constructor(
                         // This would need to be implemented in the audio engine
                         // For now, just clear the error and suggest the user try again
                         errorHandlingSystem.clearError()
-                        samplingViewModel.clearError()
+                        // Composables call their own SamplingViewModel.clearError() directly
                     }
                 }
             } catch (e: Exception) {
@@ -1136,7 +1044,7 @@ class CompactMainViewModel @Inject constructor(
      */
     fun clearError() {
         errorHandlingSystem.clearError()
-        samplingViewModel.clearError()
+        // Composables call their own SamplingViewModel.clearError() directly
     }
     
     /**
@@ -1150,7 +1058,7 @@ class CompactMainViewModel @Inject constructor(
             val currentError = errorHandlingSystem.currentError.value
             if (currentError?.type == RecordingErrorType.PERMISSION_DENIED) {
                 errorHandlingSystem.clearError()
-                samplingViewModel.clearError()
+                // Composables call their own SamplingViewModel.clearError() directly
             }
         }
     }
@@ -1212,5 +1120,36 @@ class CompactMainViewModel @Inject constructor(
             storageManager.cleanupStorage()
         }
     }
-    
+
+    // -------------------------------------------------------------------------
+    // State sync methods — composables call these to push external ViewModel
+    // state into CompactMainViewModel so it can coordinate panel/layout logic.
+    // -------------------------------------------------------------------------
+
+    fun updateDrumPadState(state: DrumPadState) {
+        _drumPadState.value = state
+    }
+
+    fun updateSequencerState(state: SequencerState) {
+        _sequencerState.value = state
+        // Keep transport state in sync
+        val current = _transportState.value
+        if (current.isPlaying != state.isPlaying || current.isRecording != state.isRecording) {
+            _transportState.value = current.copy(
+                isPlaying = state.isPlaying,
+                isRecording = state.isRecording,
+                currentPosition = state.currentStep.toLong()
+            )
+        }
+    }
+
+    fun updateMidiState(state: MidiState) {
+        _midiState.value = state
+    }
+
+    fun updateSamplingState(state: com.high.theone.model.SamplingUiState) {
+        _samplingState.value = state
+        handleRecordingLifecycleEvents(state)
+    }
+
 }
