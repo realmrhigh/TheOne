@@ -3,7 +3,12 @@ cmake_minimum_required(VERSION 3.18.1)
 project(theone)
 
 # This command is all you need. It builds Oboe from the submodule.
-add_subdirectory(oboe)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/oboe/CMakeLists.txt")
+    # Build Oboe from the checked-in submodule
+    add_subdirectory(oboe)
+else()
+    message(FATAL_ERROR "Oboe submodule not found in ${CMAKE_CURRENT_SOURCE_DIR}/oboe.\nRun: git submodule update --init --recursive\nOr add the Oboe library into the 'oboe' directory.")
+endif()
 
 # DELETE THE FOLLOWING LINE:
 # find_package(Oboe REQUIRED CONFIG)

@@ -769,6 +769,19 @@ bool AudioEngine::loadSampleFromAsset(const std::string& sampleId, const std::st
     drwav wav;
     if (!drwav_init_memory(&wav, assetData.data(), assetSize, nullptr)) {
         __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Failed to initialize WAV from asset: %s", assetPath.c_str());
+
+        // Dump first bytes to help debugging invalid/corrupt assets (hex)
+        size_t dumpLen = assetSize < 64 ? assetSize : 64;
+        std::string hexDump;
+        hexDump.reserve(dumpLen * 3);
+        for (size_t i = 0; i < dumpLen; ++i) {
+            char buf[4];
+            snprintf(buf, sizeof(buf), "%02X", assetData[i]);
+            hexDump += buf;
+            if (i + 1 < dumpLen) hexDump += ' ';
+        }
+        __android_log_print(ANDROID_LOG_ERROR, APP_NAME, "Asset %s header (first %zu bytes): %s", assetPath.c_str(), dumpLen, hexDump.c_str());
+
         return false;
     }
 
