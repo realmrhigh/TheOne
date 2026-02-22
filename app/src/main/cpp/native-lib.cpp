@@ -624,7 +624,7 @@ Java_com_high_theone_audio_AudioEngine_native_1setSampleEnvelope(
     if (!audioEngineInstance) return;
     const std::string sampleIdStr = JStringToString(env, sampleId);
 
-    EnvelopeSettingsCpp envSettings; // defaults
+    theone::audio::EnvelopeSettingsCpp envSettings; // defaults
     if (envelopeObj != nullptr) {
         jclass cls = env->GetObjectClass(envelopeObj);
         // Helper: try getter method, then field
@@ -650,7 +650,7 @@ Java_com_high_theone_audio_AudioEngine_native_1setSampleLFO(
     if (!audioEngineInstance) return;
     const std::string sampleIdStr = JStringToString(env, sampleId);
 
-    LfoSettingsCpp lfoSettings; // defaults
+    theone::audio::LfoSettingsCpp lfoSettings; // defaults
     if (lfoObj != nullptr) {
         jclass cls = env->GetObjectClass(lfoObj);
         auto getF = [&](const char* getter, const char* field, float fallback) -> float {
