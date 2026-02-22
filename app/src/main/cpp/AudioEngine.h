@@ -97,10 +97,9 @@ public:
     void loadSequenceData(const SequenceCpp& sequence);
 
 
-    // --- JNI/Native-lib required stubs ---
-    // These are not implemented, but are required for JNI linkage.
-    void stopNote(const std::string& noteInstanceId, float releaseTimeMs) {}
-    void stopAllNotes(const std::string& trackId, bool immediate) {}
+    // --- JNI/Native-lib required functions ---
+    void stopNote(const std::string& noteInstanceId, float releaseTimeMs);
+    void stopAllNotes(const std::string& trackId, bool immediate);
     void setTrackVolume(const std::string& trackId, float volume) {}
     void setTrackPan(const std::string& trackId, float pan) {}
     bool removeTrackEffect(const std::string& trackId, const std::string& effectInstanceId) { return false; }

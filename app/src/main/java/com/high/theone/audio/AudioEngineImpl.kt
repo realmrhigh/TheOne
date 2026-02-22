@@ -498,9 +498,16 @@ class AudioEngineImpl @Inject constructor(
                 
                 if (result != null && result.size >= 4) {
                     val filePath = result[0] as? String ?: return@withContext null
-                    val durationMs = (result[1] as? Number)?.toLong() ?: 0L
-                    val sampleRate = (result[2] as? Number)?.toInt() ?: 44100
-                    val channels = (result[3] as? Number)?.toInt() ?: 1
+                    // C++ returns duration in seconds (as String); convert to milliseconds
+                    val durationMs = (result[1] as? Number)?.toLong()
+                        ?: (result[1] as? String)?.toDoubleOrNull()?.let { (it * 1000).toLong() }
+                        ?: 0L
+                    val sampleRate = (result[2] as? Number)?.toInt()
+                        ?: (result[2] as? String)?.toIntOrNull()
+                        ?: 44100
+                    val channels = (result[3] as? Number)?.toInt()
+                        ?: (result[3] as? String)?.toIntOrNull()
+                        ?: 1
                     
                     val metadata = SampleMetadata(
                         id = java.util.UUID.randomUUID(),

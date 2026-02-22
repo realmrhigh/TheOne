@@ -582,9 +582,7 @@ extern "C" JNIEXPORT jobject JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1stopAudioRecording(
     JNIEnv* env, jobject /* thiz */) {
     if (!audioEngineInstance) return nullptr;
-    // TODO: Convert C++ SampleMetadata to Java SampleMetadata object
-    // For now, return null or a simple string. Full implementation would require a JNI mapping.
-    return nullptr;
+    return audioEngineInstance->stopAudioRecording(env);
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_high_theone_audio_AudioEngine_native_1setTrackVolume(

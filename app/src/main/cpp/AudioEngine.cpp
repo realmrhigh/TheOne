@@ -779,10 +779,76 @@ bool AudioEngine::playPadSample(
     float velocity, float coarseTune, float fineTune, float pan, float volume,
     int playbackModeOrdinal, float ampEnvAttackMs, float ampEnvDecayMs,
     float ampEnvSustainLevel, float ampEnvReleaseMs) {
-    
-    __android_log_print(ANDROID_LOG_INFO, APP_NAME, "playPadSample called: %s", sampleId.c_str());
-    // TODO: Implement actual pad sample playback
+
+    // Verify sample is loaded
+    {
+        std::lock_guard<std::mutex> lock(sampleMutex_);
+        if (sampleMap_.find(sampleId) == sampleMap_.end()) {
+            __android_log_print(ANDROID_LOG_WARN, APP_NAME,
+                "playPadSample: sample not loaded: %s", sampleId.c_str());
+            return false;
+        }
+    }
+
+    // Clamp parameters
+    float vel = std::max(0.0f, std::min(1.0f, velocity));
+    float vol = std::max(0.0f, std::min(4.0f, volume));
+    float finalVolume = vel * vol;
+
+    ActiveSound newSound(sampleId, finalVolume, pan);
+    newSound.noteInstanceId = noteInstanceId;
+    newSound.trackId = trackId;
+
+    // Override envelope with the caller-supplied ADSR
+    uint32_t sr = audioStreamSampleRate_.load();
+    if (sr == 0) sr = 44100;
+    EnvelopeSettingsCpp envSettings(
+        ampEnvAttackMs, ampEnvDecayMs, ampEnvSustainLevel, true, ampEnvReleaseMs);
+    newSound.envelope.configure(envSettings, static_cast<float>(sr), 1.0f);
+    newSound.envelope.triggerOn(vel);
+
+    // Pitch shift via playback speed: coarseTune = semitones, fineTune = cents
+    float totalCents = coarseTune * 100.0f + fineTune;
+    newSound.playbackSpeed = std::pow(2.0f, totalCents / 1200.0f);
+
+    {
+        std::lock_guard<std::mutex> lock(activeSoundsMutex_);
+        activeSounds_.emplace_back(std::move(newSound));
+    }
+
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+        "playPadSample: %s [note=%s, vel=%.2f, vol=%.2f, pan=%.2f, speed=%.4f]",
+        sampleId.c_str(), noteInstanceId.c_str(), vel, finalVolume, pan, newSound.playbackSpeed);
     return true;
+}
+
+void AudioEngine::stopNote(const std::string& noteInstanceId, float releaseTimeMs) {
+    std::lock_guard<std::mutex> lock(activeSoundsMutex_);
+    for (auto& sound : activeSounds_) {
+        if (sound.isActive && sound.noteInstanceId == noteInstanceId) {
+            // Trigger release phase of the envelope; the render loop will deactivate it
+            sound.envelope.triggerOff();
+            __android_log_print(ANDROID_LOG_DEBUG, APP_NAME,
+                "stopNote: triggered release for note=%s", noteInstanceId.c_str());
+        }
+    }
+}
+
+void AudioEngine::stopAllNotes(const std::string& trackId, bool immediate) {
+    std::lock_guard<std::mutex> lock(activeSoundsMutex_);
+    for (auto& sound : activeSounds_) {
+        if (!sound.isActive) continue;
+        bool matchesTrack = trackId.empty() || sound.trackId == trackId;
+        if (matchesTrack) {
+            if (immediate) {
+                sound.isActive = false;
+            } else {
+                sound.envelope.triggerOff();
+            }
+        }
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, APP_NAME,
+        "stopAllNotes: track=%s immediate=%d", trackId.c_str(), immediate);
 }
 
 bool AudioEngine::startAudioRecording(JNIEnv* env, jobject context, const std::string& filePathUri, int sampleRate, int channels) {
