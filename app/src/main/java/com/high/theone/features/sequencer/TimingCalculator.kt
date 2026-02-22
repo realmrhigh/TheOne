@@ -1,13 +1,14 @@
 package com.high.theone.features.sequencer
 
 import com.high.theone.model.Quantization
+import javax.inject.Inject
 import kotlin.math.roundToLong
 
 /**
  * Handles all timing calculations for the step sequencer including swing, tempo conversion,
  * and step duration calculations
  */
-class TimingCalculator {
+class TimingCalculator @Inject constructor() {
     
     /**
      * Calculates the duration of a single step in milliseconds based on tempo and quantization
@@ -102,7 +103,7 @@ class TimingCalculator {
 /**
  * Specialized calculator for swing and groove timing
  */
-class SwingCalculator {
+class SwingCalculator @Inject constructor() {
     
     companion object {
         /**

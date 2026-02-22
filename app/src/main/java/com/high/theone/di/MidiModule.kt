@@ -4,6 +4,7 @@ import android.content.Context
 import com.high.theone.audio.AudioEngineControl
 import com.high.theone.features.sequencer.PatternManager
 import com.high.theone.features.sequencer.RecordingEngine
+import com.high.theone.features.sequencer.PrecisionTimingEngine
 import com.high.theone.features.sequencer.TimingEngine
 import com.high.theone.midi.MidiManager
 import com.high.theone.midi.MidiManagerControl
@@ -150,6 +151,12 @@ abstract class MidiModule {
             return MidiAudioEngineAdapterImpl(audioEngineControl, velocityCurve)
         }
     }
+
+    /**
+     * Binds PrecisionTimingEngine as the TimingEngine implementation
+     */
+    @Binds
+    abstract fun bindTimingEngine(engine: PrecisionTimingEngine): TimingEngine
 
     /**
      * Binds MidiManager to MidiManagerControl interface
