@@ -310,7 +310,7 @@ fun Modifier.recordingButtonAnimation(
             )
         } else {
             infiniteRepeatable(
-                animation = tween(durationMillis = 0),
+                animation = tween(durationMillis = 1),
                 repeatMode = RepeatMode.Restart
             )
         },
@@ -345,7 +345,7 @@ fun Modifier.recordingButtonAnimation(
             )
         } else {
             infiniteRepeatable(
-                animation = tween(durationMillis = 0),
+                animation = tween(durationMillis = 1),
                 repeatMode = RepeatMode.Restart
             )
         },
@@ -366,7 +366,7 @@ fun Modifier.recordingButtonAnimation(
             )
         } else {
             infiniteRepeatable(
-                animation = tween(durationMillis = 0),
+                animation = tween(durationMillis = 1),
                 repeatMode = RepeatMode.Restart
             )
         },
