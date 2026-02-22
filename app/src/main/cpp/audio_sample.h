@@ -56,12 +56,20 @@ struct SampleDataCpp {
     size_t sampleCount;          // Total number of samples
     uint32_t sampleRate;         // Sample rate
     uint16_t channels;           // Number of channels
-    
+
+    // Per-sample default envelope (applied when triggering via triggerSample / triggerDrumPad)
+    EnvelopeSettingsCpp defaultEnvelope;
+    bool hasCustomEnvelope = false;
+
+    // Per-sample LFO (applied when triggering)
+    LfoSettingsCpp defaultLfo;
+    bool hasCustomLfo = false;
+
     SampleDataCpp() : sampleCount(0), sampleRate(44100), channels(1) {}
-    
-    SampleDataCpp(const std::string& sampleId, const std::vector<float>& audioData, 
+
+    SampleDataCpp(const std::string& sampleId, const std::vector<float>& audioData,
                   size_t count, uint32_t rate, uint16_t ch)
-        : id(sampleId), samples(audioData), sampleCount(count), 
+        : id(sampleId), samples(audioData), sampleCount(count),
           sampleRate(rate), channels(ch) {}
 };
 

@@ -100,6 +100,11 @@ public:
     // --- JNI/Native-lib required functions ---
     void stopNote(const std::string& noteInstanceId, float releaseTimeMs);
     void stopAllNotes(const std::string& trackId, bool immediate);
+    /** Fill outL/outR with the latest peak output levels (0.0–1.0). */
+    void getOutputLevels(float& outL, float& outR) const {
+        outL = outputPeakL_.load();
+        outR = outputPeakR_.load();
+    }
     void setTrackVolume(const std::string& trackId, float volume) {}
     void setTrackPan(const std::string& trackId, float pan) {}
     bool removeTrackEffect(const std::string& trackId, const std::string& effectInstanceId) { return false; }
@@ -340,6 +345,11 @@ private:
     std::atomic<bool> autoGainControlEnabled_ {false};
     std::atomic<float> targetRecordingLevel_ {0.7f};
     std::atomic<float> currentGain_ {1.0f};
+
+    // Output level metering (peak L/R, updated each audio callback, decays toward 0)
+    std::atomic<float> outputPeakL_ {0.0f};
+    std::atomic<float> outputPeakR_ {0.0f};
+
     int recordingFileDescriptor_ = -1;
     drwav wavWriter_;
     bool wavWriterInitialized_ = false;
