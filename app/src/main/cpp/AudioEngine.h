@@ -54,7 +54,15 @@ public:
     // Pad settings management
     void updatePadSettings(const std::string& padKey, const PadSettingsCpp& settings);
     void setPadVolume(const std::string& padKey, float volume);
-    void setPadPan(const std::string& padKey, float pan); // <-- New method for pan
+    void setPadPan(const std::string& padKey, float pan);
+
+    /**
+     * Set per-pad SVF filter. sampleKey matches pad ID used in loadSampleToMemory/triggerSample.
+     * modeOrdinal: 0=LOW_PASS, 1=BAND_PASS, 2=HIGH_PASS (must match SVF_Mode and Kotlin FilterMode ordinals).
+     */
+    void setPadFilter(const std::string& sampleKey,
+                      bool enabled, int modeOrdinal,
+                      float cutoffHz, float resonance);
 
     // Metronome
     void setMetronomeState(bool isEnabled, float bpm, int timeSigNum, int timeSigDen,
@@ -325,6 +333,11 @@ private:
     // Pad settings map
     std::map<std::string, PadSettingsCpp> padSettingsMap_;
     std::mutex padSettingsMutex_;
+
+    // Per-pad filter settings (separate map to avoid lock-order issues with padSettingsMutex_)
+    // Lock order when acquiring multiple: padSettingsMutex_ → sampleMutex_ → padFilterMutex_ → activeSoundsMutex_
+    std::map<std::string, FilterSettingsCpp> padFilterSettings_;
+    std::mutex padFilterMutex_;
 
     // Active sounds (updated for new audio engine)
     mutable std::mutex activeSoundsMutex_;

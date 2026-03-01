@@ -85,9 +85,15 @@ struct ActiveSound {
     EnvelopeGenerator envelope;      // Amplitude envelope
     bool isActive;                   // Whether this sound is still playing
 
+    // Per-voice SVF filter (value members — no heap allocation, no move-semantics issue)
+    // Ordinals match Kotlin FilterMode: LOW_PASS=0, BAND_PASS=1, HIGH_PASS=2
+    bool filterEnabled = false;
+    StateVariableFilter filterL;     // left channel (or mono) filter state
+    StateVariableFilter filterR;     // right channel filter state (mirrors filterL for mono)
+
     ActiveSound(const std::string& key, float vol = 1.0f, float panPos = 0.0f)
         : sampleKey(key), currentSampleIndex(0.0f), playbackSpeed(1.0f),
-          volume(vol), pan(panPos), isActive(true) {
+          volume(vol), pan(panPos), isActive(true), filterEnabled(false) {
         // Initialize envelope with basic ADSR
         EnvelopeSettingsCpp envSettings(10.0f, 100.0f, 0.7f, true, 300.0f); // 10ms attack, 100ms decay, 70% sustain, 300ms release
         envelope.configure(envSettings, 44100.0f, 1.0f); // Configure with sample rate

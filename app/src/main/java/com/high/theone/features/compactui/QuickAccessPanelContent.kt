@@ -1,5 +1,6 @@
 package com.high.theone.features.compactui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,19 +14,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.high.theone.features.drumtrack.DrumTrackViewModel
+import com.high.theone.features.midi.ui.MidiSettingsViewModel
+import com.high.theone.features.sampling.SamplingViewModel
 import com.high.theone.model.PanelType
 
 /**
- * Content router for different panel types
+ * Content router for different panel types.
+ * Each panel pulls its own ViewModel via hiltViewModel() so it always has
+ * the same instance that's live in the rest of the screen.
  */
 @Composable
 fun QuickAccessPanelContent(
     panelType: PanelType,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToMidiSettings: () -> Unit = {}
 ) {
     when (panelType) {
         PanelType.SAMPLING -> SamplingPanel(modifier = modifier)
-        PanelType.MIDI -> MidiPanel(modifier = modifier)
+        PanelType.MIDI -> MidiPanel(modifier = modifier, onOpenMidiSettings = onNavigateToMidiSettings)
         PanelType.MIXER -> MixerPanel(modifier = modifier)
         PanelType.SETTINGS -> SettingsPanel(modifier = modifier)
         PanelType.SAMPLE_EDITOR -> SampleEditorPanel(modifier = modifier)
@@ -33,15 +41,16 @@ fun QuickAccessPanelContent(
 }
 
 /**
- * Sampling panel with recording controls and sample browser
+ * Sampling panel — wired to SamplingViewModel for live recording state & sample list.
  */
 @Composable
 fun SamplingPanel(
     modifier: Modifier = Modifier
 ) {
-    var isRecording by remember { mutableStateOf(false) }
-    var recordingLevel by remember { mutableFloatStateOf(0f) }
-    
+    val samplingViewModel: SamplingViewModel = hiltViewModel()
+    val uiState by samplingViewModel.uiState.collectAsState()
+    val recordingState = uiState.recordingState
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -49,9 +58,7 @@ fun SamplingPanel(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Recording Controls Section
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -61,102 +68,103 @@ fun SamplingPanel(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Record button
+                    // Record / Stop button wired to SamplingViewModel
                     FilledTonalButton(
-                        onClick = { isRecording = !isRecording },
+                        onClick = {
+                            if (recordingState.isRecording) {
+                                samplingViewModel.stopRecording()
+                            } else {
+                                samplingViewModel.startRecording()
+                            }
+                        },
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (isRecording) 
-                                MaterialTheme.colorScheme.error 
+                            containerColor = if (recordingState.isRecording)
+                                MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.primary
                         )
                     ) {
                         Icon(
-                            imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.FiberManualRecord,
-                            contentDescription = if (isRecording) "Stop Recording" else "Start Recording"
+                            imageVector = if (recordingState.isRecording)
+                                Icons.Default.Stop else Icons.Default.FiberManualRecord,
+                            contentDescription = if (recordingState.isRecording)
+                                "Stop Recording" else "Start Recording"
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (isRecording) "Stop" else "Record")
+                        Text(if (recordingState.isRecording) "Stop" else "Record")
                     }
-                    
-                    // Input level indicator
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
+
+                    // Live input level indicator
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Input Level",
+                            text = if (recordingState.isRecording)
+                                recordingState.formattedDuration else "Input Level",
                             style = MaterialTheme.typography.labelSmall
                         )
                         LinearProgressIndicator(
-                            progress = { recordingLevel },
+                            progress = { recordingState.peakLevel },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }
-                
-                // Recording settings
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Auto-trim", style = MaterialTheme.typography.bodyMedium)
-                    Switch(checked = true, onCheckedChange = {})
-                }
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Monitor", style = MaterialTheme.typography.bodyMedium)
-                    Switch(checked = false, onCheckedChange = {})
+
+                // Error state
+                if (recordingState.error != null) {
+                    Text(
+                        text = recordingState.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }
-        
-        // Sample Browser Section
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+
+        // Loaded Samples Section
+        Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Sample Browser",
+                    text = "Samples (${uiState.availableSamples.size})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
-                // Sample categories
-                val sampleCategories = listOf("Drums", "Bass", "Synth", "Vocal", "FX")
-                LazyColumn(
-                    modifier = Modifier.height(200.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(sampleCategories) { category ->
-                        ListItem(
-                            headlineContent = { Text(category) },
-                            leadingContent = {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null
-                                )
-                            },
-                            trailingContent = {
-                                Icon(
-                                    imageVector = Icons.Default.ChevronRight,
-                                    contentDescription = null
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+
+                if (uiState.availableSamples.isEmpty()) {
+                    Text(
+                        text = "No samples recorded yet. Tap Record to capture audio.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 220.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(uiState.availableSamples) { sample ->
+                            ListItem(
+                                headlineContent = { Text(sample.name) },
+                                supportingContent = {
+                                    Text(
+                                        "${sample.formattedDuration}  •  ${sample.formattedFileSize}",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                },
+                                leadingContent = {
+                                    Icon(
+                                        imageVector = Icons.Default.AudioFile,
+                                        contentDescription = null
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }
@@ -165,270 +173,178 @@ fun SamplingPanel(
 }
 
 /**
- * MIDI panel with device settings and mapping controls
+ * MIDI panel — shows connected devices from MidiSettingsViewModel,
+ * and provides a direct "Open MIDI Settings" navigation button.
  */
 @Composable
 fun MidiPanel(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenMidiSettings: () -> Unit = {}
 ) {
-    var midiEnabled by remember { mutableStateOf(true) }
-    var selectedDevice by remember { mutableStateOf("No Device") }
-    
+    val midiViewModel: MidiSettingsViewModel = hiltViewModel()
+    val uiState by midiViewModel.uiState.collectAsState()
+    val connectedDevices by midiViewModel.connectedDevices.collectAsState()
+    val availableDevices by midiViewModel.availableDevices.collectAsState()
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // MIDI Device Settings
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        // MIDI Status
+        Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "MIDI Settings",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("MIDI Enabled", style = MaterialTheme.typography.bodyMedium)
-                    Switch(
-                        checked = midiEnabled,
-                        onCheckedChange = { midiEnabled = it }
+                    Text(
+                        text = "MIDI",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
+                    // Status badge
+                    Badge(
+                        containerColor = if (uiState.midiEnabled)
+                            MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outline
+                    ) {
+                        Text(if (uiState.midiEnabled) "ON" else "OFF")
+                    }
                 }
-                
-                // Device selector
-                OutlinedTextField(
-                    value = selectedDevice,
-                    onValueChange = { selectedDevice = it },
-                    label = { Text("MIDI Device") },
-                    readOnly = true,
-                    trailingIcon = {
-                        IconButton(onClick = { /* Open device selector */ }) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Select Device"
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                // MIDI channel
-                OutlinedTextField(
-                    value = "1",
-                    onValueChange = { },
-                    label = { Text("MIDI Channel") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-        
-        // MIDI Mapping Controls
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "MIDI Mapping",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Button(
-                    onClick = { /* Start MIDI learn */ },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.School,
-                        contentDescription = null
+
+                if (uiState.isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+
+                // Connected devices
+                if (connectedDevices.isNotEmpty()) {
+                    Text(
+                        text = "Connected (${connectedDevices.size})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Learn MIDI Mapping")
-                }
-                
-                OutlinedButton(
-                    onClick = { /* Clear mappings */ },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Clear,
-                        contentDescription = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Clear All Mappings")
-                }
-                
-                // Current mappings list
-                Text(
-                    text = "Active Mappings",
-                    style = MaterialTheme.typography.labelMedium
-                )
-                
-                LazyColumn(
-                    modifier = Modifier.height(150.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(3) { index ->
+                    connectedDevices.values.forEach { device ->
                         ListItem(
-                            headlineContent = { Text("Pad ${index + 1}") },
-                            supportingContent = { Text("Note C${index + 3}") },
-                            trailingContent = {
-                                IconButton(onClick = { /* Remove mapping */ }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Remove"
-                                    )
-                                }
+                            headlineContent = { Text(device.name) },
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = "Connected",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             }
                         )
                     }
+                } else {
+                    Text(
+                        text = "No MIDI devices connected",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Available devices
+                if (availableDevices.isNotEmpty()) {
+                    Text(
+                        text = "Available",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 150.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(availableDevices) { device ->
+                            ListItem(
+                                headlineContent = { Text(device.name) },
+                                leadingContent = {
+                                    Icon(
+                                        imageVector = Icons.Default.Usb,
+                                        contentDescription = null
+                                    )
+                                },
+                                trailingContent = {
+                                    TextButton(onClick = {
+                                        midiViewModel.connectDevice(device.id)
+                                    }) {
+                                        Text("Connect")
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (uiState.errorMessage != null) {
+                    Text(
+                        text = uiState.errorMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
+        }
+
+        // Full settings navigation
+        Button(
+            onClick = onOpenMidiSettings,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(imageVector = Icons.Default.Settings, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Open MIDI Settings")
         }
     }
 }
 
 /**
- * Mixer panel with track levels and effects
+ * Mixer panel — real pad volume / pan from DrumTrackViewModel.
  */
 @Composable
 fun MixerPanel(
     modifier: Modifier = Modifier
 ) {
+    val drumTrackViewModel: DrumTrackViewModel = hiltViewModel()
+    val padSettingsMap by drumTrackViewModel.padSettingsMap.collectAsState()
+    // Sort pads by their numeric index
+    val pads = remember(padSettingsMap) {
+        padSettingsMap.entries.sortedBy { it.key.toIntOrNull() ?: Int.MAX_VALUE }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Master Section
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        // Pad level strips
+        Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Master",
+                    text = "Pad Levels",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Volume", modifier = Modifier.width(60.dp))
-                    Slider(
-                        value = 0.8f,
-                        onValueChange = { },
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("80%", modifier = Modifier.width(40.dp))
-                }
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Button(
-                        onClick = { /* Mute all */ },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text("Mute All")
-                    }
-                    
-                    Button(
-                        onClick = { /* Solo clear */ }
-                    ) {
-                        Text("Solo Clear")
-                    }
-                }
-            }
-        }
-        
-        // Track Levels
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Track Levels",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                LazyColumn(
-                    modifier = Modifier.height(200.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(8) { trackIndex ->
-                        TrackMixerStrip(
-                            trackName = "Track ${trackIndex + 1}",
-                            level = 0.7f,
-                            isMuted = false,
-                            isSoloed = false,
-                            onLevelChange = { },
-                            onMuteToggle = { },
-                            onSoloToggle = { }
-                        )
-                    }
-                }
-            }
-        }
-        
-        // Effects Section
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Effects",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        onClick = { },
-                        label = { Text("Reverb") },
-                        selected = true
-                    )
-                    FilterChip(
-                        onClick = { },
-                        label = { Text("Delay") },
-                        selected = false
-                    )
-                    FilterChip(
-                        onClick = { },
-                        label = { Text("Filter") },
-                        selected = true
+
+                pads.forEach { (padId, settings) ->
+                    PadMixerStrip(
+                        padName = settings.name,
+                        volume = settings.volume,
+                        pan = settings.pan,
+                        onVolumeChange = { newVol ->
+                            drumTrackViewModel.updatePadSettings(settings.copy(volume = newVol))
+                        },
+                        onPanChange = { newPan ->
+                            drumTrackViewModel.updatePadSettings(settings.copy(pan = newPan))
+                        }
                     )
                 }
             }
@@ -437,64 +353,78 @@ fun MixerPanel(
 }
 
 /**
- * Individual track mixer strip component
+ * Per-pad mixer strip: name label, volume slider, pan slider.
  */
 @Composable
-private fun TrackMixerStrip(
-    trackName: String,
-    level: Float,
-    isMuted: Boolean,
-    isSoloed: Boolean,
-    onLevelChange: (Float) -> Unit,
-    onMuteToggle: () -> Unit,
-    onSoloToggle: () -> Unit,
+private fun PadMixerStrip(
+    padName: String,
+    volume: Float,
+    pan: Float,
+    onVolumeChange: (Float) -> Unit,
+    onPanChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = trackName,
-            modifier = Modifier.width(60.dp),
-            style = MaterialTheme.typography.bodySmall
+            text = padName,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
         )
-        
-        Slider(
-            value = level,
-            onValueChange = onLevelChange,
-            modifier = Modifier.weight(1f)
-        )
-        
-        IconButton(
-            onClick = onMuteToggle,
-            colors = IconButtonDefaults.iconButtonColors(
-                contentColor = if (isMuted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            // Volume
             Icon(
-                imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                contentDescription = if (isMuted) "Unmute" else "Mute"
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = "Volume",
+                modifier = Modifier.size(16.dp)
+            )
+            Slider(
+                value = volume,
+                onValueChange = onVolumeChange,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "${(volume * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.width(36.dp)
             )
         }
-        
-        IconButton(
-            onClick = onSoloToggle,
-            colors = IconButtonDefaults.iconButtonColors(
-                contentColor = if (isSoloed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Headphones,
-                contentDescription = if (isSoloed) "Unsolo" else "Solo"
+            // Pan
+            Text(
+                text = "Pan",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.size(16.dp)
+            )
+            Slider(
+                value = pan,
+                onValueChange = onPanChange,
+                valueRange = -1f..1f,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = when {
+                    pan < -0.05f -> "L${(-pan * 100).toInt()}"
+                    pan > 0.05f -> "R${(pan * 100).toInt()}"
+                    else -> "C"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.width(36.dp)
             )
         }
+        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
     }
 }
 
 /**
- * Settings panel with app preferences
+ * Settings panel with app preferences.
  */
 @Composable
 fun SettingsPanel(
@@ -503,7 +433,7 @@ fun SettingsPanel(
     var audioLatency by remember { mutableStateOf("Low") }
     var enableAnimations by remember { mutableStateOf(true) }
     var performanceMode by remember { mutableStateOf("Balanced") }
-    
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -511,9 +441,7 @@ fun SettingsPanel(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Audio Settings
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -523,25 +451,20 @@ fun SettingsPanel(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
-                // Audio latency setting
+
                 OutlinedTextField(
                     value = audioLatency,
                     onValueChange = { audioLatency = it },
                     label = { Text("Audio Latency") },
                     readOnly = true,
                     trailingIcon = {
-                        IconButton(onClick = { /* Open latency selector */ }) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Select Latency"
-                            )
+                        IconButton(onClick = { }) {
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Latency")
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
-                // Sample rate
+
                 OutlinedTextField(
                     value = "44.1 kHz",
                     onValueChange = { },
@@ -549,8 +472,7 @@ fun SettingsPanel(
                     readOnly = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                
-                // Buffer size
+
                 OutlinedTextField(
                     value = "256 samples",
                     onValueChange = { },
@@ -560,11 +482,9 @@ fun SettingsPanel(
                 )
             }
         }
-        
+
         // UI Settings
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -574,7 +494,7 @@ fun SettingsPanel(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -586,30 +506,24 @@ fun SettingsPanel(
                         onCheckedChange = { enableAnimations = it }
                     )
                 }
-                
-                // Performance mode
+
                 OutlinedTextField(
                     value = performanceMode,
                     onValueChange = { performanceMode = it },
                     label = { Text("Performance Mode") },
                     readOnly = true,
                     trailingIcon = {
-                        IconButton(onClick = { /* Open performance mode selector */ }) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Select Performance Mode"
-                            )
+                        IconButton(onClick = { }) {
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Mode")
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         }
-        
+
         // App Info
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -619,30 +533,15 @@ fun SettingsPanel(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
-                ListItem(
-                    headlineContent = { Text("Version") },
-                    supportingContent = { Text("1.0.0") }
-                )
-                
-                ListItem(
-                    headlineContent = { Text("Build") },
-                    supportingContent = { Text("2024.01.15") }
-                )
-                
-                Button(
-                    onClick = { /* Show about dialog */ },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("About TheOne")
-                }
+                ListItem(headlineContent = { Text("Version") }, supportingContent = { Text("1.0.0") })
+                ListItem(headlineContent = { Text("Build") }, supportingContent = { Text("2026.02") })
             }
         }
     }
 }
 
 /**
- * Sample editor panel (placeholder for future implementation)
+ * Sample editor panel — placeholder (full editor is in SampleEditScreen).
  */
 @Composable
 fun SampleEditorPanel(
@@ -661,19 +560,15 @@ fun SampleEditorPanel(
             modifier = Modifier.size(64.dp),
             tint = MaterialTheme.colorScheme.primary
         )
-        
         Spacer(modifier = Modifier.height(16.dp))
-        
         Text(
             text = "Sample Editor",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )
-        
         Spacer(modifier = Modifier.height(8.dp))
-        
         Text(
-            text = "Advanced sample editing features will be available here",
+            text = "Long-press a pad after assigning a sample to edit trim and fade.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

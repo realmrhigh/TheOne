@@ -47,7 +47,12 @@ import com.high.theone.features.compactui.performance.CompactPerformanceIndicato
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import javax.inject.Inject
+import kotlin.math.log2
+import kotlin.math.pow
+import com.high.theone.model.FilterMode
+import com.high.theone.model.FilterSettings
 
 /**
  * CompactMainScreen - Root component that combines all UI components into a unified main screen * 
@@ -133,6 +138,9 @@ fun CompactMainScreen(
     // Error handling state
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
+
+    // Track which pad was long-pressed to show its config sheet
+    var selectedPadId by remember { mutableStateOf<String?>(null) }
     
     // Handle errors from UI state
     LaunchedEffect(compactUIState.errorState) {
@@ -144,6 +152,32 @@ fun CompactMainScreen(
     // Performance monitoring - record frame time on each recomposition
     LaunchedEffect(Unit) {
         viewModel.recordFrameTime()
+    }
+
+    // Sync DrumTrackViewModel state into CompactMainViewModel so drumPadState is populated
+    LaunchedEffect(Unit) {
+        combine(
+            drumTrackViewModel.padSettingsMap,
+            drumTrackViewModel.activePadId,
+            drumTrackViewModel.isPlaying,
+            drumTrackViewModel.isRecording
+        ) { padSettings, activePadId, isPlaying, isRecording ->
+            DrumPadState(
+                padSettings = padSettings,
+                isPlaying = isPlaying,
+                isRecording = isRecording,
+                activePadId = activePadId
+            )
+        }.collect { state ->
+            viewModel.updateDrumPadState(state)
+        }
+    }
+
+    // Sync SimpleSequencerViewModel state into CompactMainViewModel
+    LaunchedEffect(Unit) {
+        sequencerViewModel.sequencerState.collect { seqState ->
+            viewModel.updateSequencerState(seqState)
+        }
     }
     
     // Apply performance optimizations based on current state
@@ -217,12 +251,12 @@ fun CompactMainScreen(
                     midiState = midiState,
                     screenConfiguration = screenConfiguration,
                     onPadTap = { padId, velocity ->
-                        viewModel.onPadTriggered(padId)
+                        drumTrackViewModel.onPadTriggered(padId, velocity)
                         viewModel.recordFrameTime()
                     },
                     onPadLongPress = { padId ->
-                        // Show pad configuration panel
-                        viewModel.showPanel(PanelType.SAMPLING)
+                        // Open per-pad config sheet for this specific pad
+                        selectedPadId = padId
                         viewModel.recordFrameTime()
                     }
                 )
@@ -301,12 +335,27 @@ fun CompactMainScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Pad configuration bottom sheet — opens when a pad is long-pressed
+            val padSettingsForConfig by drumTrackViewModel.padSettingsMap.collectAsState()
+            val configuredPadSettings = selectedPadId?.let { padSettingsForConfig[it] }
+            if (selectedPadId != null && configuredPadSettings != null) {
+                PadConfigBottomSheet(
+                    padSettings = configuredPadSettings,
+                    onSave = { updated ->
+                        drumTrackViewModel.updatePadSettings(updated)
+                        selectedPadId = null
+                    },
+                    onDismiss = { selectedPadId = null }
+                )
+            }
+
             // Quick access panels (side panels for landscape, bottom sheet for portrait)
             CompactMainScreenPanels(
                 panelStates = panelStates,
                 layoutState = layoutState,
                 optimizationState = optimizationState,
                 lazyPanelManager = lazyPanelManager,
+                onNavigateToMidiSettings = { navController.navigate("midi_settings") },
                 onPanelStateChange = { panelType, newState ->
                     if (newState.isVisible) {
                         viewModel.showPanel(panelType)
@@ -659,6 +708,7 @@ private fun CompactMainScreenPanels(
     lazyPanelManager: LazyPanelContentManager,
     onPanelStateChange: (PanelType, PanelState) -> Unit,
     onPanelTypeChange: (PanelType, PanelType) -> Unit,
+    onNavigateToMidiSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Determine panel display mode based on layout
@@ -698,7 +748,8 @@ private fun CompactMainScreenPanels(
             content = { panelType ->
                 BottomSheetContentSwitcher(
                     contentType = panelType,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    onNavigateToMidiSettings = onNavigateToMidiSettings
                 )
             },
             modifier = modifier
@@ -730,7 +781,8 @@ private fun CompactMainScreenPanels(
                         LazyPanelContent(
                             panelType = currentPanelType,
                             optimizationState = optimizationState,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            onNavigateToMidiSettings = onNavigateToMidiSettings
                         )
                     }
                 }
@@ -1720,7 +1772,8 @@ Lazy loading panel content with performance optimization
 private fun LazyPanelContent(
     panelType: PanelType,
     optimizationState: OptimizationState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToMidiSettings: () -> Unit = {}
 ) {
     // Use lazy loading if optimization is active
     if (optimizationState.activeOptimizations.contains(OptimizationType.LAZY_LOAD_PANELS)) {
@@ -1741,7 +1794,8 @@ private fun LazyPanelContent(
                 if (enableVisualEffects) {
                     QuickAccessPanelContent(
                         panelType = panelType,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onNavigateToMidiSettings = onNavigateToMidiSettings
                     )
                 } else {
                     // Simplified content for performance
@@ -1752,7 +1806,8 @@ private fun LazyPanelContent(
                 if (enableVisualEffects) {
                     QuickAccessPanelContent(
                         panelType = panelType,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onNavigateToMidiSettings = onNavigateToMidiSettings
                     )
                 } else {
                     SimplifiedMidiPanel(modifier = Modifier.fillMaxSize())
@@ -1762,7 +1817,8 @@ private fun LazyPanelContent(
                 if (enableVisualEffects) {
                     QuickAccessPanelContent(
                         panelType = panelType,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onNavigateToMidiSettings = onNavigateToMidiSettings
                     )
                 } else {
                     SimplifiedMixerPanel(modifier = Modifier.fillMaxSize())
@@ -1772,7 +1828,8 @@ private fun LazyPanelContent(
                 if (enableVisualEffects) {
                     QuickAccessPanelContent(
                         panelType = panelType,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onNavigateToMidiSettings = onNavigateToMidiSettings
                     )
                 } else {
                     SimplifiedSettingsPanel(modifier = Modifier.fillMaxSize())
@@ -1782,7 +1839,8 @@ private fun LazyPanelContent(
                 if (enableVisualEffects) {
                     QuickAccessPanelContent(
                         panelType = panelType,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onNavigateToMidiSettings = onNavigateToMidiSettings
                     )
                 } else {
                     SimplifiedSampleEditorPanel(modifier = Modifier.fillMaxSize())
@@ -1897,5 +1955,310 @@ private fun SimplifiedSampleEditorPanel(modifier: Modifier = Modifier) {
         Button(onClick = { /* Basic editor action */ }) {
             Text("Trim")
         }
+    }
+}
+
+/**
+ * Modal bottom sheet for configuring an individual drum pad.
+ * Opened by long-pressing a pad in the grid.
+ * Lets the user adjust volume, pan, playback mode and mute group,
+ * then saves the changes back through DrumTrackViewModel.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PadConfigBottomSheet(
+    padSettings: com.high.theone.features.drumtrack.model.PadSettings,
+    onSave: (com.high.theone.features.drumtrack.model.PadSettings) -> Unit,
+    onDismiss: () -> Unit
+) {
+    // ── Basic tab state ──────────────────────────────────────────────────────
+    var volume       by remember { mutableFloatStateOf(padSettings.volume) }
+    var pan          by remember { mutableFloatStateOf(padSettings.pan) }
+    var playbackMode by remember { mutableStateOf(padSettings.playbackMode) }
+    var muteGroup    by remember { mutableIntStateOf(padSettings.muteGroup) }
+
+    // ── Filter tab state ─────────────────────────────────────────────────────
+    var filterEnabled   by remember { mutableStateOf(padSettings.filterSettings.enabled) }
+    var filterMode      by remember { mutableStateOf(padSettings.filterSettings.mode) }
+    var filterCutoffHz  by remember { mutableFloatStateOf(padSettings.filterSettings.cutoffHz) }
+    var filterResonance by remember { mutableFloatStateOf(padSettings.filterSettings.resonance) }
+
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = listOf("Basic", "Filter")
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+        ) {
+            // Header
+            Text(
+                text = padSettings.name,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+            )
+
+            // Tab row
+            TabRow(selectedTabIndex = selectedTab) {
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick  = { selectedTab = index },
+                        text     = { Text(title) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            when (selectedTab) {
+                0 -> PadConfigBasicTab(
+                    volume            = volume,
+                    onVolumeChange    = { volume = it },
+                    pan               = pan,
+                    onPanChange       = { pan = it },
+                    playbackMode      = playbackMode,
+                    onPlaybackModeChange = { playbackMode = it },
+                    muteGroup         = muteGroup,
+                    onMuteGroupChange = { muteGroup = it },
+                    modifier          = Modifier.padding(horizontal = 24.dp)
+                )
+                1 -> PadConfigFilterTab(
+                    enabled          = filterEnabled,
+                    onEnabledChange  = { filterEnabled = it },
+                    mode             = filterMode,
+                    onModeChange     = { filterMode = it },
+                    cutoffHz         = filterCutoffHz,
+                    onCutoffChange   = { filterCutoffHz = it },
+                    resonance        = filterResonance,
+                    onResonanceChange = { filterResonance = it },
+                    modifier          = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Action buttons
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick  = onDismiss,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Cancel") }
+
+                Button(
+                    onClick = {
+                        onSave(
+                            padSettings.copy(
+                                volume       = volume,
+                                pan          = pan,
+                                playbackMode = playbackMode,
+                                muteGroup    = muteGroup,
+                                filterSettings = padSettings.filterSettings.copy(
+                                    enabled   = filterEnabled,
+                                    mode      = filterMode,
+                                    cutoffHz  = filterCutoffHz,
+                                    resonance = filterResonance
+                                )
+                            )
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Save") }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+// ── Basic tab ──────────────────────────────────────────────────────────────────
+@Composable
+private fun PadConfigBasicTab(
+    volume: Float,
+    onVolumeChange: (Float) -> Unit,
+    pan: Float,
+    onPanChange: (Float) -> Unit,
+    playbackMode: PlaybackMode,
+    onPlaybackModeChange: (PlaybackMode) -> Unit,
+    muteGroup: Int,
+    onMuteGroupChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        // Volume
+        LabeledSlider(
+            label      = "Volume",
+            valueText  = "${(volume * 100).toInt()}%",
+            value      = volume,
+            onValueChange = onVolumeChange
+        )
+
+        // Pan
+        LabeledSlider(
+            label = "Pan",
+            valueText = when {
+                pan < -0.05f -> "L ${(-pan * 100).toInt()}"
+                pan >  0.05f -> "R ${(pan * 100).toInt()}"
+                else         -> "Center"
+            },
+            value      = pan,
+            onValueChange = onPanChange,
+            valueRange = -1f..1f
+        )
+
+        // Playback mode
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Playback Mode", style = MaterialTheme.typography.labelLarge)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                PlaybackMode.values().forEach { mode ->
+                    FilterChip(
+                        selected = playbackMode == mode,
+                        onClick  = { onPlaybackModeChange(mode) },
+                        label    = {
+                            Text(
+                                text  = mode.name.replace("_", "\n"),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    )
+                }
+            }
+        }
+
+        // Mute group
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text  = "Mute Group: ${if (muteGroup == 0) "None" else muteGroup.toString()}",
+                style = MaterialTheme.typography.labelLarge
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                (0..4).forEach { g ->
+                    FilterChip(
+                        selected = muteGroup == g,
+                        onClick  = { onMuteGroupChange(g) },
+                        label    = { Text(if (g == 0) "Off" else "$g") }
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Filter tab ─────────────────────────────────────────────────────────────────
+@Composable
+private fun PadConfigFilterTab(
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    mode: FilterMode,
+    onModeChange: (FilterMode) -> Unit,
+    cutoffHz: Float,
+    onCutoffChange: (Float) -> Unit,
+    resonance: Float,
+    onResonanceChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Log-scale cutoff slider:  sliderVal = log2(hz / 20) / 10   (0→20 Hz, 1→20 kHz)
+    var cutoffSlider by remember(cutoffHz) {
+        mutableFloatStateOf(
+            (log2(cutoffHz.coerceAtLeast(20f) / 20f) / 10f).coerceIn(0f, 1f)
+        )
+    }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        // Enable toggle
+        Row(
+            modifier              = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            Text("Enable Filter", style = MaterialTheme.typography.titleMedium)
+            Switch(checked = enabled, onCheckedChange = onEnabledChange)
+        }
+
+        if (enabled) {
+            // Mode chips
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Mode", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterMode.values().forEach { m ->
+                        FilterChip(
+                            selected = mode == m,
+                            onClick  = { onModeChange(m) },
+                            label    = {
+                                Text(
+                                    m.name
+                                        .replace("_", " ")
+                                        .lowercase()
+                                        .replaceFirstChar { it.uppercase() }
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Cutoff (log-scale)
+            LabeledSlider(
+                label = "Cutoff",
+                valueText = if (cutoffHz >= 1000f)
+                    "${"%.1f".format(cutoffHz / 1000f)} kHz"
+                else
+                    "${cutoffHz.toInt()} Hz",
+                value = cutoffSlider,
+                onValueChange = { sv ->
+                    cutoffSlider = sv
+                    onCutoffChange(
+                        (20.0 * 2.0.pow(sv.toDouble() * 10.0))
+                            .toFloat()
+                            .coerceIn(20f, 20000f)
+                    )
+                }
+            )
+
+            // Resonance (linear 0.5 – 25, displayed as 0..1 on slider)
+            LabeledSlider(
+                label     = "Resonance",
+                valueText = "%.2f".format(resonance),
+                value     = ((resonance - 0.5f) / 24.5f).coerceIn(0f, 1f),
+                onValueChange = { onResonanceChange((0.5f + it * 24.5f).coerceIn(0.5f, 25f)) }
+            )
+        }
+    }
+}
+
+// ── Shared slider helper ───────────────────────────────────────────────────────
+@Composable
+private fun LabeledSlider(
+    label: String,
+    valueText: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Row(
+            modifier              = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(label,     style = MaterialTheme.typography.labelLarge)
+            Text(valueText, style = MaterialTheme.typography.labelLarge)
+        }
+        Slider(
+            value         = value,
+            onValueChange = onValueChange,
+            valueRange    = valueRange,
+            modifier      = Modifier.fillMaxWidth()
+        )
     }
 }

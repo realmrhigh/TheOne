@@ -252,36 +252,28 @@ fun rememberBottomSheetController(): BottomSheetController {
 }
 
 /**
- * Context-aware bottom sheet content switcher
+ * Context-aware bottom sheet content switcher.
+ * Delegates to the unified QuickAccessPanelContent composables so behaviour
+ * is identical whether the panel is shown as a bottom-sheet (portrait) or
+ * a side panel (landscape/tablet).
  */
 @Composable
 fun BottomSheetContentSwitcher(
     contentType: PanelType?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToMidiSettings: () -> Unit = {}
 ) {
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter
     ) {
         when (contentType) {
-            PanelType.SAMPLE_EDITOR -> {
-                SampleEditorBottomSheetContent()
-            }
-            PanelType.SAMPLING -> {
-                SamplingBottomSheetContent()
-            }
-            PanelType.MIDI -> {
-                MidiBottomSheetContent()
-            }
-            PanelType.MIXER -> {
-                MixerBottomSheetContent()
-            }
-            PanelType.SETTINGS -> {
-                SettingsBottomSheetContent()
-            }
-            null -> {
-                DefaultBottomSheetContent()
-            }
+            PanelType.SAMPLE_EDITOR -> SampleEditorBottomSheetContent()
+            PanelType.SAMPLING      -> SamplingPanel()
+            PanelType.MIDI          -> MidiPanel(onOpenMidiSettings = onNavigateToMidiSettings)
+            PanelType.MIXER         -> MixerPanel()
+            PanelType.SETTINGS      -> SettingsPanel()
+            null                    -> DefaultBottomSheetContent()
         }
     }
 }

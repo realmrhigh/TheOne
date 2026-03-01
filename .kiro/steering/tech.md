@@ -38,16 +38,33 @@ TheOne/
 ├── app/
 │   ├── src/main/
 │   │   ├── java/com/high/theone/
-│   │   │   ├── audio/           # Audio engine interfaces
-│   │   │   ├── features/        # Feature modules (debug, drumtrack, sequencer)
-│   │   │   ├── model/           # Data models and DTOs
-│   │   │   ├── di/              # Dependency injection modules
-│   │   │   └── ui/              # UI components and themes
+│   │   │   ├── audio/           # AudioEngineControl interface + JNI impl
+│   │   │   ├── midi/            # Full MIDI engine (USB, mapping, I/O, diagnostics)
+│   │   │   ├── features/
+│   │   │   │   ├── compactui/   # Main production UI (adaptive portrait/landscape)
+│   │   │   │   │   ├── animations/      # Panel transitions, micro-interactions
+│   │   │   │   │   ├── accessibility/   # High-contrast, keyboard nav, TalkBack
+│   │   │   │   │   ├── error/           # Error recovery, permissions, storage
+│   │   │   │   │   └── performance/     # Frame/memory monitors, perf warnings
+│   │   │   │   ├── drumtrack/   # DrumTrackViewModel, PadSettings, edit screens
+│   │   │   │   ├── sequencer/   # Step sequencer, song mode, timing, overdub
+│   │   │   │   ├── sampling/    # SamplingViewModel, sample browser, recording UI
+│   │   │   │   ├── midi/ui/     # MIDI settings, mapping, monitor screens
+│   │   │   │   ├── sampleeditor/# Full-screen waveform sample editor
+│   │   │   │   ├── sampler/     # Sample library management
+│   │   │   │   └── debug/       # Dev/test tools
+│   │   │   ├── model/           # Shared data models (SharedModels, CompactUIModels, etc.)
+│   │   │   ├── commands/        # Undo/redo command pattern
+│   │   │   ├── di/              # Hilt DI modules
+│   │   │   ├── domain/          # Domain interfaces
+│   │   │   ├── project/         # ProjectManager implementation
+│   │   │   └── ui/              # Shared UI components and themes
 │   │   ├── cpp/                 # Native C++ audio engine
-│   │   │   ├── avst/            # AVST plugin system
+│   │   │   ├── avst/            # AVST plugin system (IAvstPlugin, SketchingSynth)
 │   │   │   └── oboe/            # Oboe audio library (submodule)
 │   │   └── assets/              # Audio samples and resources
 │   └── build.gradle.kts         # App-level build configuration
+├── .kiro/steering/              # Project docs (product.md, tech.md, structure.md)
 ├── gradle/libs.versions.toml    # Centralized dependency versions
 └── build.gradle.kts             # Project-level build configuration
 ```

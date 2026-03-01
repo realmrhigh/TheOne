@@ -8,6 +8,7 @@ import com.high.theone.model.EffectSetting
 import com.high.theone.model.LFOSettings
 import com.high.theone.model.ModulationRouting
 import com.high.theone.model.EnvelopeType
+import com.high.theone.model.FilterSettings
 
 // PlaybackMode is now defined in com.high.theone.model.SharedModels
 
@@ -49,6 +50,8 @@ data class PadSettings(
         decayMs = 150f,
         sustainLevel = 1.0f,
         releaseMs = 100f
-    )
-    // TODO: Add other properties and methods as needed
+    ),
+
+    // --- SVF Filter ---
+    var filterSettings: FilterSettings = FilterSettings()
 )

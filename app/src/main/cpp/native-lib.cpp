@@ -1432,6 +1432,22 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_high_theone_midi_integration_MidiAudioEngineAdapterImpl_native_1isClockStable(
     JNIEnv* env, jobject /* thiz */) {
     if (!audioEngineInstance) return JNI_FALSE;
-    
+
     return audioEngineInstance->isClockStable() ? JNI_TRUE : JNI_FALSE;
+}
+
+// ===== PER-PAD SVF FILTER JNI =====
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_high_theone_audio_AudioEngineImpl_native_1setPadFilter(
+    JNIEnv* env, jobject /* thiz */,
+    jstring padId, jboolean enabled, jint modeOrdinal,
+    jfloat cutoffHz, jfloat resonance) {
+    if (!audioEngineInstance) return;
+    audioEngineInstance->setPadFilter(
+        JStringToString(env, padId),
+        enabled == JNI_TRUE,
+        static_cast<int>(modeOrdinal),
+        static_cast<float>(cutoffHz),
+        static_cast<float>(resonance));
 }

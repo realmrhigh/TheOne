@@ -60,7 +60,7 @@ class DrumTrackViewModel @Inject constructor(
         )
         
         val initialPads = (0 until NUM_PADS).associate { index ->
-            val padId = "Pad$index"
+            val padId = "$index"
             val samplePath = if (index < defaultSamples.size) defaultSamples[index] else "asset://test.wav"
             val padName = when (index) {
                 0 -> "Kick"
@@ -152,9 +152,9 @@ class DrumTrackViewModel @Inject constructor(
         }
     }
 
-    fun onPadTriggered(padId: String) {
+    fun onPadTriggered(padId: String, velocity: Float = 1.0f) {
         _activePadId.value = padId
-        
+
         // Trigger audio playback
         viewModelScope.launch {
             try {
@@ -166,14 +166,15 @@ class DrumTrackViewModel @Inject constructor(
                         _activePadId.value = null
                         return@launch
                     }
-                    
-                    // Use the simple triggerSample method for immediate playback
-                    println("DrumTrack: Triggering pad $padId (${padSettings.name})")
-                    audioEngine.triggerSample(padId, padSettings.volume, padSettings.pan)
-                    
+
+                    // Apply velocity sensitivity to volume
+                    val adjustedVolume = (padSettings.volume * velocity.coerceIn(0f, 1f))
+                    println("DrumTrack: Triggering pad $padId (${padSettings.name}) vel=$velocity")
+                    audioEngine.triggerSample(padId, adjustedVolume, padSettings.pan)
+
                     // Emit event for sequencer if needed
-                    sequencerEventBus.emitPadTriggerEvent(PadTriggerEvent(padId, (padSettings.volume * 127).toInt()))
-                    
+                    sequencerEventBus.emitPadTriggerEvent(PadTriggerEvent(padId, (velocity * 127).toInt()))
+
                     // Clear active state after a short delay
                     kotlinx.coroutines.delay(100)
                     if (_activePadId.value == padId) {
@@ -188,9 +189,22 @@ class DrumTrackViewModel @Inject constructor(
                 _activePadId.value = null
             }
         }
-    }    fun updatePadSettings(updated: PadSettings) {
+    }
+
+    fun updatePadSettings(updated: PadSettings) {
         _padSettingsMap.value = _padSettingsMap.value.toMutableMap().apply {
             put(updated.id, updated)
+        }
+        // Push filter settings to the audio engine so the next trigger picks them up
+        val fs = updated.filterSettings
+        viewModelScope.launch {
+            audioEngine.setPadFilter(
+                padId      = updated.id,
+                enabled    = fs.enabled,
+                modeOrdinal = fs.mode.ordinal,
+                cutoffHz   = fs.cutoffHz,
+                resonance  = fs.resonance
+            )
         }
     }
     

@@ -171,6 +171,13 @@ class MockAudioEngineControl : com.high.theone.audio.AudioEngineControl {
     }
 
     override suspend fun stopAllSamples() {}
+    override suspend fun getRecordingLevel(): Float = 0f
+    override suspend fun setDrumPadTrim(padIndex: Int, startMs: Long, endMs: Long, fadeInMs: Float, fadeOutMs: Float) {}
+    override suspend fun getWaveformThumbnail(padIndex: Int, numSamples: Int): FloatArray = FloatArray(0)
+    override suspend fun setPadFilter(
+        padId: String, enabled: Boolean, modeOrdinal: Int,
+        cutoffHz: Float, resonance: Float
+    ) {} // no-op in mock
 }
 
 // TODO: Complete implementation as needed

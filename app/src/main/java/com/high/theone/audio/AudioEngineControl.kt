@@ -4,6 +4,7 @@ import com.high.theone.model.SampleMetadata
 import com.high.theone.model.EnvelopeSettings
 import com.high.theone.model.LFOSettings
 import com.high.theone.model.EffectInstance
+import com.high.theone.model.FilterSettings
 
 interface AudioEngineControl {
     // Initialization & Config
@@ -39,6 +40,15 @@ interface AudioEngineControl {
     suspend fun setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings)
     suspend fun setSampleLFO(sampleId: String, lfo: LFOSettings)
     suspend fun setEffectParameter(effectId: String, parameter: String, value: Float)
+
+    // Recording metering
+    suspend fun getRecordingLevel(): Float
+
+    // Sample trim / fade applied per pad
+    suspend fun setDrumPadTrim(padIndex: Int, startMs: Long, endMs: Long, fadeInMs: Float, fadeOutMs: Float)
+
+    // Waveform thumbnail for UI display
+    suspend fun getWaveformThumbnail(padIndex: Int, numSamples: Int): FloatArray
     
     // Transport
     suspend fun setTransportBpm(bpm: Float)
@@ -70,6 +80,19 @@ interface AudioEngineControl {
     suspend fun setDrumPadPan(padIndex: Int, pan: Float)
     suspend fun setDrumPadMode(padIndex: Int, playbackMode: Int)
     suspend fun setDrumMasterVolume(volume: Float)
+
+    /**
+     * Configure the per-pad State Variable Filter.
+     * [padId] matches pad IDs used in loadSampleToMemory / triggerSample ("0".."15").
+     * [modeOrdinal] must match FilterMode ordinals: LOW_PASS=0, BAND_PASS=1, HIGH_PASS=2.
+     */
+    suspend fun setPadFilter(
+        padId: String,
+        enabled: Boolean,
+        modeOrdinal: Int,
+        cutoffHz: Float,
+        resonance: Float
+    )
     suspend fun getDrumActiveVoices(): Int
     suspend fun clearDrumVoices()
     

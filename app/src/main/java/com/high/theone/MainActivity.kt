@@ -47,6 +47,7 @@ import com.high.theone.features.sequencer.SequencerHelpScreen
 import com.high.theone.features.sequencer.SequencerTutorialScreen
 import com.high.theone.features.compactui.CompactMainScreen
 import com.high.theone.features.compactui.ProjectSettingsScreen
+import com.high.theone.features.synth.SynthScreen
 import com.high.theone.midi.service.MidiPermissionManager
 import com.high.theone.ui.theme.TheOneTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -144,6 +145,11 @@ class MainActivity : ComponentActivity() {
                             SequencerTutorialScreen(navController = navController)
                         }
                         
+                        // Sketching Synth screen
+                        composable("synth_screen") {
+                            SynthScreen(navController = navController)
+                        }
+
                         // Debug screen
                         composable("debug_screen") {
                             DebugScreen(audioEngine = audioEngine)
@@ -229,6 +235,10 @@ fun MainScreen(navController: NavHostController, modifier: Modifier = Modifier) 
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { navController.navigate("drum_pad_screen") }) {
             Text("Drum Pads")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = { navController.navigate("synth_screen") }) {
+            Text("Sketching Synth")
         }
         Spacer(modifier = Modifier.height(16.dp))
         

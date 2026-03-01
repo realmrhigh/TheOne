@@ -186,6 +186,20 @@ void AudioEngine::setPadPan(const std::string& padKey, float pan) {
     }
 }
 
+void AudioEngine::setPadFilter(const std::string& sampleKey,
+                               bool enabled, int modeOrdinal,
+                               float cutoffHz, float resonance) {
+    std::lock_guard<std::mutex> lock(padFilterMutex_);
+    FilterSettingsCpp& fs = padFilterSettings_[sampleKey];
+    fs.enabled   = enabled;
+    fs.mode      = static_cast<SVF_Mode>(std::clamp(modeOrdinal, 0, 2));
+    fs.cutoffHz  = std::clamp(cutoffHz, 20.0f, 20000.0f);
+    fs.resonance = std::clamp(resonance, 0.5f, 25.0f);
+    __android_log_print(ANDROID_LOG_INFO, APP_NAME,
+        "🎛️ setPadFilter: pad='%s' enabled=%d mode=%d cutoff=%.1fHz res=%.2f",
+        sampleKey.c_str(), enabled ? 1 : 0, modeOrdinal, cutoffHz, resonance);
+}
+
 // --- Oboe Callbacks ---
 oboe::DataCallbackResult AudioEngine::onAudioReady(
         oboe::AudioStream *oboeStream,
@@ -270,7 +284,12 @@ void AudioEngine::processSamplePlayback(float* outputBuffer, int32_t numFrames, 
                     sampleValue = sampleData->samples[leftIndex];
                 }
             }
-              // Apply envelope
+            // Apply per-pad SVF filter (if enabled for this voice)
+            if (sound.filterEnabled) {
+                sampleValue = sound.filterL.process(sampleValue);
+            }
+
+            // Apply envelope
             float envelopeValue = sound.envelope.process();
             float finalSample = sampleValue * envelopeValue * sound.volume;
             
@@ -436,6 +455,22 @@ void AudioEngine::triggerSample(const std::string& sampleKey, float volume, floa
         if (sr == 0) sr = 44100;
         newSound.envelope.configure(it->second->defaultEnvelope, static_cast<float>(sr), 1.0f);
         newSound.envelope.triggerOn(1.0f);
+    }
+
+    // Seed per-pad SVF filter if configured
+    {
+        std::lock_guard<std::mutex> filterLock(padFilterMutex_);
+        auto filterIt = padFilterSettings_.find(sampleKey);
+        if (filterIt != padFilterSettings_.end() && filterIt->second.enabled) {
+            const FilterSettingsCpp& fs = filterIt->second;
+            float sr = static_cast<float>(audioStreamSampleRate_.load());
+            if (sr <= 0.0f) sr = 48000.0f;
+            newSound.filterEnabled = true;
+            newSound.filterL.setSampleRate(sr);
+            newSound.filterL.configure(fs.mode, fs.cutoffHz, fs.resonance);
+            newSound.filterR.setSampleRate(sr);
+            newSound.filterR.configure(fs.mode, fs.cutoffHz, fs.resonance);
+        }
     }
 
     {

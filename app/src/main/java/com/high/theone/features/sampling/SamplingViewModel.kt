@@ -14,6 +14,7 @@ import kotlinx.coroutines.Job
 import android.net.Uri
 import android.util.Log
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 /**
@@ -49,9 +50,12 @@ class SamplingViewModel @Inject constructor(
 
     // Recording level monitoring job
     private var levelMonitoringJob: Job? = null
-    
+
     // Recording duration tracking job
     private var recordingDurationJob: Job? = null
+
+    // Track active voice IDs by pad index for GATE/NOTE_ON_OFF modes
+    private val activeVoiceIds = ConcurrentHashMap<Int, String>()
 
     init {
         initializeAudioEngine()
@@ -443,25 +447,25 @@ class SamplingViewModel @Inject constructor(
     private fun startLevelMonitoring() {
         levelMonitoringJob?.cancel()
         levelMonitoringJob = viewModelScope.launch {
+            var smoothedLevel = 0f
             while (_uiState.value.recordingState.isRecording) {
                 try {
-                    // Note: This would need to be implemented in the audio engine
-                    // For now, we'll simulate level monitoring
-                    val peakLevel = 0.5f // Placeholder - should come from audio engine
-                    val averageLevel = 0.3f // Placeholder - should come from audio engine
-                    
+                    val rawLevel = audioEngine.getRecordingLevel().coerceIn(0f, 1f)
+                    // Exponential smoothing for average level display
+                    smoothedLevel = smoothedLevel * 0.7f + rawLevel * 0.3f
+
                     _uiState.update { state ->
                         state.copy(
                             recordingState = state.recordingState.copy(
-                                peakLevel = peakLevel,
-                                averageLevel = averageLevel
+                                peakLevel = rawLevel,
+                                averageLevel = smoothedLevel
                             )
                         )
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error monitoring recording levels", e)
                 }
-                
+
                 delay(LEVEL_UPDATE_INTERVAL_MS)
             }
         }
@@ -576,12 +580,15 @@ class SamplingViewModel @Inject constructor(
                 }
 
                 // Ensure sample is loaded in cache for immediate playback
+                // Fast non-blocking check first; only call ensureSampleLoaded if necessary
                 val sampleId = pad.sampleId
                 if (sampleId != null) {
-                    val isCached = sampleCacheManager.ensureSampleLoaded(sampleId)
-                    if (!isCached) {
-                        Log.w(TAG, "Sample $sampleId not ready for pad $padIndex")
-                        return@launch
+                    if (!sampleCacheManager.isSampleLoaded(sampleId)) {
+                        val isCached = sampleCacheManager.ensureSampleLoaded(sampleId)
+                        if (!isCached) {
+                            Log.w(TAG, "Sample $sampleId not ready for pad $padIndex")
+                            return@launch
+                        }
                     }
                 }
 
@@ -605,6 +612,9 @@ class SamplingViewModel @Inject constructor(
                 audioEngine.setDrumPadPan(padIndex, pad.pan)
                 audioEngine.setDrumPadMode(padIndex, pad.playbackMode.ordinal)
 
+                // Handle choke groups: stop other pads in the same group
+                handleChokeGroup(padIndex)
+
                 // Update pad state to show it's playing
                 updatePadState(padIndex) { padState ->
                     padState.copy(
@@ -619,26 +629,29 @@ class SamplingViewModel @Inject constructor(
                 // Handle playback mode with voice management
                 when (pad.playbackMode) {
                     PlaybackMode.ONE_SHOT -> {
-                        // For one-shot samples, release voice after estimated duration
-                        delay(100L) // Minimum delay for UI responsiveness
+                        // Release voice after actual sample duration (min 100ms for UI)
+                        val sampleDuration = _uiState.value.availableSamples
+                            .find { it.id.toString() == sampleId }
+                            ?.effectiveDurationMs
+                            ?.coerceIn(100L, 30_000L)
+                            ?: 100L
+                        delay(sampleDuration)
                         voiceManager.releaseVoice(voiceId)
                         updatePadState(padIndex) { padState ->
                             padState.copy(isPlaying = false)
                         }
                     }
                     PlaybackMode.LOOP -> {
-                        // Loop mode - voice stays active until explicitly stopped
+                        // Loop mode – voice stays active until releasePad() is called
+                        activeVoiceIds[padIndex] = voiceId
                     }
                     PlaybackMode.GATE -> {
-                        // Gate mode - similar to one-shot but can be stopped early
-                        delay(100L)
-                        voiceManager.releaseVoice(voiceId)
-                        updatePadState(padIndex) { padState ->
-                            padState.copy(isPlaying = false)
-                        }
+                        // Gate mode – voice stays active until releasePad() is called on release
+                        activeVoiceIds[padIndex] = voiceId
                     }
                     PlaybackMode.NOTE_ON_OFF -> {
-                        // MIDI-style note on/off - stays playing until explicitly stopped
+                        // MIDI-style – stays playing until explicit note-off via releasePad()
+                        activeVoiceIds[padIndex] = voiceId
                     }
                 }
 
@@ -678,14 +691,19 @@ class SamplingViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val pad = _uiState.value.getPad(padIndex)
-                
+
                 if (pad?.isPlaying == true) {
                     audioEngine.releaseDrumPad(padIndex)
-                    
+
+                    // Release tracked voice for GATE/LOOP/NOTE_ON_OFF modes
+                    activeVoiceIds.remove(padIndex)?.let { voiceId ->
+                        voiceManager.releaseVoice(voiceId)
+                    }
+
                     updatePadState(padIndex) { padState ->
                         padState.copy(isPlaying = false)
                     }
-                    
+
                     Log.d(TAG, "Released pad $padIndex")
                 }
             } catch (e: Exception) {
@@ -733,18 +751,30 @@ class SamplingViewModel @Inject constructor(
                 }
 
                 val loadSuccess = audioEngine.loadDrumSample(padIndex, samplePath)
-                
+
                 if (loadSuccess) {
+                    // Apply trim/fade settings if the sample has them
+                    val trimStartMs = sample.trimStartMs
+                    val trimEndMs = if (sample.trimEndMs > 0) sample.trimEndMs else sample.durationMs
+                    if (sample.isTrimmed) {
+                        audioEngine.setDrumPadTrim(padIndex, trimStartMs, trimEndMs, 0f, 0f)
+                    }
+
+                    // Fetch waveform thumbnail for pad display (64 points)
+                    val waveform = audioEngine.getWaveformThumbnail(padIndex, 64)
+                    val waveformList = if (waveform.isNotEmpty()) waveform.toList() else null
+
                     // Update pad state
                     updatePadState(padIndex) { padState ->
                         padState.copy(
                             sampleId = sampleId,
                             sampleName = sample.name,
                             hasAssignedSample = true,
-                            isLoading = false
+                            isLoading = false,
+                            waveformData = waveformList
                         )
                     }
-                    
+
                     // Synchronize pad settings with audio engine after assignment
                     val currentPad = _uiState.value.getPad(padIndex)
                     if (currentPad != null) {

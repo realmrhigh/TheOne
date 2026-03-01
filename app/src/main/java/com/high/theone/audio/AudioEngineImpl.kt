@@ -47,6 +47,10 @@ class AudioEngineImpl @Inject constructor(
     private external fun native_setDrumMasterVolume(volume: Float)
     private external fun native_getDrumActiveVoices(): Int
     private external fun native_clearDrumVoices()
+    private external fun native_setPadFilter(
+        padId: String, enabled: Boolean, modeOrdinal: Int,
+        cutoffHz: Float, resonance: Float
+    )
 
     // Plugin system native methods
     private external fun native_loadPlugin(pluginId: String, pluginName: String): Boolean
@@ -62,6 +66,20 @@ class AudioEngineImpl @Inject constructor(
     private external fun native_startAudioRecording(filePathUri: String, inputDeviceId: String?): Boolean
     private external fun native_stopAudioRecording(): Array<Any>? // Returns [filePath, duration, sampleRate, channels]
     
+    // Effects and modulation native methods
+    private external fun native_setSampleEnvelope(sampleId: String, attackMs: Float, decayMs: Float, sustainLevel: Float, releaseMs: Float, holdMs: Float): Boolean
+    private external fun native_setSampleLFO(sampleId: String, rate: Float, depth: Float, shape: String, destination: String): Boolean
+    private external fun native_setEffectParameter(effectId: String, parameter: String, value: Float): Boolean
+
+    // Recording metering
+    private external fun native_getRecordingLevel(): Float
+
+    // Pad trim / fade
+    private external fun native_setDrumPadTrim(padIndex: Int, startMs: Long, endMs: Long, fadeInMs: Float, fadeOutMs: Float): Boolean
+
+    // Waveform thumbnail
+    private external fun native_getWaveformThumbnail(padIndex: Int, numSamples: Int): FloatArray?
+
     // Additional native methods for complete integration
     private external fun native_setMetronomeState(isEnabled: Boolean, bpm: Float, timeSignatureNum: Int, timeSignatureDen: Int, soundPrimaryUri: String, soundSecondaryUri: String?)
     private external fun native_playPadSample(noteInstanceId: String, trackId: String, padId: String): Boolean
@@ -349,6 +367,22 @@ class AudioEngineImpl @Inject constructor(
                 native_clearDrumVoices()
             } catch (e: Exception) {
                 Log.e(TAG, "Exception clearing drum voices", e)
+            }
+        }
+    }
+
+    override suspend fun setPadFilter(
+        padId: String,
+        enabled: Boolean,
+        modeOrdinal: Int,
+        cutoffHz: Float,
+        resonance: Float
+    ) {
+        withContext(Dispatchers.IO) {
+            try {
+                native_setPadFilter(padId, enabled, modeOrdinal, cutoffHz, resonance)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception setting pad filter for pad '$padId'", e)
             }
         }
     }
@@ -724,16 +758,70 @@ class AudioEngineImpl @Inject constructor(
         }
     }
 
-    // Effects and Modulation (stub implementations)
+    // Effects and Modulation
     override suspend fun setSampleEnvelope(sampleId: String, envelope: EnvelopeSettings) {
-        Log.d(TAG, "setSampleEnvelope not yet implemented")
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting envelope for sample $sampleId: A=${envelope.attackMs} D=${envelope.decayMs} S=${envelope.sustainLevel} R=${envelope.releaseMs}")
+                native_setSampleEnvelope(sampleId, envelope.attackMs, envelope.decayMs, envelope.sustainLevel, envelope.releaseMs, envelope.holdMs)
+            } catch (e: Throwable) {
+                Log.e(TAG, "setSampleEnvelope failed for $sampleId", e)
+            }
+        }
     }
 
     override suspend fun setSampleLFO(sampleId: String, lfo: LFOSettings) {
-        Log.d(TAG, "setSampleLFO not yet implemented")
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting LFO for sample $sampleId: rate=${lfo.rate} depth=${lfo.depth} shape=${lfo.shape} dest=${lfo.destination}")
+                native_setSampleLFO(sampleId, lfo.rate, lfo.depth, lfo.shape, lfo.destination)
+            } catch (e: Throwable) {
+                Log.e(TAG, "setSampleLFO failed for $sampleId", e)
+            }
+        }
     }
 
     override suspend fun setEffectParameter(effectId: String, parameter: String, value: Float) {
-        Log.d(TAG, "setEffectParameter not yet implemented")
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting effect parameter: $effectId.$parameter = $value")
+                native_setEffectParameter(effectId, parameter, value)
+            } catch (e: Throwable) {
+                Log.e(TAG, "setEffectParameter failed for $effectId.$parameter", e)
+            }
+        }
+    }
+
+    override suspend fun getRecordingLevel(): Float {
+        return withContext(Dispatchers.IO) {
+            try {
+                native_getRecordingLevel()
+            } catch (e: Throwable) {
+                Log.w(TAG, "getRecordingLevel not available: ${e.message}")
+                0f
+            }
+        }
+    }
+
+    override suspend fun setDrumPadTrim(padIndex: Int, startMs: Long, endMs: Long, fadeInMs: Float, fadeOutMs: Float) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Setting trim for pad $padIndex: start=${startMs}ms end=${endMs}ms fadeIn=${fadeInMs}ms fadeOut=${fadeOutMs}ms")
+                native_setDrumPadTrim(padIndex, startMs, endMs, fadeInMs, fadeOutMs)
+            } catch (e: Throwable) {
+                Log.w(TAG, "setDrumPadTrim not available: ${e.message}")
+            }
+        }
+    }
+
+    override suspend fun getWaveformThumbnail(padIndex: Int, numSamples: Int): FloatArray {
+        return withContext(Dispatchers.IO) {
+            try {
+                native_getWaveformThumbnail(padIndex, numSamples) ?: FloatArray(0)
+            } catch (e: Throwable) {
+                Log.w(TAG, "getWaveformThumbnail not available: ${e.message}")
+                FloatArray(0)
+            }
+        }
     }
 }

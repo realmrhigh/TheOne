@@ -79,7 +79,14 @@ class SequencerAudioEngineAdapter @Inject constructor(
     override suspend fun setPluginParameter(pluginId: String, paramId: String, value: Double): Boolean = audioEngine.setPluginParameter(pluginId, paramId, value)
     override suspend fun noteOnToPlugin(pluginId: String, note: Int, velocity: Int) = audioEngine.noteOnToPlugin(pluginId, note, velocity)
     override suspend fun noteOffToPlugin(pluginId: String, note: Int, velocity: Int) = audioEngine.noteOffToPlugin(pluginId, note, velocity)
-    
+    override suspend fun getRecordingLevel(): Float = audioEngine.getRecordingLevel()
+    override suspend fun setDrumPadTrim(padIndex: Int, startMs: Long, endMs: Long, fadeInMs: Float, fadeOutMs: Float) = audioEngine.setDrumPadTrim(padIndex, startMs, endMs, fadeInMs, fadeOutMs)
+    override suspend fun getWaveformThumbnail(padIndex: Int, numSamples: Int): FloatArray = audioEngine.getWaveformThumbnail(padIndex, numSamples)
+    override suspend fun setPadFilter(
+        padId: String, enabled: Boolean, modeOrdinal: Int,
+        cutoffHz: Float, resonance: Float
+    ) = audioEngine.setPadFilter(padId, enabled, modeOrdinal, cutoffHz, resonance)
+
     // Sequencer-specific methods from AudioEngineControl
     override suspend fun scheduleStepTrigger(padIndex: Int, velocity: Float, timestamp: Long): Boolean {
         return withContext(Dispatchers.IO) {

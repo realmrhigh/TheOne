@@ -2,6 +2,7 @@ package com.high.theone.model
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Contextual
+import kotlinx.serialization.Transient
 import java.util.UUID
 
 /**
@@ -65,7 +66,8 @@ data class PadState(
     val midiChannel: Int = 0, // MIDI channel (0-15) for this pad
     val midiVelocitySensitivity: Float = 1.0f, // How much MIDI velocity affects pad velocity (0.0-2.0)
     val acceptsAllChannels: Boolean = false, // If true, responds to MIDI on any channel
-    val lastMidiTrigger: Long = 0L // Timestamp of last MIDI trigger for debugging
+    val lastMidiTrigger: Long = 0L, // Timestamp of last MIDI trigger for debugging
+    @Transient val waveformData: List<Float>? = null // Non-serialized waveform thumbnail for display
 ) {
     /**
      * Convenience property to check if pad can be triggered

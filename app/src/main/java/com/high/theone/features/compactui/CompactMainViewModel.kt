@@ -497,7 +497,7 @@ class CompactMainViewModel @Inject constructor(
     /**
      * Drum pad actions - delegates to DrumTrackViewModel
      */
-    fun onPadTriggered(padId: String) {
+    fun onPadTriggered(padId: String, velocity: Float = 1.0f) {
         // Composables call their own DrumTrackViewModel directly
         recordFrameTime()
     }

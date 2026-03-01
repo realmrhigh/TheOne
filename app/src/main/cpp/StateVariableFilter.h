@@ -24,6 +24,8 @@ public:
     void configure(SVF_Mode mode, float cutoffHz, float resonanceQ); // resonanceQ typically 0.5 (min) to ~20+
     float process(float inputSample);
     void reset();
+    // Ordinals match Kotlin FilterMode enum: LOW_PASS=0, BAND_PASS=1, HIGH_PASS=2
+    SVF_Mode getCurrentMode() const { return currentMode_; }
 
 private:
     float sampleRate_;

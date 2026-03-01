@@ -367,12 +367,16 @@ private fun WaveformPreviewOverlay(
     padState: PadState,
     modifier: Modifier = Modifier
 ) {
-    val waveformData = remember(padState.sampleId) {
-        generateMockWaveformForPad(padState)
+    // Use real waveform data from the audio engine when available; fall back to mock
+    val waveformData = remember(padState.sampleId, padState.waveformData) {
+        padState.waveformData
+            ?.takeIf { it.isNotEmpty() }
+            ?.toFloatArray()
+            ?: generateMockWaveformForPad(padState)
     }
-    
+
     val waveformColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-    
+
     if (waveformData != null) {
         Canvas(modifier = modifier) {
             drawWaveform(

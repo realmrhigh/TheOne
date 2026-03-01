@@ -12,14 +12,20 @@ I know music and audio very well, but not the instrumentation, programming, and 
 
 ### ✅ **WORKING FEATURES**
 - **🎵 Full Audio Engine**: Low-latency C++/Oboe implementation with JNI bridge
-- **🎤 Sample Recording**: Record from microphone with real-time level monitoring  
+- **🎤 Sample Recording**: Record from microphone with real-time level monitoring
 - **🥁 Drum Pad System**: 4x4 pad grid with velocity sensitivity and visual feedback
 - **📝 Step Sequencer**: 16-step patterns with swing, tempo control, and real-time recording
 - **✂️ Sample Editor**: Waveform display, trimming, normalize, reverse operations
 - **💾 Sample Management**: Load external files, organize samples, assignment system
 - **🎛️ Pattern Management**: Create, copy, chain patterns into songs
-- **📱 Modern UI**: Material Design 3 with Jetpack Compose, responsive design
+- **📱 Modern UI**: Material Design 3 with Jetpack Compose, responsive/adaptive layout
 - **🔧 Debug Tools**: Comprehensive testing interface for development
+- **🎚️ Live Mixer Panel**: Per-pad volume & pan sliders wired to DrumTrackViewModel in real time
+- **🎹 MIDI Device Management UI**: Device list, connect/disconnect, MIDI settings screen with live state
+- **⚙️ Pad Config Sheet**: Long-press any pad → bottom sheet for volume, pan, playback mode, mute group
+- **🔀 Quick Access Panels**: Sampling/MIDI/Mixer/Settings/SampleEditor panels — all wired to real ViewModels
+- **↔️ Adaptive Layout**: Portrait bottom-sheet + landscape side-panel rendering paths both fully wired
+- **🔄 Sequencer State Sync**: SimpleSequencerViewModel → CompactMainViewModel live state bridge
 
 ### 🏗️ **SOLID FOUNDATION**
 - **Architecture**: MVVM with Hilt dependency injection, Kotlin coroutines
@@ -47,14 +53,18 @@ I know music and audio very well, but not the instrumentation, programming, and 
 - [x] Implement metronome with tempo sync
 
 ### C2: MIDI Engine Foundation
-**Status: ⚠️ NOT STARTED**
-- [ ] Implement Android MIDI API integration
-- [ ] Create MidiEngineControl interface
-- [ ] Add USB MIDI device detection and connection
+**Status: 🔄 PARTIALLY COMPLETED**
+- [x] Implement Android MIDI API integration (`midi/` package)
+- [x] Create MidiManagerControl interface
+- [x] Add USB MIDI device detection and connection (`MidiDeviceManager`, `MidiDeviceScanner`)
+- [x] Build MIDI event parsing and generation (`MidiMessageParser`, `MidiInputProcessor`)
+- [x] Create MIDI input/output handling (`MidiInputProcessor`, `MidiOutputGenerator`)
+- [x] MIDI mapping system (`MidiMappingEngine`, `MidiLearnManager`, `MidiParameterMapper`)
+- [x] MIDI diagnostics & error handling (`MidiDiagnosticsManager`, `MidiErrorHandler`)
+- [x] Full MIDI settings UI (`MidiSettingsScreen`, `MidiMappingScreen`, `MidiMonitorScreen`)
+- [x] MIDI UI wired to live ViewModel state (device list, connect/disconnect buttons)
 - [ ] Implement Bluetooth MIDI support
-- [ ] Build MIDI event parsing and generation
-- [ ] Add MIDI clock sync functionality
-- [ ] Create MIDI input/output handling
+- [ ] Add MIDI clock sync functionality (MidiClockGenerator scaffolded, not yet driving transport)
 
 ### C3: File & Project Management
 **Status: 🔄 PARTIALLY COMPLETED**
@@ -106,12 +116,15 @@ I know music and audio very well, but not the instrumentation, programming, and 
 
 ### M3: Advanced Drum Track Sound Design
 **Status: 🔄 PARTIALLY COMPLETED** *(Dependencies: M1, C1, C4)*
-- [x] Implement basic amplitude envelope (ADSR)
+- [x] Implement basic amplitude envelope (ADSR) + pitch envelope
 - [x] Create basic LFO system for modulation
-- [x] Add basic per-pad volume and pan controls
-- [ ] Add filter per pad
-- [ ] Build layering system for multiple samples per pad
-- [ ] Implement pad-specific effects
+- [x] Per-pad volume and pan — **live UI sliders wired to DrumTrackViewModel** (Mixer panel + Pad Config sheet)
+- [x] Per-pad playback mode (ONE_SHOT / NOTE_ON_OFF) — configurable via Pad Config sheet
+- [x] Per-pad mute group assignment (0–4) — configurable via Pad Config sheet
+- [x] DrumProgramEditScreen with VisualEnvelopeEditor for ADSR visualization
+- [ ] Add filter per pad (C++ StateVariableFilter exists, not yet exposed in UI)
+- [ ] Build sample layering system (SampleLayer model exists, UI not yet implemented)
+- [ ] Implement pad-specific effects routing
 - [ ] Create sound parameter automation
 
 ### M5: Basic Effects Processing
@@ -195,9 +208,12 @@ I know music and audio very well, but not the instrumentation, programming, and 
 - [x] Build audio settings configuration
 - [x] Implement basic project defaults system
 - [x] Create theme/UI customization (Material Design 3)
+- [x] MIDI settings management UI (`MidiSettingsScreen` wired to `MidiSettingsViewModel`)
+- [x] MIDI device configuration dialog (`MidiDeviceConfigDialog`)
+- [x] MIDI mapping screen (`MidiMappingScreen`) with live-learn support
+- [x] MIDI monitor screen (`MidiMonitorScreen`) for real-time event inspection
 - [ ] Implement SettingsRepository
 - [ ] Create UserPreferencesManager
-- [ ] Add MIDI settings management
 
 ## 🏛️ ARCHITECTURAL REPAIRS
 
@@ -228,49 +244,65 @@ I know music and audio very well, but not the instrumentation, programming, and 
 
 ## 🚨 CURRENT PRIORITY AREAS
 
-1. **MIDI Engine Implementation (C2)** - Required for external hardware integration
-2. **Effects Processing System (M5)** - Essential for professional sound design
-3. **Complete Project Management (C3)** - Full project save/load functionality
-4. **Advanced Performance Features (M12A)** - Note repeat, performance effects
-5. **Pitched Instrument Support (M4)** - Piano roll and keygroup functionality
+1. **Effects Processing System (M5)** - C++ filter/reverb/delay nodes exist; need UI routing & send controls
+2. **Complete Project Management (C3)** - Full project save/load (sample pool + sequence + settings)
+3. **MIDI Clock Sync (C2 remaining)** - MidiClockGenerator scaffolded; wire to transport play/stop
+4. **Bluetooth MIDI (C2 remaining)** - USB done; BT scanning & pairing needed
+5. **Advanced Performance Features (M12A)** - Note repeat, performance effects
+6. **Pitched Instrument Support (M4)** - Piano roll and keygroup functionality
+7. **Sample Layering UI (M3)** - SampleLayer model exists; need layer-stacking UI on pad config
 
 ## 📊 CURRENT PROJECT STATUS
 
-### ✅ COMPLETED FOUNDATIONS (Weeks 1-4)
-- **C1: Audio Engine** - Full C++/Oboe implementation with JNI bridge
-- **C4: UI Framework** - Jetpack Compose with Material Design 3
+### ✅ COMPLETED FOUNDATIONS
+- **C1: Audio Engine** - Full C++/Oboe implementation with JNI bridge; waveform thumbnail API added
+- **C4: UI Framework** - Jetpack Compose with Material Design 3; adaptive portrait/landscape layouts
 - **M1: Basic Sampling** - Recording, pad assignment, playback, trimming
 - **M2: Basic Sequencing** - Step sequencer with patterns, transport controls
-- **M7: Sample Editing** - Waveform display, trimming, basic processing
+- **M7: Sample Editing** - Waveform display, trimming, fade in/out, normalize, reverse
+- **M6A: Advanced Sequencing** - Copy/paste, nudge, quantize, swing, pattern length, overdub
 
 ### 🔄 IN PROGRESS (Current Focus)
-- **C3: Project Management** - Sample repository complete, need full project system
-- **M3: Sound Design** - Basic envelopes done, need filters and effects
-- **M6A: Advanced Sequencing** - Core features done, need transpose operations
+- **C2: MIDI Engine** - USB devices, mapping, settings UI all done; BT MIDI + clock sync remaining
+- **C3: Project Management** - Sample repository complete; full project serialize/load pending
+- **M3: Sound Design** - Per-pad volume/pan/mode/mute-group wired in UI; filters & layering pending
 - **M12A: Performance Features** - Basic controls done, need note repeat
 
-### ⚠️ NEXT PRIORITIES (Weeks 5-8)
-- **C2: MIDI Engine** - Complete MIDI integration for hardware support
-- **M5: Effects Processing** - Delay, reverb, filters for professional sound
-- **M4: Pitched Instruments** - Piano roll and keygroup functionality
-- **Testing Infrastructure** - Comprehensive UI and integration tests
+### ✅ RECENTLY COMPLETED — UX Wiring Sprint
+- **Quick Access Panels** — all 5 panel types (Sampling/MIDI/Mixer/Settings/SampleEditor) wired to live ViewModels
+- **Pad Config Bottom Sheet** — long-press pad → volume, pan, playback mode, mute group editor
+- **Live Mixer Panel** — per-pad sliders update DrumTrackViewModel in real time
+- **MIDI Quick Panel** — device list, connect button, "Open MIDI Settings" nav wired
+- **Adaptive layout unification** — portrait (BottomSheet) and landscape (side panel) share same composables
+- **Sequencer state bridge** — SimpleSequencerViewModel syncs to CompactMainViewModel via LaunchedEffect
 
-### 🚀 FUTURE EXPANSION (Weeks 9+)
-- **M9-M11: Advanced Features** - MIDI tracks, audio tracks, mixer
-- **Performance Optimization** - Memory management, CPU optimization
-- **User Experience Polish** - Animations, accessibility, tutorials
+### ⚠️ NEXT PRIORITIES
+- **M5: Effects Processing** - Expose C++ filter/reverb/delay nodes to UI; build per-pad effects chain
+- **C3: Full Project Save/Load** - Serialize project (sequences + sample pool + pad settings) to disk
+- **C2: BT MIDI + Clock Sync** - Complete remaining MIDI engine pieces
+- **M4: Pitched Instruments** - Piano roll and keygroup functionality
+- **Testing Infrastructure** - Compose UI tests; integration tests for audio pipeline
+
+### 🚀 FUTURE EXPANSION
+- **M9-M11: Advanced Features** - MIDI tracks, audio tracks, full channel mixer
+- **Sample Layering** - SampleLayer model in place; need layer-stacking UI
+- **Performance Optimization** - Memory & CPU profiling pass
+- **Export** - Audio mixdown export (C3 tail)
 
 ## 🎯 SUCCESS METRICS
 
 - [x] **Can record and playback samples** ✅ WORKING
-- [x] **Can create and play basic drum patterns** ✅ WORKING  
+- [x] **Can create and play basic drum patterns** ✅ WORKING
 - [x] **Can assign samples to pads with velocity sensitivity** ✅ WORKING
 - [x] **Can edit samples with trimming and basic processing** ✅ WORKING
 - [x] **Can create step sequences with swing and tempo control** ✅ WORKING
 - [x] **Can manage multiple patterns and song arrangements** ✅ WORKING
-- [ ] **Can apply effects to samples** ⚠️ PENDING (M5)
+- [x] **Can configure per-pad volume, pan, mode and mute group** ✅ WORKING (Pad Config sheet)
+- [x] **Can see and connect USB MIDI devices** ✅ WORKING (MidiSettingsScreen + Quick MIDI Panel)
+- [x] **Can live-mix pad volumes and pans from quick panel** ✅ WORKING (Mixer Panel)
+- [ ] **Can apply effects to samples** ⚠️ PENDING (M5 — C++ nodes exist, no UI)
 - [ ] **Can save and load complete projects** ⚠️ PARTIAL (C3)
-- [ ] **Can connect MIDI devices** ⚠️ PENDING (C2)
+- [ ] **Can use Bluetooth MIDI** ⚠️ PENDING (C2 — BT scanning not yet implemented)
 - [ ] **Can perform live with advanced features** ⚠️ PARTIAL (M12A)
 - [ ] **Can export audio mixdowns** ⚠️ PENDING (C3)
 
@@ -620,16 +652,101 @@ The debug screen (`/debug_screen` route) provides comprehensive testing tools:
 ```
 app/src/main/
 ├── java/com/high/theone/
-│   ├── audio/                     # Audio engine control & JNI
-│   ├── features/debug/            # Debug UI for testing
-│   ├── features/drumtrack/        # Drum pad functionality
-│   ├── features/sequencer/        # Step sequencer
-│   └── MainActivity.kt            # Main entry point
+│   ├── audio/                         # Audio engine interface & JNI bridge
+│   │   ├── AudioEngineControl.kt      # Interface (all audio ops + waveform/trim/level APIs)
+│   │   ├── AudioEngineImpl.kt         # JNI implementation
+│   │   └── MicrophoneInput*.kt        # Mic capture interface + impl
+│   ├── midi/                          # Full MIDI engine
+│   │   ├── MidiManager.kt / MidiManagerControl.kt
+│   │   ├── device/                    # USB device scanning & management
+│   │   ├── input/                     # MIDI input processor, velocity curves
+│   │   ├── output/                    # MIDI output, clock generator, transport
+│   │   ├── mapping/                   # MIDI learn, mapping engine, parameter mapper
+│   │   ├── integration/               # AudioEngine + Sequencer adapters
+│   │   ├── repository/                # Config & mapping persistence
+│   │   ├── service/                   # Lifecycle, permission, system init
+│   │   ├── diagnostics/               # MIDI diagnostics manager
+│   │   ├── error/                     # Error handler, graceful degradation
+│   │   ├── performance/               # Performance monitor & optimizer
+│   │   └── model/                     # MidiModels, MidiState, MidiConfiguration
+│   ├── model/                         # Shared data models
+│   │   ├── SharedModels.kt            # PlaybackMode, SnapPosition, PanelType, etc.
+│   │   ├── CompactUIModels.kt         # PanelState, layout models
+│   │   ├── SamplingModels.kt          # Recording state, sample assignment
+│   │   ├── SampleModels.kt / SampleMetadata.kt
+│   │   ├── SequenceModels.kt
+│   │   ├── SynthModels.kt / LayerModels.kt
+│   │   └── Project.kt / ProjectModels.kt
+│   ├── features/
+│   │   ├── compactui/                 # Main production UI (adaptive layout)
+│   │   │   ├── CompactMainScreen.kt   # Root screen — pads, transport, panels, pad config sheet
+│   │   │   ├── CompactMainViewModel.kt
+│   │   │   ├── AdaptiveBottomSheet.kt # Portrait bottom-sheet panel switcher
+│   │   │   ├── QuickAccessPanel.kt    # Landscape side-panel container
+│   │   │   ├── QuickAccessPanelContent.kt  # All 5 panel types wired to ViewModels
+│   │   │   ├── QuickAccessPanelIntegration.kt
+│   │   │   ├── CompactDrumPadGrid.kt
+│   │   │   ├── InlineSequencer.kt
+│   │   │   ├── TransportControlBar*.kt
+│   │   │   ├── CompactRecordingPanelIntegration.kt
+│   │   │   ├── CompactPadMidiIntegration.kt
+│   │   │   ├── ResponsiveMainLayout.kt / ResponsiveRecordingPanel.kt
+│   │   │   ├── PatternManagement.kt / QuickPadAssignmentFlow.kt
+│   │   │   ├── LayoutState*.kt / LayoutPresetManager.kt / PreferenceManager.kt
+│   │   │   ├── CustomizationPanel.kt / ProjectSettingsScreen.kt
+│   │   │   ├── CompactUIPerformanceOptimizer.kt
+│   │   │   ├── animations/            # Spring/tween panel transitions, micro-interactions
+│   │   │   ├── accessibility/         # High-contrast, keyboard nav, screen reader support
+│   │   │   ├── error/                 # Audio engine recovery, permission manager, storage
+│   │   │   └── performance/           # Frame-rate & memory monitors, perf warning UI
+│   │   ├── drumtrack/                 # Drum pad state & settings
+│   │   │   ├── DrumTrackViewModel.kt  # padSettingsMap StateFlow, updatePadSettings()
+│   │   │   ├── model/                 # PadSettings.kt, DrumTrackModels.kt
+│   │   │   ├── edit/                  # DrumProgramEditScreen, VisualEnvelopeEditor
+│   │   │   └── ui/                    # DrumPadScreen.kt
+│   │   ├── sequencer/                 # Step sequencer
+│   │   │   ├── SimpleSequencerViewModel.kt  # sequencerState StateFlow
+│   │   │   ├── SequencerScreen.kt / SequencerAudioEngineAdapter.kt
+│   │   │   ├── PatternManager.kt / PatternChainEditor.kt / SongModeManager.kt
+│   │   │   ├── TimingEngine.kt / PrecisionTimingEngine.kt
+│   │   │   ├── RecordingEngine.kt / OverdubManager.kt
+│   │   │   └── (+ groove, undo/redo, export, tutorial, perf monitor)
+│   │   ├── sampling/                  # Recording & sample management
+│   │   │   ├── SamplingViewModel.kt   # isRecording, peakLevel, formattedDuration, availableSamples
+│   │   │   ├── SamplingScreen.kt / SampleBrowser.kt
+│   │   │   ├── RecordingControls.kt / RecordingWorkflowUI.kt
+│   │   │   ├── SampleEditor.kt / SampleTrimming.kt / SampleProcessing.kt
+│   │   │   ├── PadGrid.kt / PadConfigurationDialog.kt
+│   │   │   └── (+ import, cache, metadata editor, preview, usage tracker)
+│   │   ├── midi/ui/                   # MIDI settings screens
+│   │   │   ├── MidiSettingsScreen.kt / MidiSettingsViewModel.kt
+│   │   │   ├── MidiMappingScreen.kt / MidiMappingViewModel.kt
+│   │   │   ├── MidiMonitorScreen.kt / MidiMonitorViewModel.kt
+│   │   │   ├── MidiDeviceConfigDialog.kt
+│   │   │   └── MidiPermissionDialog.kt
+│   │   ├── sampleeditor/              # Deep sample editor (dedicated screen)
+│   │   │   ├── SampleEditScreen.kt    # Waveform trim UI, fade, normalize, reverse
+│   │   │   ├── SampleEditViewModel.kt
+│   │   │   └── SampleEditViewModelFactory.kt
+│   │   ├── sampler/                   # Sample library management
+│   │   │   ├── SamplerScreen.kt / SamplerViewModel.kt
+│   │   │   └── permissions/MicrophonePermissionHelper.kt
+│   │   └── debug/                     # Development testing tools
+│   │       └── DebugScreen.kt
+│   ├── commands/                      # Undo/redo command pattern
+│   ├── di/                            # Hilt modules (audio, midi, sequencer, project)
+│   ├── domain/                        # Domain interfaces
+│   ├── project/                       # ProjectManager implementation
+│   └── ui/                            # Shared theme, components
 └── cpp/
-    ├── AudioEngine.{h,cpp}        # Core audio engine
-    ├── audio_sample.h             # Sample data structures
-    ├── native-lib.cpp             # JNI bindings
-    └── CMakeLists.txt             # Build configuration
+    ├── AudioEngine.{h,cpp}            # Core audio engine (Oboe)
+    ├── native-lib.cpp                 # JNI bindings
+    ├── EnvelopeGenerator.{h,cpp}      # ADSR processing
+    ├── LfoGenerator.{h,cpp}           # LFO modulation
+    ├── StateVariableFilter.{h,cpp}    # Filter (LP/HP/BP)
+    ├── SynthEngine.{h,cpp}            # Synthesis engine
+    ├── avst/                          # AVST plugin system
+    └── CMakeLists.txt
 ```
 
 ## 🎵 Audio Pipeline
