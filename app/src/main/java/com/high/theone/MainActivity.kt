@@ -47,6 +47,7 @@ import com.high.theone.features.sequencer.SequencerHelpScreen
 import com.high.theone.features.sequencer.SequencerTutorialScreen
 import com.high.theone.features.compactui.CompactMainScreen
 import com.high.theone.features.compactui.ProjectSettingsScreen
+import com.high.theone.features.mpcui.MPCMainScreen
 import com.high.theone.features.synth.SynthScreen
 import com.high.theone.midi.service.MidiPermissionManager
 import com.high.theone.ui.theme.TheOneTheme
@@ -98,8 +99,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     
-                    NavHost(navController = navController, startDestination = "compact_main") {
-                        // Compact main screen - primary entry point
+                    NavHost(navController = navController, startDestination = "mpc_main") {
+                        // MPC ONE+ style main screen – primary entry point
+                        composable("mpc_main") {
+                            MPCMainScreen(navController = navController)
+                        }
+                        
+                        // Compact main screen (legacy)
                         composable("compact_main") {
                             CompactMainScreen(navController = navController)
                         }
